@@ -1,0 +1,19 @@
+**/__pycache__/
+**/__pycache__/**
+*.py[cod]
+*.pyd
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.debug/
+
+# Large indicator data folders
+/indicators/*
+/.env
+
+# Runtime/private user data (must never be committed)
+/data/banksync_users.json
+/data/private/
+/data/banksync_server/
+/data/.banksync_master.key

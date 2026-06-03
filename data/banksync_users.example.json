@@ -1,0 +1,18 @@
+{
+  "example_user": {
+    "user_id": "example_user",
+    "uid": "replace-with-uuid",
+    "email": "user@example.com",
+    "password_hash": "pbkdf2$600000$<salt>$<hash>",
+    "confirmed": false,
+    "confirm_token": null,
+    "confirm_token_expires": null,
+    "created": "2026-01-01T00:00:00",
+    "settings": {
+      "sync_interval": "auto",
+      "notifications_enabled": true,
+      "notification_email": "user@example.com"
+    },
+    "stripe_customer_id": null
+  }
+}

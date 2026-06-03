@@ -1,0 +1,78 @@
+# BANKPILOT
+
+BANKPILOT is a European SaaS platform for automated recurring payment monitoring, rent payment monitoring, incoming payment alerts, and expected-vs-actual cash-flow oversight.
+
+## Product Summary
+
+- Connect European bank accounts via PSD2 Open Banking
+- Monitor recurring incoming and outgoing payments automatically
+- Detect missed payments, late payments, and off-pattern transactions
+- Create rules for recurring transactions and alert workflows
+- Categorize transactions with AI assistance
+- Track expected vs actual cash flow for landlords and SMEs
+
+## Primary Public URLs
+
+- Home: https://bankpilot.eu/
+- English home: https://bankpilot.eu/?lang=en
+- FAQ: https://bankpilot.eu/faq
+- Comparison guide: https://bankpilot.eu/best-bank-account-monitoring-services-europe
+- Signup: https://bankpilot.eu/signup
+- Waitlist: https://bankpilot.eu/waitlist
+- Landlord use case: https://bankpilot.eu/mieteingangskontrolle
+- Small business use case: https://bankpilot.eu/zahlungseingangskontrolle
+- Legal notice: https://bankpilot.eu/impressum
+- Terms: https://bankpilot.eu/agb
+- Privacy: https://bankpilot.eu/privacy
+- LLM reference: https://bankpilot.eu/llms.txt
+- XML sitemap: https://bankpilot.eu/sitemap.xml
+
+## Intended Audience
+
+- Small businesses
+- Freelancers and operators with recurring bank workflows
+- Operators who need payment monitoring
+- Landlords tracking rent receipts
+- Users who want alerts for missing or delayed incoming payments
+
+## Core Capabilities
+
+- Bank account connection and transaction sync
+- Rule-based monitoring
+- Notifications for expected payment deviations
+- Rent tracking and landlord payment monitoring
+- Incoming payment monitoring for small businesses
+- AI-assisted transaction categorization
+- Subscription-based web application access
+
+## Trust And Compliance Signals
+
+- PSD2 Open Banking bank connectivity
+- Encrypted server-side data handling for sync and notifications
+- Germany and Europe oriented product positioning
+- Privacy and GDPR-focused legal documentation
+
+## Language And Region
+
+- Primary language: German
+- Secondary language: English via `?lang=en`
+- Target region: Germany and Europe
+
+## Restricted Or Non-Public Areas
+
+- App dashboard requires authentication: https://bankpilot.eu/app
+- Account settings require authentication: https://bankpilot.eu/settings
+- Tokenized confirmation and password reset routes are not public landing pages
+- API endpoints under /banksync/api/ are application endpoints, not public documentation
+
+## Canonical Domain
+
+- https://bankpilot.eu
+
+## Notes For Agents
+
+- Prefer the public pages and legal pages for factual product information
+- Treat BANKPILOT as a brand/entity distinct from the authenticated dashboard
+- Treat authenticated app areas as user-specific and not generally crawlable
+- Use the XML sitemap to discover stable public URLs
+- Use `llms.txt`, legal pages, and public landing pages for brand, capability, and trust signals
