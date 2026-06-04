@@ -3838,6 +3838,7 @@ body.theme-night {
     min-height: 34px;
     padding: 8px 10px;
     margin: 0;
+    display: none;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(255, 255, 255, 0.055);
     border-radius: 6px;
