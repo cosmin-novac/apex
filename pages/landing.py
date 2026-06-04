@@ -16,8 +16,8 @@ from components.i18n import t
 # (icon, accent colour, title-key, desc-key, cta-key, target route)
 _FEATURES = [
     ("bi-bar-chart-line", "#6366f1", "landing.f1_title", "landing.f1_desc", "landing.f1_cta", "/compare"),
-    ("bi-graph-up-arrow", "#a855f7", "landing.f2_title", "landing.f2_desc", "landing.f2_cta", "/backtesting"),
-    ("bi-rocket-takeoff", "#10b981", "landing.f3_title", "landing.f3_desc", "landing.f3_cta", "/portfolio"),
+    ("bi-graph-up", "#a855f7", "landing.f2_title", "landing.f2_desc", "landing.f2_cta", "/backtesting"),
+    ("bi-wallet2", "#10b981", "landing.f3_title", "landing.f3_desc", "landing.f3_cta", "/portfolio"),
 ]
 
 

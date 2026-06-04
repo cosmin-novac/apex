@@ -23,6 +23,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav.404_title":            {"en": "404 - Page Not Found",      "de": "404 - Seite nicht gefunden"},
     "nav.404_text":             {"en": "The page you're looking for doesn't exist.",
                                  "de": "Die gesuchte Seite existiert nicht."},
+    "legal.impressum":          {"en": "Legal Notice",              "de": "Impressum"},
+    "legal.privacy":            {"en": "Privacy Policy",            "de": "Datenschutz"},
 
     # ── Auth ────────────────────────────────────────────────────────────
     "au.local_login":           {"en": "Local Login",               "de": "Lokale Anmeldung"},

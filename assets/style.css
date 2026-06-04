@@ -158,6 +158,24 @@ body {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.sidebar-legal-links {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    font-size: 0.74rem;
+}
+
+.sidebar-legal-link {
+    color: var(--sidebar-muted);
+    text-decoration: none;
+}
+
+.sidebar-legal-link:hover {
+    color: var(--sidebar-text);
+    text-decoration: underline;
+}
+
 #current-user-label {
     color: rgba(255, 255, 255, 0.75) !important;
     font-size: 0.82rem;
@@ -3715,6 +3733,54 @@ button.btn::-moz-focus-inner {
 }
 .landing-feature-cta .bi { transition: transform 0.2s ease; }
 .landing-feature-card:hover .landing-feature-cta .bi { transform: translateX(4px); }
+
+/* Legal pages */
+.legal-page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 44px 24px 72px;
+}
+
+.legal-back-link {
+    display: inline-flex;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 22px;
+    text-decoration: none;
+}
+
+.legal-back-link:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+.legal-title {
+    color: var(--text-primary);
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 24px;
+}
+
+.legal-text {
+    color: var(--text-secondary);
+    line-height: 1.75;
+    font-size: 0.96rem;
+}
+
+.legal-text h2,
+.legal-text h3 {
+    color: var(--text-primary);
+    margin-top: 28px;
+    margin-bottom: 12px;
+}
+
+.legal-text strong {
+    color: var(--text-primary);
+}
+
+.legal-text a {
+    color: var(--primary-color);
+}
 
 /* Make the sidebar brand feel clickable */
 a.sidebar-brand { text-decoration: none; display: block; }
