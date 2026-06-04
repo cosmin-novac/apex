@@ -30,12 +30,19 @@ def register_auth_callbacks(app):
             var uid = (typeof window.__apexClerkUserId !== 'undefined')
                 ? window.__apexClerkUserId : null;
             var cur = current || null;
-            if (uid === cur) return nu;          // unchanged -> don't churn downstream
-            return uid;                          // login or logout -> update store
+            if (uid === cur) return [nu, nu, nu, nu];  // unchanged -> don't churn downstream
+            // Any identity transition clears browser-held portfolio/TR state
+            // immediately. Server callbacks then hydrate only the verified user.
+            return [uid, null, null, true];
         }
         """,
-        Output("current-user-store", "data"),
+        [
+            Output("current-user-store", "data"),
+            Output("portfolio-data-store", "data", allow_duplicate=True),
+            Output("tr-encrypted-creds", "data", allow_duplicate=True),
+            Output("demo-mode", "data", allow_duplicate=True),
+        ],
         Input("clerk-uid-poll", "n_intervals"),
         State("current-user-store", "data"),
-        prevent_initial_call=False,
+        prevent_initial_call="initial_duplicate",
     )

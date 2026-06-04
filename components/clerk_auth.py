@@ -106,5 +106,20 @@ def current_user_id():
     return verify_session(token)
 
 
+def verified_user_id(expected_uid: str | None = None):
+    """Return the authoritative Clerk uid for this request.
+
+    ``expected_uid`` may come from Dash client state and is therefore not
+    trusted. When provided, it must match the verified cookie subject.
+    """
+    uid = current_user_id()
+    if not uid:
+        return None
+    if expected_uid and expected_uid != uid:
+        log.warning("Rejected client uid mismatch: client=%s verified=%s", expected_uid, uid)
+        return None
+    return uid
+
+
 def is_authenticated() -> bool:
     return current_user_id() is not None

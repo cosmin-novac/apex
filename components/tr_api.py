@@ -10,6 +10,7 @@ import json
 import base64
 import hashlib
 import inspect
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import threading
@@ -35,6 +36,14 @@ TR_TRANSACTIONS_CACHE = TR_CREDENTIALS_DIR / "transactions_cache.json"
 # Encryption key from environment (set this in your .env or hosting config)
 ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY", "default-dev-key-change-in-prod")
 TR_WAF_TOKEN_METHOD = os.environ.get("TR_WAF_TOKEN_METHOD", "playwright")
+
+
+def _safe_user_id(user_id: str) -> str:
+    """Return a filesystem-safe user id or reject it."""
+    uid = user_id or "_default"
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", uid):
+        raise ValueError("invalid user_id for TR cache namespace")
+    return uid
 
 
 def _without_waf_cookie(cookie_text: str) -> str:
@@ -159,7 +168,7 @@ class TRConnection:
     """
 
     def __init__(self, user_id: str = "_default"):
-        self.user_id = user_id
+        self.user_id = _safe_user_id(user_id)
         self.api: Optional[TradeRepublicApi] = None
         self.phone_no: Optional[str] = None
         self.pin: Optional[str] = None
@@ -172,14 +181,14 @@ class TRConnection:
         self._op_lock = threading.Lock()
 
         # ── Per-user cache directory ────────────────────────────────────
-        self._user_cache_dir = TR_CREDENTIALS_DIR / user_id
+        self._user_cache_dir = TR_CREDENTIALS_DIR / self.user_id
         self._user_cache_dir.mkdir(parents=True, exist_ok=True)
         self._instrument_cache_path = self._user_cache_dir / "instrument_cache.json"
         self._cookies_path = self._user_cache_dir / "cookies.txt"
 
         # Migrate legacy (non-namespaced) caches into the _default bucket
         # so existing single-user setups keep working without a re-sync.
-        if user_id == "_default":
+        if self.user_id == "_default":
             for legacy_name in ("portfolio_cache.json", "transactions_cache.json", "instrument_cache.json", "cookies.txt"):
                 legacy = TR_CREDENTIALS_DIR / legacy_name
                 dest   = self._user_cache_dir / legacy_name
@@ -2880,10 +2889,11 @@ _connections_lock = threading.Lock()
 
 def get_connection(user_id: str = "_default") -> TRConnection:
     """Get or create a TRConnection scoped to *user_id*."""
+    safe_user_id = _safe_user_id(user_id)
     with _connections_lock:
-        if user_id not in _connections:
-            _connections[user_id] = TRConnection(user_id=user_id)
-        return _connections[user_id]
+        if safe_user_id not in _connections:
+            _connections[safe_user_id] = TRConnection(user_id=safe_user_id)
+        return _connections[safe_user_id]
 
 
 def drop_connection(user_id: str) -> None:
@@ -2892,14 +2902,15 @@ def drop_connection(user_id: str) -> None:
     Clears in-memory credentials and removes the connection from the pool
     so a subsequent login creates a fresh instance.
     """
+    safe_user_id = _safe_user_id(user_id)
     with _connections_lock:
-        conn = _connections.pop(user_id, None)
+        conn = _connections.pop(safe_user_id, None)
     if conn:
         try:
             conn.clear_credentials()
         except Exception:
             pass
-        log.info(f"Dropped connection for user {user_id}")
+        log.info(f"Dropped connection for user {safe_user_id}")
 
 
 # Public API functions (sync wrappers)

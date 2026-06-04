@@ -118,10 +118,6 @@ sidebar = html.Div([
     ], vertical=True, pills=True, className="sidebar-nav"),
     html.Div([
         html.Div([
-            dcc.Link("Impressum", href="/impressum", id="sidebar-link-impressum", className="sidebar-legal-link"),
-            dcc.Link("Privacy Policy", href="/privacy", id="sidebar-link-privacy", className="sidebar-legal-link"),
-        ], className="sidebar-legal-links"),
-        html.Div([
             settings_button,
             html.Div([
                 dbc.Button(html.Span("EN", id="lang-flag-icon", style={"fontSize": "0.8rem", "fontWeight": "700"}), id="lang-dropdown-toggle", className="settings-btn", color="link", n_clicks=0),
@@ -138,6 +134,10 @@ sidebar = html.Div([
             # Clerk's prebuilt sign-in modal opens on click (wired in clerk_init.js).
             dbc.Button([html.I(className="bi bi-person me-1"), "Sign in"], id="open-login-btn", color="primary", outline=True, size="sm", className="w-100"),
         ], className="sidebar-user-area"),
+        html.Div([
+            dcc.Link("Impressum", href="/impressum", id="sidebar-link-impressum", className="sidebar-legal-link"),
+            dcc.Link("Privacy Policy", href="/privacy", id="sidebar-link-privacy", className="sidebar-legal-link"),
+        ], className="sidebar-legal-links"),
     ], className="sidebar-bottom"),
 ], className="sidebar")
 

@@ -554,9 +554,8 @@ def register_callbacks(app):
     register_tr_callbacks(app)
     
     # ── Server-side cleanup on logout ────────────────────────────────
-    # The clientside auth callback clears browser stores.  We also need
-    # to drop the server-side TRConnection (credentials, asyncio loop)
-    # so the next user gets a completely fresh instance.
+    # The clientside auth callback clears browser stores. Server-side data
+    # access is guarded per request by the verified Clerk cookie.
     @app.callback(
         Output("securities-data", "data", allow_duplicate=True),
         Input("current-user-store", "data"),
@@ -564,18 +563,8 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def _on_user_change(current_user, portfolio_data):
-        """When user logs out (current_user becomes None), drop all
-        server-side connections so no stale data leaks to the next user."""
+        """When user logs out, clear page-derived table data."""
         if current_user is None:
-            # User just logged out – nuke every active server connection
-            from components.tr_api import _connections, _connections_lock
-            with _connections_lock:
-                for uid in list(_connections.keys()):
-                    try:
-                        _connections[uid].clear_credentials()
-                    except Exception:
-                        pass
-                _connections.clear()
             return []           # clear securities table
         return no_update
     
@@ -592,8 +581,9 @@ def register_callbacks(app):
     )
     def load_initial_data(n_intervals, current_user, demo_mode, pathname):
         """Load initial portfolio data once on page load."""
+        uid = clerk_auth.verified_user_id(current_user)
         # Not logged in → always demo
-        if not current_user:
+        if not uid:
             return _load_demo_json()
 
         # Logged in but user explicitly chose demo → demo
@@ -603,7 +593,7 @@ def register_callbacks(app):
         # Logged in, not in demo → try server cache
         try:
             from components.tr_api import get_cached_portfolio
-            cached = get_cached_portfolio(user_id=current_user)
+            cached = get_cached_portfolio(user_id=uid)
             if cached and cached.get("success"):
                 return json.dumps(cached)
         except Exception as e:
@@ -644,7 +634,7 @@ def register_callbacks(app):
             raise PreventUpdate
         # Not logged in → Clerk's sign-in modal is opened client-side
         # (the link carries the .clerk-signin-trigger class). Nothing to do here.
-        if not current_user:
+        if not clerk_auth.verified_user_id(current_user):
             raise PreventUpdate
         # Logged in → open TR connect modal
         return True
@@ -668,16 +658,18 @@ def register_callbacks(app):
         isn't configured (e.g. local dev)."""
         if not current_user:
             # Logged out → demo
-            return True, _load_demo_json(), no_update
+            return True, _load_demo_json(), None
 
         # Use the server-verified Clerk uid for any data access.
-        uid = clerk_auth.current_user_id() or current_user
+        uid = clerk_auth.verified_user_id(current_user)
+        if not uid:
+            return True, _load_demo_json(), None
 
         # 1) Durable per-user blob (Azure). Restores keyfile to disk too.
         if user_data.is_enabled():
             blob = user_data.restore_for_user(uid)
             portfolio = blob.get("portfolio")
-            creds = blob.get("tr_creds") or no_update
+            creds = blob.get("tr_creds")
             if portfolio:
                 return False, portfolio, creds
             # No portfolio yet, but we may still have creds to enable reconnect.
@@ -686,13 +678,13 @@ def register_callbacks(app):
         # 2) Fallback: local server cache (no blob configured).
         try:
             from components.tr_api import get_cached_portfolio
-            cached = get_cached_portfolio(user_id=current_user)
+            cached = get_cached_portfolio(user_id=uid)
             if cached and cached.get("success"):
-                return False, json.dumps(cached), no_update
+                return False, json.dumps(cached), None
         except Exception:
             pass
         # No cached data yet — keep demo mode so the banner stays visible
-        return True, _load_demo_json(), no_update
+        return True, _load_demo_json(), None
 
     # ── Demo mode toggle (manual button) ──
     @app.callback(
@@ -710,9 +702,10 @@ def register_callbacks(app):
         if new_mode:
             return True, _load_demo_json()
         else:
-            if current_user:
+            uid = clerk_auth.verified_user_id(current_user)
+            if uid:
                 from components.tr_api import get_cached_portfolio
-                cached = get_cached_portfolio(user_id=current_user)
+                cached = get_cached_portfolio(user_id=uid)
                 if cached and cached.get("success"):
                     return False, json.dumps(cached)
             return False, no_update
@@ -737,10 +730,11 @@ def register_callbacks(app):
 
         # Check if this logged-in user has ever synced real data
         has_real_data = False
-        if current_user:
+        uid = clerk_auth.verified_user_id(current_user)
+        if uid:
             try:
                 from components.tr_api import get_cached_portfolio
-                cached = get_cached_portfolio(user_id=current_user)
+                cached = get_cached_portfolio(user_id=uid)
                 has_real_data = bool(cached and cached.get("success"))
             except Exception:
                 pass
@@ -757,7 +751,7 @@ def register_callbacks(app):
             "marginBottom": "8px",
         }
         # Choose link label + suffix based on whether user is logged in
-        if current_user:
+        if uid:
             link_text = t("pa.demo_login_connected", lang)
             suffix_text = t("pa.demo_suffix_connected", lang)
         else:
@@ -792,25 +786,25 @@ def register_callbacks(app):
 
         # The sync button is only shown to signed-in users with data; if we
         # somehow get here signed out, do nothing (Clerk sign-in is client-side).
-        if not current_user:
+        uid = clerk_auth.verified_user_id(current_user)
+        if not uid:
             raise PreventUpdate
 
         from components.tr_api import fetch_all_data, reconnect, is_connected
 
         # If not connected, try silent reconnect with stored creds
-        if not is_connected(user_id=current_user) and encrypted_creds:
-            reconnect(encrypted_creds, user_id=current_user)
+        if not is_connected(user_id=uid) and encrypted_creds:
+            reconnect(encrypted_creds, user_id=uid)
 
         # Still not connected? Open TR Connect modal
-        if not is_connected(user_id=current_user):
+        if not is_connected(user_id=uid):
             return no_update, no_update, False, True, no_update
 
         # Connected — fetch data
-        data = fetch_all_data(user_id=current_user)
+        data = fetch_all_data(user_id=uid)
         if data.get("success"):
             portfolio_json = json.dumps(data)
             # Persist to the durable per-user encrypted blob (no-op if unconfigured).
-            uid = clerk_auth.current_user_id() or current_user
             user_data.snapshot_for_user(uid, portfolio_json=portfolio_json, tr_creds=encrypted_creds)
             return portfolio_json, html.I(className="bi bi-check-circle"), False, False, False
 

@@ -29,7 +29,7 @@ def _persist_user_blob(uid, portfolio_data, creds=None):
     """Back up a user's portfolio (+ optional creds + web-session cookies) to the
     durable encrypted blob. No-op when blob storage isn't configured."""
     try:
-        vid = clerk_auth.current_user_id() or uid
+        vid = clerk_auth.verified_user_id(uid)
         if vid and vid != "_default":
             user_data.snapshot_for_user(
                 vid, portfolio_json=json.dumps(portfolio_data), tr_creds=creds
@@ -198,7 +198,6 @@ def create_tr_connector_card():
         # Hidden stores
         dcc.Store(id="tr-auth-step", data="initial"),
         dcc.Store(id="tr-session-data", storage_type="session"),
-        dcc.Store(id="tr-encrypted-creds", storage_type="local"),  # Encrypted credentials in browser
         dcc.Store(id="tr-check-creds-trigger", data=0),
         dcc.Interval(id="tr-auto-reconnect-interval", interval=500, max_intervals=1),  # Auto-reconnect on load
         
@@ -349,7 +348,9 @@ def register_tr_callbacks(app):
         prevent_initial_call=False
     )
     def check_saved_credentials(_, encrypted_creds, current_user):
-        uid = current_user or "_default"
+        uid = clerk_auth.verified_user_id(current_user)
+        if not uid:
+            return {"display": "none"}
         # Show reconnect option if we have encrypted creds in browser and TR web-session cookies on server.
         if encrypted_creds and has_session(user_id=uid):
             return {"display": "block"}
@@ -376,7 +377,9 @@ def register_tr_callbacks(app):
         if not n_clicks:
             raise PreventUpdate
         
-        uid = current_user or "_default"
+        uid = clerk_auth.verified_user_id(current_user)
+        if not uid:
+            raise PreventUpdate
         result = reconnect(encrypted_creds, user_id=uid)
         
         if result.get("success"):
@@ -446,7 +449,7 @@ def register_tr_callbacks(app):
     def handle_auth_flow(start_clicks, verify_clicks, back_clicks, disconnect_clicks, refresh_clicks,
                          phone, pin, otp, current_step, existing_encrypted_creds, current_user):
         triggered = ctx.triggered_id
-        uid = current_user or "_default"
+        uid = clerk_auth.verified_user_id(current_user)
         
         # Default button state (reset to normal)
         btn_disabled = False
@@ -454,6 +457,8 @@ def register_tr_callbacks(app):
         
         # Handle disconnect
         if triggered == 'tr-disconnect-btn':
+            if not uid:
+                raise PreventUpdate
             disconnect(user_id=uid)
             return (
                 {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"},
@@ -479,6 +484,8 @@ def register_tr_callbacks(app):
         
         # Handle refresh
         if triggered == 'tr-refresh-btn':
+            if not uid:
+                raise PreventUpdate
             portfolio_data = fetch_all_data(user_id=uid)
             portfolio_data["cached_at"] = datetime.now().isoformat()
             _persist_user_blob(uid, portfolio_data)
@@ -496,6 +503,18 @@ def register_tr_callbacks(app):
         
         # Handle start authentication
         if triggered == 'tr-start-auth-btn':
+            if not uid:
+                return (
+                    {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"},
+                    "initial",
+                    dbc.Alert("Please sign in before connecting Trade Republic.", color="warning", className="mb-0 small"),
+                    "",
+                    "connection-status disconnected", "Not Connected",
+                    no_update, no_update, no_update,
+                    no_update,
+                    btn_disabled, btn_children,
+                    no_update,
+                )
             if not phone:
                 return (
                     {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"},
@@ -550,6 +569,8 @@ def register_tr_callbacks(app):
         
         # Handle OTP verification
         if triggered == 'tr-verify-otp-btn':
+            if not uid:
+                raise PreventUpdate
             if not otp or len(otp) != 4:
                 return (
                     {"display": "none"}, {"display": "block"}, {"display": "none"}, {"display": "none"},

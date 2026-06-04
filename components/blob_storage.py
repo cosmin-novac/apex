@@ -34,8 +34,11 @@ def is_configured() -> bool:
 
 
 def _sanitize(uid: str) -> str:
-    """Make a uid safe for a blob path (Clerk ids are already url-safe)."""
-    return re.sub(r"[^A-Za-z0-9_-]", "", uid or "")
+    """Validate a uid for a blob path (Clerk ids are already url-safe)."""
+    uid = uid or ""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", uid):
+        raise ValueError("invalid uid for blob name")
+    return uid
 
 
 def _blob_name(uid: str) -> str:
