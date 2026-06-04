@@ -2,11 +2,6 @@ User-agent: GPTBot
 Allow: /
 Allow: /assets/
 Allow: /llms.txt
-Disallow: /app
-Disallow: /settings
-Disallow: /confirm
-Disallow: /reset-password
-Disallow: /banksync/api/
 Disallow: /_dash-layout
 Disallow: /_dash-dependencies
 Disallow: /_dash-update-component
@@ -16,11 +11,6 @@ User-agent: ClaudeBot
 Allow: /
 Allow: /assets/
 Allow: /llms.txt
-Disallow: /app
-Disallow: /settings
-Disallow: /confirm
-Disallow: /reset-password
-Disallow: /banksync/api/
 Disallow: /_dash-layout
 Disallow: /_dash-dependencies
 Disallow: /_dash-update-component
@@ -30,11 +20,6 @@ User-agent: PerplexityBot
 Allow: /
 Allow: /assets/
 Allow: /llms.txt
-Disallow: /app
-Disallow: /settings
-Disallow: /confirm
-Disallow: /reset-password
-Disallow: /banksync/api/
 Disallow: /_dash-layout
 Disallow: /_dash-dependencies
 Disallow: /_dash-update-component
@@ -44,11 +29,6 @@ User-agent: Googlebot
 Allow: /
 Allow: /assets/
 Allow: /llms.txt
-Disallow: /app
-Disallow: /settings
-Disallow: /confirm
-Disallow: /reset-password
-Disallow: /banksync/api/
 Disallow: /_dash-layout
 Disallow: /_dash-dependencies
 Disallow: /_dash-update-component
@@ -58,11 +38,6 @@ User-agent: Bingbot
 Allow: /
 Allow: /assets/
 Allow: /llms.txt
-Disallow: /app
-Disallow: /settings
-Disallow: /confirm
-Disallow: /reset-password
-Disallow: /banksync/api/
 Disallow: /_dash-layout
 Disallow: /_dash-dependencies
 Disallow: /_dash-update-component
@@ -72,14 +47,9 @@ User-agent: *
 Allow: /
 Allow: /assets/
 Allow: /llms.txt
-Disallow: /app
-Disallow: /settings
-Disallow: /confirm
-Disallow: /reset-password
-Disallow: /banksync/api/
 Disallow: /_dash-layout
 Disallow: /_dash-dependencies
 Disallow: /_dash-update-component
 Disallow: /_dash-component-suites/
 
-Sitemap: https://www.bankpilot.eu/sitemap.xml
+Sitemap: https://apexportfolio.de/sitemap.xml

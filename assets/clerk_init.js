@@ -19,6 +19,8 @@
 
   window.__apexClerkUserId = null;
   window.__apexClerkReady = false;
+  window.__apexClerkLoadFailed = false;
+  var pendingSignIn = false;
 
   function syncUserGlobal() {
     var clerk = window.Clerk;
@@ -27,10 +29,16 @@
 
   function renderAuthUI() {
     var clerk = window.Clerk;
-    if (!clerk) return;
     var slot = document.getElementById("clerk-user-button");
     var signInBtn = document.getElementById("open-login-btn");
     var label = document.getElementById("current-user-label");
+    if (!clerk) {
+      if (signInBtn && window.__apexClerkLoadFailed) {
+        signInBtn.disabled = true;
+        signInBtn.textContent = "Sign in unavailable";
+      }
+      return;
+    }
 
     if (clerk.user) {
       // Signed in: show the UserButton, hide the sign-in button.
@@ -57,9 +65,24 @@
         }
         slot.style.display = "none";
       }
-      if (signInBtn) signInBtn.style.display = "";
+      if (signInBtn) {
+        signInBtn.style.display = "";
+        signInBtn.disabled = false;
+      }
       if (label) label.textContent = "";
     }
+  }
+
+  function openSignIn() {
+    var clerk = window.Clerk;
+    if (!clerk || !window.__apexClerkReady) {
+      pendingSignIn = true;
+      return;
+    }
+    // Already signed in? Don't reopen the modal.
+    if (clerk.user) return;
+    try { clerk.openSignIn({ afterSignInUrl: "/", afterSignUpUrl: "/" }); }
+    catch (e) { console.error("[CLERK] openSignIn failed", e); }
   }
 
   function wireSignInTriggers() {
@@ -68,12 +91,8 @@
         "#open-login-btn, [data-clerk-signin], .clerk-signin-trigger"
       );
       if (!trigger) return;
-      if (!window.Clerk) return;
-      // Already signed in? Don't reopen the modal.
-      if (window.Clerk.user) return;
       ev.preventDefault();
-      try { window.Clerk.openSignIn({ afterSignInUrl: "/", afterSignUpUrl: "/" }); }
-      catch (e) { console.error("[CLERK] openSignIn failed", e); }
+      openSignIn();
     }, true);
   }
 
@@ -82,18 +101,26 @@
     for (var i = 0; i < 200 && !window.Clerk; i++) { await sleep(50); }
     if (!window.Clerk) {
       console.warn("[CLERK] clerk-js not available - sign-in disabled (demo only)");
+      window.__apexClerkLoadFailed = true;
+      renderAuthUI();
       return;
     }
     try {
       await window.Clerk.load();
     } catch (e) {
       console.error("[CLERK] load() failed", e);
+      window.__apexClerkLoadFailed = true;
+      renderAuthUI();
       return;
     }
     window.__clerkInstance = window.Clerk;
     window.__apexClerkReady = true;
     syncUserGlobal();
     renderAuthUI();
+    if (pendingSignIn) {
+      pendingSignIn = false;
+      openSignIn();
+    }
     // Re-render whenever auth state changes (sign in / out / user update).
     try {
       window.Clerk.addListener(function () {

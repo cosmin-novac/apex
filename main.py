@@ -152,7 +152,6 @@ app.layout = dbc.Container([
     dcc.Store(id="portfolio-data-store", storage_type="memory"),
     dcc.Store(id="tr-encrypted-creds", storage_type="local"),
     dcc.Store(id="demo-mode", data=True, storage_type="local"),
-    dcc.Store(id="bss-session-user", storage_type="memory"),
     dcc.Interval(id="load-cached-data-interval", interval=500, max_intervals=1),
     dcc.Interval(id="clerk-uid-poll", interval=1000),  # bridges Clerk session -> current-user-store
     settings_modal,

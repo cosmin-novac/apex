@@ -9,6 +9,7 @@ import os
 import json
 import base64
 import hashlib
+import requests
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import threading
@@ -23,6 +24,7 @@ from pytr.api import TradeRepublicApi
 from pytr.utils import get_logger
 from pytr.timeline import Timeline
 from pytr.event import Event
+from ecdsa import NIST256p, SigningKey
 
 # Setup logging
 log = get_logger(__name__)
@@ -107,6 +109,9 @@ def friendly_tr_error(exc: Exception) -> str:
     """
     msg = str(exc)
     low = msg.lower()
+    if "processid" in low or "process id" in low:
+        return ("Trade Republic did not start the device pairing flow. "
+                "Please verify your phone number/PIN and try again in a minute.")
     if "expecting value" in low or "json" in low:
         return ("Trade Republic returned an empty response. The service may be "
                 "temporarily unavailable or is rate-limiting logins - please wait "
@@ -120,6 +125,49 @@ def friendly_tr_error(exc: Exception) -> str:
     if "validation" in low or "code" in low or "400" in low:
         return "The verification code was invalid or has expired. Please request a new code."
     return msg or "Connection to Trade Republic failed. Please try again."
+
+
+class TRLoginError(RuntimeError):
+    """A sanitized Trade Republic login error suitable for logs and UI."""
+
+
+def _extract_process_id(payload: Any) -> Optional[str]:
+    """Find the process id in a TR auth response.
+
+    pytr assumes exactly ``processId``. TR has changed response shapes before,
+    so accept common spellings and one-level nested payloads while still
+    failing loudly when the response is actually an error object.
+    """
+    if not isinstance(payload, dict):
+        return None
+    for key in ("processId", "processID", "process_id", "id"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    for key in ("data", "result", "process"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            value = _extract_process_id(nested)
+            if value:
+                return value
+    return None
+
+
+def _summarize_tr_errors(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    errors = payload.get("errors") or payload.get("error") or payload.get("message")
+    if isinstance(errors, list):
+        parts = []
+        for item in errors:
+            if isinstance(item, dict):
+                parts.append(str(item.get("message") or item.get("code") or item.get("error") or item))
+            else:
+                parts.append(str(item))
+        return "; ".join(parts)
+    if isinstance(errors, dict):
+        return str(errors.get("message") or errors.get("code") or errors)
+    return str(errors or "")
 
 
 class TRConnection:
@@ -2209,6 +2257,63 @@ class TRConnection:
         self.pin = None
         self.is_connected = False
         self.api = None
+
+    def _initiate_device_reset(self) -> int:
+        """Start TR device pairing and store the process id on the pytr client.
+
+        The installed pytr version indexes ``response["processId"]`` directly,
+        which turns any changed/error response into a bare ``KeyError``. Keeping
+        the request here lets Apex handle TR's response safely without forking
+        pytr.
+        """
+        if not self.api:
+            raise TRLoginError("Trade Republic API client is not initialized.")
+
+        self.api.sk = SigningKey.generate(curve=NIST256p, hashfunc=hashlib.sha512)
+        url = f"{self.api._host}/api/v1/auth/account/reset/device"
+        response = requests.post(
+            url,
+            json={"phoneNumber": self.phone_no, "pin": self.pin},
+            headers=self.api._default_headers,
+            timeout=30,
+        )
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise TRLoginError(
+                f"Trade Republic returned HTTP {response.status_code} without a JSON body."
+            ) from exc
+
+        process_id = _extract_process_id(payload)
+        if not process_id:
+            error_text = _summarize_tr_errors(payload)
+            keys = sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
+            log.warning(
+                "TR device reset did not include process id: status=%s keys=%s error=%s",
+                response.status_code,
+                keys,
+                error_text or "<none>",
+            )
+            if response.status_code in (401, 403):
+                raise TRLoginError("Trade Republic rejected the phone number or PIN.")
+            if response.status_code == 429:
+                raise TRLoginError("Trade Republic is rate-limiting login attempts.")
+            if error_text:
+                raise TRLoginError(error_text)
+            raise TRLoginError(
+                f"Trade Republic did not return a process id (HTTP {response.status_code})."
+            )
+
+        self.api._process_id = process_id
+        countdown = 60
+        if isinstance(payload, dict):
+            raw_countdown = payload.get("countdownInSeconds") or payload.get("countdown")
+            try:
+                countdown = max(1, int(raw_countdown))
+            except Exception:
+                pass
+        return countdown
     
     async def _initiate_web_login(self, phone_no: str, pin: str) -> Dict[str, Any]:
         """
@@ -2240,13 +2345,13 @@ class TRConnection:
             )
 
             # Pair this device (sends a 4-digit code to the TR app) - SYNC call.
-            self.api.initiate_device_reset()
+            countdown = self._initiate_device_reset()
 
             return {
                 "success": True,
                 "message": "Verification code sent to your Trade Republic app.",
                 "requires_code": True,
-                "countdown": 60,
+                "countdown": countdown,
             }
         except Exception as e:
             log.error(f"TR login initiation failed: {e}")

@@ -34,25 +34,16 @@ Set these in **Azure Portal → App Service → Configuration → Application se
 
 | Variable | Required | Description |
 |---|---|---|
-| `TINK_CLIENT_ID` | For bank sync | Tink client ID for the PSD2 bank sync integration |
-| `TINK_CLIENT_SECRET` | For bank sync | Tink client secret for the PSD2 bank sync integration |
-| `TINK_ACTOR_CLIENT_ID` | Recommended | Tink Link actor client ID used for delegated permanent-user authorization. Tink documents `df05e4b379934cd09963197cc855bfe9` as the standard value for Tink Link. |
-| `CLERK_SECRET_KEY` | **Yes** | Clerk backend secret key (authentication layer) |
-| `CLERK_PUBLISHABLE_KEY` | Yes | Clerk frontend publishable key |
-| `MONGODB_URI` | Recommended | MongoDB Atlas connection string. If unset, falls back to Clerk-only mode |
-| `MONGODB_DB_NAME` | No | MongoDB database name (default `bankpilot`) |
-| `BANK_REDIRECT_URL` | For bank sync | Redirect URL after bank auth. Production: `https://bankpilot.eu/app` |
-| `TR_ENCRYPTION_KEY` | For portfolio sync | Random 32-character string used to encrypt TR API credentials at rest |
+| `CLERK_PUBLISHABLE_KEY` | **Yes** | Clerk frontend publishable key |
+| `CLERK_SECRET_KEY` | **Yes** | Clerk backend secret key |
+| `AZURE_STORAGE_CONNECTION_STRING` | For persistence | Azure Storage connection string for the encrypted per-user blob store |
+| `APEX_BLOB_CONTAINER` | No | Blob container name (default `apex-data`) |
+| `APEX_ENCRYPTION_KEY` | For persistence | Base64-encoded 32-byte master key for per-user encrypted blobs |
+| `TR_ENCRYPTION_KEY` | For TR sync | Random 32-character string used to encrypt Trade Republic credentials at rest |
+| `OPENAI_API_KEY` | For AI rules | OpenAI API key for AI-assisted backtesting rule generation |
 | `DASH_DEBUG` | No | Set to `0` in production (default `1` enables debug mode) |
 | `PORT` | No | Local dev port (default `8888`). Azure uses `8000` via gunicorn |
 | `SCM_DO_BUILD_DURING_DEPLOYMENT` | Recommended | Set to `true` — lets Azure's Oryx build system install packages |
-| `STRIPE_SECRET_KEY` | For payments | Stripe secret key (`sk_test_...` or `sk_live_...`) |
-| `STRIPE_WEBHOOK_SECRET` | **Yes** (if Stripe) | Stripe webhook signing secret (`whsec_...`). **Webhooks are rejected if unset.** |
-| `BANKPILOT_REFERRAL_ALLOW_NEGATIVE` | No | Set to `1` to allow Stripe balance credits beyond 100% referral discount cap |
-
-> **Note:** `TINK_CLIENT_ID` / `TINK_CLIENT_SECRET` are **server-level** credentials — they're set once by the admin, not by end users. Users connect their bank accounts via Tink's hosted PSD2 authentication flow.
->
-> BankPilot uses Tink permanent users. The app maps each BankPilot user to a stable Tink `external_user_id` and then delegates access to the Tink Link actor client when launching `https://link.tink.com/1.0/credentials/add`. `TINK_ACTOR_CLIENT_ID` is not an end-user identifier; it is the actor client allowed to consume the delegated authorization code.
 
 ---
 
@@ -88,10 +79,10 @@ az webapp config appsettings set \
   --resource-group rg-backtesting \
   --name backtesting-ai \
   --settings \
-    TINK_CLIENT_ID="your-tink-client-id" \
-    TINK_CLIENT_SECRET="your-tink-client-secret" \
-    TINK_ACTOR_CLIENT_ID="df05e4b379934cd09963197cc855bfe9" \
-    BANK_REDIRECT_URL="https://bankpilot.eu/app" \
+    CLERK_PUBLISHABLE_KEY="pk_live_..." \
+    CLERK_SECRET_KEY="sk_live_..." \
+    AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=..." \
+    APEX_ENCRYPTION_KEY="$(python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())")" \
     TR_ENCRYPTION_KEY="$(openssl rand -hex 16)" \
     DASH_DEBUG="0" \
     SCM_DO_BUILD_DURING_DEPLOYMENT="true"
@@ -141,7 +132,7 @@ curl -I https://backtesting-ai.azurewebsites.net
 ```bash
 # Clone and install
 git clone <repo-url>
-cd backtesting
+cd apex
 pip install -r requirements.txt
 
 # Create .env from template
@@ -188,8 +179,9 @@ az webapp update --name backtesting-ai --resource-group rg-backtesting --set sit
 |---|---|
 | App won't start | Check startup command in Configuration → General settings. Must be `gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 main:server` |
 | `ModuleNotFoundError` | Set `SCM_DO_BUILD_DURING_DEPLOYMENT=true` and redeploy, or check `requirements.txt` |
-| Bank sync shows "not available" | The running app cannot see `TINK_CLIENT_ID` / `TINK_CLIENT_SECRET` (or legacy `GC_SECRET_ID` / `GC_SECRET_KEY`) in its environment |
-| Tink Link opens but fails early | Verify `BANK_REDIRECT_URL`, delegated scopes, and `TINK_ACTOR_CLIENT_ID` if you override the documented Tink Link actor constant |
+| Clerk sign-in does not open | Verify `CLERK_PUBLISHABLE_KEY` and that its decoded Clerk frontend host resolves publicly |
+| User data does not persist | Verify `AZURE_STORAGE_CONNECTION_STRING`, `APEX_ENCRYPTION_KEY`, and that the blob container can be created |
+| Trade Republic sync cannot reconnect | Verify `TR_ENCRYPTION_KEY` is stable across deploys and that the user's encrypted blob contains the saved keyfile |
 | 502 / timeout on startup | Increase timeout: `--timeout 900`. Gunicorn needs time to load all modules |
 | Static assets not loading | Ensure `assets/` folder is included in the deployment zip |
 | Logs are empty | Enable application logging: App Service → Monitoring → App Service logs → Application logging: On |
@@ -214,7 +206,7 @@ az webapp log download --name backtesting-ai --resource-group rg-backtesting --l
 ├── azure-pipelines.yml         # CI/CD pipeline definition
 ├── .env.example                # Template for environment variables
 ├── assets/                     # Static files (CSS, JS, logos)
-├── components/                 # Shared components (auth, settings, bank_api, etc.)
+├── components/                 # Shared components (auth, settings, storage, TR connector, etc.)
 ├── pages/                      # Dash page modules
 ├── core/                       # Config, utilities
 ├── data/                       # Data files (CSV, JSON)

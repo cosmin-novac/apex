@@ -17,6 +17,8 @@ import threading
 from typing import Optional
 
 log = logging.getLogger(__name__)
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
 
 CONTAINER_NAME = os.environ.get("APEX_BLOB_CONTAINER", "apex-data")
 _CONN_ENV = "AZURE_STORAGE_CONNECTION_STRING"

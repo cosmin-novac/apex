@@ -394,7 +394,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
                                  "de": "Ungültiger OpenAI API-Schlüssel. Überprüfe ihn in den Einstellungen (Zahnrad-Symbol in der Seitenleiste)."},
     "rl.ai_error":              {"en": "AI Error: ",                "de": "KI-Fehler: "},
 
-    # ── BankPilot Standalone ────────────────────────────────────────────
+    # ── Legacy standalone labels ────────────────────────────────────────
     # Landing
     # Navbar
     # FAQ
@@ -406,7 +406,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     # Referral link sharing
     # Email confirmation
     # Settings
-    # Step UI (bank_sync.py)
+    # Step UI
     # Per-rule notification toggles
 
     # ── Landing page (/) ────────────────────────────────────────────────

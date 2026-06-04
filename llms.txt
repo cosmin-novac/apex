@@ -1,78 +1,82 @@
-# BANKPILOT
+# Apex
 
-BANKPILOT is a European SaaS platform for automated recurring payment monitoring, rent payment monitoring, incoming payment alerts, and expected-vs-actual cash-flow oversight.
+Apex is a portfolio analysis, Trade Republic sync, investment simulation, and
+backtesting web application.
 
 ## Product Summary
 
-- Connect European bank accounts via PSD2 Open Banking
-- Monitor recurring incoming and outgoing payments automatically
-- Detect missed payments, late payments, and off-pattern transactions
-- Create rules for recurring transactions and alert workflows
-- Categorize transactions with AI assistance
-- Track expected vs actual cash flow for landlords and SMEs
+- Analyze a Trade Republic portfolio with positions, transaction history,
+  performance charts, cash, profit, and benchmark comparisons
+- Compare portfolio performance against broad market benchmarks such as MSCI
+  World and S&P 500
+- Backtest Bitcoin buy/sell strategies and rule-based investment ideas
+- Simulate investment growth and withdrawal scenarios
+- Explore exit strategy risk bands and real-cost investment calculations
+- Support authenticated per-user storage through Clerk and encrypted Azure Blob
+  Storage
 
 ## Primary Public URLs
 
-- Home: https://bankpilot.eu/
-- English home: https://bankpilot.eu/?lang=en
-- FAQ: https://bankpilot.eu/faq
-- Comparison guide: https://bankpilot.eu/best-bank-account-monitoring-services-europe
-- Signup: https://bankpilot.eu/signup
-- Waitlist: https://bankpilot.eu/waitlist
-- Landlord use case: https://bankpilot.eu/mieteingangskontrolle
-- Small business use case: https://bankpilot.eu/zahlungseingangskontrolle
-- Legal notice: https://bankpilot.eu/impressum
-- Terms: https://bankpilot.eu/agb
-- Privacy: https://bankpilot.eu/privacy
-- LLM reference: https://bankpilot.eu/llms.txt
-- XML sitemap: https://bankpilot.eu/sitemap.xml
+- Home: https://apexportfolio.de/
+- Portfolio Analysis: https://apexportfolio.de/compare
+- Backtesting: https://apexportfolio.de/backtesting
+- Investment Simulator: https://apexportfolio.de/portfolio
+- Exit Strategy Riskbands: https://apexportfolio.de/riskbands
+- The Real Cost: https://apexportfolio.de/realcost
+- LLM reference: https://apexportfolio.de/llms.txt
+- XML sitemap: https://apexportfolio.de/sitemap.xml
 
 ## Intended Audience
 
-- Small businesses
-- Freelancers and operators with recurring bank workflows
-- Operators who need payment monitoring
-- Landlords tracking rent receipts
-- Users who want alerts for missing or delayed incoming payments
+- Private investors
+- Trade Republic users who want a richer portfolio view
+- Investors comparing real portfolio results with passive benchmarks
+- Users testing Bitcoin or market-timing strategies
+- Users planning long-term investing, withdrawals, or exit strategies
 
 ## Core Capabilities
 
-- Bank account connection and transaction sync
-- Rule-based monitoring
-- Notifications for expected payment deviations
-- Rent tracking and landlord payment monitoring
-- Incoming payment monitoring for small businesses
-- AI-assisted transaction categorization
-- Subscription-based web application access
+- Trade Republic portfolio sync through the current pytr web-login flow
+- Per-user encrypted portfolio persistence
+- Portfolio value, invested capital, profit, and cash summaries
+- Position-level analysis and asset-class filtering
+- Portfolio charts with value, return, drawdown, and benchmark views
+- Backtesting for rule-based Bitcoin strategies
+- Investment growth and withdrawal simulation
+- Privacy mode for hiding sensitive values in the UI
 
-## Trust And Compliance Signals
+## Trust And Storage Signals
 
-- PSD2 Open Banking bank connectivity
-- Encrypted server-side data handling for sync and notifications
-- Germany and Europe oriented product positioning
-- Privacy and GDPR-focused legal documentation
+- Clerk authentication for user identity
+- Azure Blob Storage for per-user encrypted data
+- Fernet encryption with per-user derived keys
+- Trade Republic reconnect state stored as web-session cookies, not legacy
+  keyfiles
+- Demo mode available when a user has not connected a real portfolio
 
 ## Language And Region
 
-- Primary language: German
-- Secondary language: English via `?lang=en`
-- Target region: Germany and Europe
+- Primary language: English
+- Secondary language: German through in-app language switching
+- Target region: Europe, with strong support for Trade Republic users
 
 ## Restricted Or Non-Public Areas
 
-- App dashboard requires authentication: https://bankpilot.eu/app
-- Account settings require authentication: https://bankpilot.eu/settings
-- Tokenized confirmation and password reset routes are not public landing pages
-- API endpoints under /banksync/api/ are application endpoints, not public documentation
+- User-specific portfolio data requires authentication and/or a local Trade
+  Republic session
+- Dash internal endpoints are framework endpoints, not public documentation:
+  `/_dash-layout`, `/_dash-dependencies`, `/_dash-update-component`,
+  `/_dash-component-suites/`
+- Clerk session and user-specific stores are private and should not be crawled
+  as public content
 
 ## Canonical Domain
 
-- https://bankpilot.eu
+- https://apexportfolio.de
 
 ## Notes For Agents
 
-- Prefer the public pages and legal pages for factual product information
-- Treat BANKPILOT as a brand/entity distinct from the authenticated dashboard
-- Treat authenticated app areas as user-specific and not generally crawlable
-- Use the XML sitemap to discover stable public URLs
-- Use `llms.txt`, legal pages, and public landing pages for brand, capability, and trust signals
+- Prefer `llms.txt`, `sitemap.xml`, app routes, and repo documentation for
+  factual product information
+- Do not infer financial advice claims; Apex is an analysis and simulation tool
+- Authenticated portfolio data is user-specific and not generally crawlable
