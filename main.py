@@ -27,7 +27,7 @@ from pages.portfolio_analysis import layout as portfolio_analysis_layout, regist
 from pages.the_real_cost import layout as real_cost_layout, register_callbacks as register_real_cost_callbacks
 from components.settings_modal import settings_button, settings_modal, api_key_store, register_settings_callbacks
 from components.rule_builder import register_rule_builder_callbacks
-from components.auth import login_modal, user_store, register_auth_callbacks
+from components.auth import login_modal, user_store, auth_mode_store, register_auth_callbacks
 from components.i18n import t, get_lang
 
 log = logging.getLogger(__name__)
@@ -107,6 +107,7 @@ app.layout = dbc.Container([
     dcc.Store(id="page-title-sync"),
     api_key_store,
     user_store,
+    auth_mode_store,
     dcc.Store(id="lang-store", storage_type="local"),
     html.Button(id="open-settings-link", style={"display": "none"}, n_clicks=0),
     dcc.Store(id="portfolio-data-store", storage_type="memory"),
