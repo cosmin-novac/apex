@@ -2834,3 +2834,30 @@ def has_keyfile(user_id: str = "_default") -> bool:
 def is_connected(user_id: str = "_default") -> bool:
     """Check if currently connected."""
     return get_connection(user_id).is_connected
+
+
+def read_keyfile(user_id: str = "_default") -> Optional[str]:
+    """Return the pytr device keyfile (PEM text) for *user_id*, or None.
+
+    Used to back the keyfile up into the per-user encrypted blob so that
+    silent reconnect keeps working after the ephemeral server disk is wiped.
+    """
+    p = get_connection(user_id)._keyfile_path
+    try:
+        return p.read_text() if p.exists() else None
+    except Exception:
+        return None
+
+
+def restore_keyfile(user_id: str, pem: str) -> bool:
+    """Write a previously backed-up keyfile (PEM text) back to disk for pytr."""
+    if not pem:
+        return False
+    conn = get_connection(user_id)
+    try:
+        conn._user_cache_dir.mkdir(parents=True, exist_ok=True)
+        conn._keyfile_path.write_text(pem)
+        return True
+    except Exception as e:
+        log.warning(f"Failed to restore keyfile for {user_id}: {e}")
+        return False

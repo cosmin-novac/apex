@@ -12,8 +12,8 @@ from datetime import datetime
 
 # Import the TR API wrapper
 from components.tr_api import (
-    initiate_login, 
-    complete_login, 
+    initiate_login,
+    complete_login,
     fetch_portfolio,
     fetch_all_data,
     reconnect,
@@ -22,6 +22,20 @@ from components.tr_api import (
     is_connected,
     has_keyfile
 )
+from components import user_data, clerk_auth
+
+
+def _persist_user_blob(uid, portfolio_data, creds=None):
+    """Back up a user's portfolio (+ optional creds + device keyfile) to the
+    durable encrypted blob. No-op when blob storage isn't configured."""
+    try:
+        vid = clerk_auth.current_user_id() or uid
+        if vid and vid != "_default":
+            user_data.snapshot_for_user(
+                vid, portfolio_json=json.dumps(portfolio_data), tr_creds=creds
+            )
+    except Exception:
+        pass
 
 
 def create_tr_connector_card():
@@ -368,7 +382,8 @@ def register_tr_callbacks(app):
         if result.get("success"):
             # Fetch full portfolio data including history
             portfolio_data = fetch_all_data(user_id=uid)
-            
+            _persist_user_blob(uid, portfolio_data, creds=encrypted_creds)
+
             return (
                 {"display": "none"},  # hide initial
                 {"display": "none"},  # hide otp
@@ -466,6 +481,7 @@ def register_tr_callbacks(app):
         if triggered == 'tr-refresh-btn':
             portfolio_data = fetch_all_data(user_id=uid)
             portfolio_data["cached_at"] = datetime.now().isoformat()
+            _persist_user_blob(uid, portfolio_data)
             return (
                 {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
                 "connected", "", "",
@@ -556,7 +572,8 @@ def register_tr_callbacks(app):
                 
                 # Get encrypted credentials for browser storage
                 encrypted_creds = result.get("encrypted_credentials")
-                
+                _persist_user_blob(uid, portfolio_data, creds=encrypted_creds)
+
                 return (
                     {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
                     "connected", "", "",

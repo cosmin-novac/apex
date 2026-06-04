@@ -28,7 +28,7 @@ from pages.the_real_cost import layout as real_cost_layout, register_callbacks a
 from pages.landing import layout as landing_layout
 from components.settings_modal import settings_button, settings_modal, api_key_store, register_settings_callbacks
 from components.rule_builder import register_rule_builder_callbacks
-from components.auth import login_modal, user_store, auth_mode_store, register_auth_callbacks
+from components.auth import user_store, register_auth_callbacks
 from components.i18n import t, get_lang
 
 log = logging.getLogger(__name__)
@@ -64,6 +64,43 @@ app = dash.Dash(
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 
+# ── Clerk prebuilt auth ─────────────────────────────────────────────────
+# Inject the clerk-js loader into the page <head>. clerk-js sets the __session
+# cookie that the server verifies (see components/clerk_auth.py) and renders the
+# sign-in modal + UserButton (mounted by assets/clerk_init.js). The publishable
+# key is public and safe to embed. If Clerk isn't configured the app still runs
+# (demo mode only, no sign-in).
+import components.clerk_auth as clerk_auth
+
+_clerk_fapi = clerk_auth.frontend_api_host()
+_clerk_script = ""
+if clerk_auth.PUBLISHABLE_KEY and _clerk_fapi:
+    _clerk_script = (
+        f'<script async crossorigin="anonymous" '
+        f'data-clerk-publishable-key="{clerk_auth.PUBLISHABLE_KEY}" '
+        f'src="https://{_clerk_fapi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js" '
+        f'type="text/javascript"></script>'
+    )
+
+app.index_string = """<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        __CLERK_SCRIPT__
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>""".replace("__CLERK_SCRIPT__", _clerk_script)
+
 sidebar = html.Div([
     dcc.Link([
         html.H2("APEX", className="sidebar-logo"),
@@ -89,9 +126,11 @@ sidebar = html.Div([
             ], className="position-relative"),
         ], className="d-flex align-items-center justify-content-center gap-1"),
         html.Div([
+            # Clerk mounts the <UserButton> here when signed in (avatar + menu).
+            html.Div(id="clerk-user-button", className="clerk-user-button-slot", style={"display": "none"}),
             html.Div(id="current-user-label", className="sidebar-user-label"),
-            dbc.Button([html.I(className="bi bi-box-arrow-right me-1"), "Logout"], id="logout-btn", color="secondary", outline=True, size="sm", className="w-100", style={"display": "none"}),
-            dbc.Button([html.I(className="bi bi-person me-1"), "Login"], id="open-login-btn", color="primary", outline=True, size="sm", className="w-100"),
+            # Clerk's prebuilt sign-in modal opens on click (wired in clerk_init.js).
+            dbc.Button([html.I(className="bi bi-person me-1"), "Sign in"], id="open-login-btn", color="primary", outline=True, size="sm", className="w-100"),
         ], className="mt-2"),
     ], className="sidebar-bottom"),
 ], className="sidebar")
@@ -108,7 +147,6 @@ app.layout = dbc.Container([
     dcc.Store(id="page-title-sync"),
     api_key_store,
     user_store,
-    auth_mode_store,
     dcc.Store(id="lang-store", storage_type="local"),
     html.Button(id="open-settings-link", style={"display": "none"}, n_clicks=0),
     dcc.Store(id="portfolio-data-store", storage_type="memory"),
@@ -116,7 +154,7 @@ app.layout = dbc.Container([
     dcc.Store(id="demo-mode", data=True, storage_type="local"),
     dcc.Store(id="bss-session-user", storage_type="memory"),
     dcc.Interval(id="load-cached-data-interval", interval=500, max_intervals=1),
-    login_modal,
+    dcc.Interval(id="clerk-uid-poll", interval=1000),  # bridges Clerk session -> current-user-store
     settings_modal,
     dcc.Store(id="mobile-sidebar-dummy"),
     mobile_header,

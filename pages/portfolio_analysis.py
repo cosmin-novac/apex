@@ -26,6 +26,7 @@ from components.tr_connector import create_tr_connector_card, register_tr_callba
 from components.tr_api import fetch_all_data, is_connected, reconnect, drop_connection
 from components.benchmark_data import get_benchmark_data, BENCHMARKS
 from components.i18n import t, get_lang
+from components import user_data, clerk_auth
 
 # ── Hostname helpers ─────────────────────────────────────────────────
 # ── Demo account data ────────────────────────────────────────────────
@@ -243,7 +244,7 @@ def layout(lang="en"):
             html.I(className="bi bi-info-circle-fill me-2"),
             html.Strong(t("pa.demo_account", lang)),
             html.Span(t("pa.demo_banner", lang), className="ms-1"),
-            html.A(t("pa.demo_login", lang), href="#", id="demo-login-link", className="text-white fw-bold text-decoration-underline ms-1"),
+            html.A(t("pa.demo_login", lang), href="#", id="demo-login-link", className="text-white fw-bold text-decoration-underline ms-1 clerk-signin-trigger"),
             html.Span(t("pa.demo_suffix", lang), id="demo-banner-suffix"),
         ],
         id="demo-banner",
@@ -633,8 +634,7 @@ def register_callbacks(app):
     # Only fires on actual clicks (prevent_initial_call=True), so
     # demo-login-link is guaranteed to exist in the DOM.
     @app.callback(
-        [Output("tr-connect-modal", "is_open", allow_duplicate=True),
-         Output("login-modal", "is_open", allow_duplicate=True)],
+        Output("tr-connect-modal", "is_open", allow_duplicate=True),
         Input("demo-login-link", "n_clicks"),
         State("current-user-store", "data"),
         prevent_initial_call=True,
@@ -642,38 +642,57 @@ def register_callbacks(app):
     def handle_demo_login_click(n_clicks, current_user):
         if not n_clicks:
             raise PreventUpdate
-        # Not logged in → open login modal
+        # Not logged in → Clerk's sign-in modal is opened client-side
+        # (the link carries the .clerk-signin-trigger class). Nothing to do here.
         if not current_user:
-            return no_update, True
+            raise PreventUpdate
         # Logged in → open TR connect modal
-        return True, no_update
+        return True
     
     # ── Auto-reset demo mode on login/logout ──
     # This is the SINGLE source of truth for demo-mode transitions
     # on auth changes. Everything else only reads demo-mode.
     @app.callback(
         [Output("demo-mode", "data"),
-         Output("portfolio-data-store", "data", allow_duplicate=True)],
+         Output("portfolio-data-store", "data", allow_duplicate=True),
+         Output("tr-encrypted-creds", "data", allow_duplicate=True)],
         Input("current-user-store", "data"),
         [State("demo-mode", "data"),
          State("url", "pathname")],
         prevent_initial_call=True,
     )
     def on_auth_change(current_user, demo_mode, pathname):
-        """When user logs in → exit demo. When user logs out → enter demo."""
+        """When user logs in → hydrate from their encrypted blob (portfolio +
+        TR credentials + device keyfile) and exit demo. When user logs out →
+        enter demo. Falls back to the local server cache when blob storage
+        isn't configured (e.g. local dev)."""
         if not current_user:
             # Logged out → demo
-            return True, _load_demo_json()
-        # Logged in → load real cached data if available, else stay in demo
+            return True, _load_demo_json(), no_update
+
+        # Use the server-verified Clerk uid for any data access.
+        uid = clerk_auth.current_user_id() or current_user
+
+        # 1) Durable per-user blob (Azure). Restores keyfile to disk too.
+        if user_data.is_enabled():
+            blob = user_data.restore_for_user(uid)
+            portfolio = blob.get("portfolio")
+            creds = blob.get("tr_creds") or no_update
+            if portfolio:
+                return False, portfolio, creds
+            # No portfolio yet, but we may still have creds to enable reconnect.
+            return True, _load_demo_json(), creds
+
+        # 2) Fallback: local server cache (no blob configured).
         try:
             from components.tr_api import get_cached_portfolio
             cached = get_cached_portfolio(user_id=current_user)
             if cached and cached.get("success"):
-                return False, json.dumps(cached)
+                return False, json.dumps(cached), no_update
         except Exception:
             pass
         # No cached data yet — keep demo mode so the banner stays visible
-        return True, _load_demo_json()
+        return True, _load_demo_json(), no_update
 
     # ── Demo mode toggle (manual button) ──
     @app.callback(
@@ -760,8 +779,7 @@ def register_callbacks(app):
          Output("sync-tr-data-btn", "children"),
          Output("sync-tr-data-btn", "disabled"),
          Output("tr-connect-modal", "is_open", allow_duplicate=True),
-         Output("demo-mode", "data", allow_duplicate=True),
-         Output("login-modal", "is_open", allow_duplicate=True)],
+         Output("demo-mode", "data", allow_duplicate=True)],
         Input("sync-tr-data-btn", "n_clicks"),
         [State("tr-encrypted-creds", "data"),
          State("tr-connect-modal", "is_open"),
@@ -772,9 +790,10 @@ def register_callbacks(app):
         if not n_clicks:
             raise PreventUpdate
 
-        # If not logged in, open LOGIN modal, do not sync
+        # The sync button is only shown to signed-in users with data; if we
+        # somehow get here signed out, do nothing (Clerk sign-in is client-side).
         if not current_user:
-            return no_update, no_update, False, False, no_update, True
+            raise PreventUpdate
 
         from components.tr_api import fetch_all_data, reconnect, is_connected
 
@@ -784,14 +803,18 @@ def register_callbacks(app):
 
         # Still not connected? Open TR Connect modal
         if not is_connected(user_id=current_user):
-            return no_update, no_update, False, True, no_update, no_update
+            return no_update, no_update, False, True, no_update
 
         # Connected — fetch data
         data = fetch_all_data(user_id=current_user)
         if data.get("success"):
-            return json.dumps(data), html.I(className="bi bi-check-circle"), False, False, False, no_update
+            portfolio_json = json.dumps(data)
+            # Persist to the durable per-user encrypted blob (no-op if unconfigured).
+            uid = clerk_auth.current_user_id() or current_user
+            user_data.snapshot_for_user(uid, portfolio_json=portfolio_json, tr_creds=encrypted_creds)
+            return portfolio_json, html.I(className="bi bi-check-circle"), False, False, False
 
-        return no_update, html.I(className="bi bi-x-circle"), False, modal_open, no_update, no_update
+        return no_update, html.I(className="bi bi-x-circle"), False, modal_open, no_update
     
     # Update metrics when data changes
     @app.callback(
