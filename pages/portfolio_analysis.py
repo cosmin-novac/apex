@@ -327,7 +327,7 @@ def layout(lang="en"):
                                 {"label": info["name"], "value": symbol}
                                 for symbol, info in BENCHMARKS.items()
                             ],
-                            value=["URTH"],
+                            value=list(BENCHMARKS.keys()),
                             className="header-checklist",
                         ),
                     ], className="p-2"),
@@ -341,8 +341,8 @@ def layout(lang="en"):
                 dbc.ButtonGroup([
                     dbc.Button("1W",  id="tf-1w",  n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
                     dbc.Button("1M",  id="tf-1m",  n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
-                    dbc.Button("YTD", id="tf-ytd", n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
-                    dbc.Button("1Y",  id="tf-1y",  n_clicks=0, size="sm", outline=True, color="light", className="tf-pill active"),
+                    dbc.Button("YTD", id="tf-ytd", n_clicks=0, size="sm", outline=True, color="light", className="tf-pill active"),
+                    dbc.Button("1Y",  id="tf-1y",  n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
                     dbc.Button("3Y",  id="tf-3y",  n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
                     dbc.Button("5Y",  id="tf-5y",  n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
                     dbc.Button(t("pa.all", lang), id="tf-max", n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
@@ -530,7 +530,7 @@ def layout(lang="en"):
     _create_tr_connect_modal(lang),
     
     # Hidden stores
-    dcc.Store(id="selected-range", data="max"),
+    dcc.Store(id="selected-range", data="YTD"),
     dcc.Store(id="securities-sort", data={"col": "value", "asc": False}),
     dcc.Store(id="securities-data", data=[]),
     dcc.Store(id="privacy-mode", data=False),
@@ -1572,8 +1572,8 @@ def register_callbacks(app):
     )
     def update_range(*n_clicks):
         triggered = ctx.triggered_id
-        # Default to 1Y
-        selected_idx = 3  # 1y
+        # Default to YTD
+        selected_idx = 2  # ytd
         if triggered and triggered in _TF_IDS:
             selected_idx = _TF_IDS.index(triggered)
         value = _TF_VALS[selected_idx]

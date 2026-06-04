@@ -281,6 +281,94 @@ class TRConnection:
         except Exception as e:
             log.warning(f"Failed to save instrument cache: {e}")
 
+    @staticmethod
+    def _preferred_exchange_id(inst_response: Dict[str, Any], fallback: str = "LSX") -> str:
+        """Pick the exchange id TR uses for ticker subscriptions."""
+        exchanges = inst_response.get("exchanges") if isinstance(inst_response, dict) else None
+        if isinstance(exchanges, list):
+            for exchange in exchanges:
+                if isinstance(exchange, dict) and exchange.get("active") and exchange.get("slug"):
+                    return str(exchange["slug"])
+        exchange_ids = inst_response.get("exchangeIds") if isinstance(inst_response, dict) else None
+        if isinstance(exchange_ids, list) and exchange_ids:
+            return str(exchange_ids[0])
+        return fallback
+
+    @staticmethod
+    def _ticker_price_from_response(response: Any) -> Optional[float]:
+        if not isinstance(response, dict):
+            return None
+        for bucket in ("last", "bid", "ask", "pre", "open"):
+            quote = response.get(bucket)
+            if isinstance(quote, dict):
+                try:
+                    price = float(quote.get("price"))
+                    if price > 0:
+                        return price
+                except Exception:
+                    continue
+        return None
+
+    async def _update_positions_with_live_tickers(
+        self,
+        enriched_positions: List[Dict],
+        position_histories: Dict[str, Dict],
+    ) -> int:
+        """Update current values from TR realtime ticker data where available."""
+        if not self.api or not enriched_positions:
+            return 0
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        updated = 0
+
+        for pos in enriched_positions:
+            isin = pos.get("isin")
+            qty = float(pos.get("quantity") or 0)
+            if not isin or qty <= 0:
+                continue
+
+            exchange = pos.get("exchangeId") or ("BHS" if pos.get("instrumentType") == "crypto" else "LSX")
+            sub_id = None
+            try:
+                sub_id = await self.api.ticker(isin, exchange=exchange)
+                _sid, _params, response = await asyncio.wait_for(self.api.recv(), timeout=8)
+                price = self._ticker_price_from_response(response)
+                if not price:
+                    continue
+
+                if pos.get("instrumentType") == "bond" and price > 10:
+                    price = price / 100.0
+
+                invested = float(pos.get("invested") or 0)
+                current_value = qty * price
+                pos["currentPrice"] = price
+                pos["value"] = current_value
+                pos["profit"] = current_value - invested
+
+                hist = position_histories.setdefault(isin, {
+                    "history": [],
+                    "quantity": qty,
+                    "instrumentType": pos.get("instrumentType", ""),
+                    "name": pos.get("name", isin),
+                })
+                points = [p for p in hist.get("history", []) if p.get("date") != today]
+                points.append({"date": today, "price": price})
+                hist["history"] = sorted(points, key=lambda p: p.get("date", ""))
+                updated += 1
+            except asyncio.TimeoutError:
+                log.debug("Ticker timeout for %s on %s", isin, exchange)
+            except Exception as e:
+                log.debug("Ticker update failed for %s on %s: %s", isin, exchange, e)
+            finally:
+                if sub_id:
+                    try:
+                        await self.api.unsubscribe(sub_id)
+                    except Exception:
+                        pass
+
+        log.info("Updated %s/%s positions with TR live ticker prices", updated, len(enriched_positions))
+        return updated
+
     def _download_logos(self, enriched_positions: List[Dict]) -> None:
         """Download position logos into assets/logos/ for local serving.
 
@@ -1808,7 +1896,7 @@ class TRConnection:
             transactions: All timeline transactions (with 'shares' field)
             position_histories: {isin: {history: [{date, price}], ...}} from transactions
             invested_series: {date: cumulative_invested} from deposits
-            current_total: Current live portfolio value (from TR, includes cash)
+            current_total: Current live wealth/positions value (cash excluded)
             current_positions: Current portfolio positions with quantities
             current_cash: Current cash balance from TR
             
@@ -2385,7 +2473,7 @@ class TRConnection:
             return {
                 "success": True,
                 "data": {
-                    "totalValue": total_value + cash,
+                    "totalValue": total_value,
                     "investedAmount": total_invested,
                     "cash": cash,
                     "totalProfit": total_profit,
@@ -2489,11 +2577,12 @@ class TRConnection:
                 name = cached_info.get("name") or isin
                 instrument_type = cached_info.get("typeId", "")
                 image_id = cached_info.get("imageId", "")
+                exchange_id = cached_info.get("exchangeId", "")
                 
                 # Fetch instrument details if:
                 # 1. No name cached (name == isin), OR
                 # 2. No typeId cached (needed for ETF/stock filtering)
-                needs_fetch = (name == isin) or (not instrument_type)
+                needs_fetch = (name == isin) or (not instrument_type) or (not exchange_id)
                 if needs_fetch:
                     try:
                         await self.api.instrument_details(isin)
@@ -2502,6 +2591,7 @@ class TRConnection:
                         new_name = inst_response.get('shortName', inst_response.get('name', isin))
                         new_type = inst_response.get('typeId', inst_response.get('type', ''))
                         new_image = inst_response.get('imageId', '')
+                        new_exchange = self._preferred_exchange_id(inst_response)
                         # Update only if we got new data
                         if new_name and new_name != isin:
                             name = new_name
@@ -2509,13 +2599,16 @@ class TRConnection:
                             instrument_type = new_type
                         if new_image:
                             image_id = new_image
+                        if new_exchange:
+                            exchange_id = new_exchange
                         # Always save updated cache
                         instrument_cache[isin] = {
                             "name": name,
                             "typeId": instrument_type,
                             "imageId": image_id,
+                            "exchangeId": exchange_id,
                         }
-                        log.info(f"[{i+1}/{len(positions)}] {isin}: {name} (type={instrument_type}, img={image_id})")
+                        log.info(f"[{i+1}/{len(positions)}] {isin}: {name} (type={instrument_type}, exchange={exchange_id}, img={image_id})")
                     except Exception as e:
                         log.warning(f"[{i+1}/{len(positions)}] Could not get details for {isin}: {e}")
                 
@@ -2535,6 +2628,7 @@ class TRConnection:
                     "profit": profit,
                     "instrumentType": instrument_type,  # e.g., "stock", "fund", "crypto", "bond"
                     "imageId": image_id,  # TR's image identifier
+                    "exchangeId": exchange_id or ("BHS" if instrument_type == "crypto" else "LSX"),
                 })
             
             total_invested = sum(p['invested'] for p in enriched_positions)
@@ -2578,18 +2672,6 @@ class TRConnection:
             )
             log.info(f"Built position histories for {len(position_histories)} instruments")
             
-            # Build history with market values calculated from holdings × prices + cash
-            # No longer using portfolioAggregateHistory as it fails for this account
-            log.info("Calculating portfolio history from holdings × prices + cash...")
-            history = self._build_history_with_market_values(
-                transactions, 
-                position_histories, 
-                invested_series, 
-                total_value + cash,
-                enriched_positions,  # Pass current positions for holdings baseline
-                cash  # Pass current cash for reconciliation
-            )
-            
             # UPDATE POSITIONS with current prices from position_histories
             # TR's netValue is often 0, so we calculate currentPrice and profit ourselves
             log.info("Updating positions with calculated current prices...")
@@ -2609,6 +2691,12 @@ class TRConnection:
                             pos['value'] = current_value
                             pos['profit'] = current_value - invested
                             log.debug(f"Updated {pos.get('name', isin)}: price={latest_price:.4f}, value={current_value:.2f}, profit={pos['profit']:.2f}")
+
+            # Prefer TR realtime ticker values for the current snapshot. The
+            # transaction-derived prices above are exact execution prices, but
+            # they can be stale and caused both total-value drift and a false
+            # last-day chart drop.
+            await self._update_positions_with_live_tickers(enriched_positions, position_histories)
             
             # Recalculate totals with updated position values
             total_current_value = sum(p['value'] for p in enriched_positions)
@@ -2619,6 +2707,19 @@ class TRConnection:
             
             log.info(f"Updated portfolio summary: invested={total_invested:.2f}, value={total_value:.2f}, profit={total_profit:.2f} ({total_profit_pct:.2f}%)")
 
+            # Build history after current positions have their latest values.
+            # Otherwise today's chart point is pinned to the pre-update fallback
+            # total and creates a false cliff in value/performance/drawdown.
+            log.info("Calculating portfolio history from holdings × prices + cash...")
+            history = self._build_history_with_market_values(
+                transactions,
+                position_histories,
+                invested_series,
+                total_value,
+                enriched_positions,
+                0.0,
+            )
+
             # Download logos from TR CDN into assets/logos/ for local serving
             try:
                 self._download_logos(enriched_positions)
@@ -2628,7 +2729,7 @@ class TRConnection:
             result = {
                 "success": True,
                 "data": {
-                    "totalValue": total_value + cash,
+                    "totalValue": total_value,
                     "investedAmount": total_invested,
                     "cash": cash,
                     "totalProfit": total_profit,

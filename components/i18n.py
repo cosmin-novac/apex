@@ -26,8 +26,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
 
     # ── Auth ────────────────────────────────────────────────────────────
     "au.local_login":           {"en": "Local Login",               "de": "Lokale Anmeldung"},
-    "au.browser_only":          {"en": "All data is stored exclusively in this local browser",
-                                 "de": "Alle Daten werden ausschließlich in diesem Browser gespeichert"},
+    "au.browser_only":          {"en": "Start for free and try Apex.",
+                                 "de": "Kostenlos starten und Apex ausprobieren."},
     "au.username":              {"en": "Email",                    "de": "E-Mail"},
     "au.password":              {"en": "Password",                  "de": "Passwort"},
     "au.login_btn":             {"en": "Login",                     "de": "Anmelden"},
@@ -413,8 +413,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "landing.badge_free":      {"en": "100% free",                  "de": "100% kostenlos"},
     "landing.hero_pre":        {"en": "Make sense of your money with ", "de": "Verstehe dein Geld mit "},
     "landing.hero_post":       {"en": ".",                          "de": "."},
-    "landing.hero_subtitle":   {"en": "A free toolkit to analyse, backtest and project your investments. No subscription, no catch - your data stays in your browser.",
-                                "de": "Ein kostenloses Toolkit, um deine Investments zu analysieren, zu backtesten und in die Zukunft zu projizieren. Kein Abo, kein Haken - deine Daten bleiben in deinem Browser."},
+    "landing.hero_subtitle":   {"en": "A free toolkit to analyse, backtest and project your investments. No subscription, no catch.",
+                                "de": "Ein kostenloses Toolkit, um deine Investments zu analysieren, zu backtesten und in die Zukunft zu projizieren. Kein Abo, kein Haken."},
     "landing.cta_primary":     {"en": "Analyse my portfolio",       "de": "Portfolio analysieren"},
     "landing.cta_secondary":   {"en": "Explore backtesting",        "de": "Backtesting entdecken"},
     "landing.section_title":   {"en": "What you can do",            "de": "Was du tun kannst"},
@@ -433,9 +433,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "landing.f3_desc":         {"en": "Calculate how your investment could develop and evolve over the years to come.",
                                 "de": "Berechne, wie sich deine Investition über die kommenden Jahre entwickeln könnte."},
     "landing.f3_cta":          {"en": "Run a simulation",           "de": "Simulation starten"},
-
-    "landing.footer_note":     {"en": "100% free · No account required · Your data never leaves your browser.",
-                                "de": "100% kostenlos · Kein Konto nötig · Deine Daten verlassen nie deinen Browser."},
 
     # ── Landlord landing page (/mieteingangskontrolle) ─────────────────
     # Monitoring row labels

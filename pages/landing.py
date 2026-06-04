@@ -93,14 +93,6 @@ def layout(lang="en"):
                 className="landing-features g-4",
             ),
 
-            # ── Trust footer ──────────────────────────────────────────────
-            html.Div(
-                [
-                    html.I(className="bi bi-shield-lock me-2"),
-                    t("landing.footer_note", lang),
-                ],
-                className="landing-footer-note",
-            ),
         ],
         className="landing-page",
     )
