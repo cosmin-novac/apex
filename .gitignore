@@ -11,9 +11,19 @@
 # Large indicator data folders
 /indicators/*
 /.env
+/.venv
 
 # Runtime/private user data (must never be committed)
 /data/banksync_users.json
 /data/private/
 /data/banksync_server/
 /data/.banksync_master.key
+
+# Local-only Azure publish profile (do not commit)
+/apex-publish-profile.xml
+
+# Build artifacts
+*.zip
+
+# Unused local analysis spreadsheet
+strategy_analysis.xlsx
