@@ -6,20 +6,42 @@ User ID namespaces all stored data.
 import dash_bootstrap_components as dbc
 from dash import html, dcc, Input, Output, State
 
-# Login modal - blocks app until logged in
+# Login / Sign-up modal - blocks app until logged in.
+# A single modal switches between "Sign in" and "Create account" modes so the
+# flow matches what users expect from a modern web app.
 login_modal = dbc.Modal([
     dbc.ModalBody([
         html.Div([
             html.I(className="bi bi-person-circle", style={"fontSize": "3rem", "color": "#6366f1"}),
-            html.H4("Local Login", className="mt-3"),
-            html.Small("All data is stored exclusively in this local browser", className="text-muted mb-4"),
-            dbc.Input(id="login-username", placeholder="Email", className="mb-2"),
-            dbc.Input(id="login-password", placeholder="Password", type="password", className="mb-3"),
+            html.H4("Welcome back", id="auth-title", className="mt-3 mb-1"),
+            html.Small("All data is stored exclusively in this local browser",
+                       className="text-muted d-block mb-4"),
+
+            dbc.Input(id="login-username", placeholder="Email", type="email",
+                      autoComplete="email", className="mb-2"),
+            dbc.Input(id="login-password", placeholder="Password", type="password",
+                      autoComplete="current-password", className="mb-2"),
+
+            # Confirm-password is only shown while creating an account.
+            html.Div(
+                dbc.Input(id="login-password-confirm", placeholder="Confirm password",
+                          type="password", autoComplete="new-password", className="mb-2"),
+                id="auth-confirm-wrap", style={"display": "none"},
+            ),
+
             html.Div(id="login-error", className="text-danger small mb-2"),
-            dbc.Button("Login", id="login-btn", color="primary", className="w-100 mb-2"),
-            html.Hr(),
-            html.Small("No account? Enter credentials and click Register", className="text-muted"),
-            dbc.Button("Register", id="register-btn", color="secondary", outline=True, className="w-100 mt-2", size="sm"),
+
+            dbc.Button("Sign in", id="auth-submit-btn", color="primary",
+                       className="w-100 mb-2", n_clicks=0),
+
+            html.Hr(className="my-3"),
+
+            html.Div([
+                html.Span("Don't have an account? ", id="auth-switch-prompt",
+                          className="text-muted small"),
+                html.A("Create one", id="auth-switch-btn", href="#",
+                       className="small fw-medium", n_clicks=0),
+            ]),
         ], className="text-center p-3"),
     ]),
 ], id="login-modal", centered=True, backdrop=True, keyboard=True, is_open=False)
@@ -27,19 +49,79 @@ login_modal = dbc.Modal([
 # Store for current user - persisted in localStorage
 user_store = dcc.Store(id="current-user-store", storage_type="local")
 
+# Tracks whether the modal is in "login" or "register" mode (session only).
+auth_mode_store = dcc.Store(id="auth-mode", data="login")
+
 
 def register_auth_callbacks(app):
     """All auth logic runs clientside - no server state. Data is namespaced per user."""
-    
-    # Main auth callback - handles login/register/logout with user-namespaced data
+
+    # Toggle between "Sign in" and "Create account" modes, and open the modal.
+    # Kept separate from the submit handler so switching modes never tries to
+    # authenticate and never touches the user/portfolio stores.
     app.clientside_callback(
         """
-        function(login_clicks, register_clicks, logout_clicks, open_login_clicks, username, password, current_user, active_portfolio) {
+        function(switch_clicks, open_clicks, logout_clicks, current_mode) {
+            const ctx = dash_clientside.callback_context;
+            const triggered = (ctx && ctx.triggered && ctx.triggered.length)
+                ? ctx.triggered[0].prop_id.split(".")[0]
+                : null;
+
+            // View definitions for each mode.
+            function view(mode) {
+                if (mode === "register") {
+                    return ["register", "Create your account", "Create account",
+                            {"display": "block"}, "Already have an account? ", "Sign in"];
+                }
+                return ["login", "Welcome back", "Sign in",
+                        {"display": "none"}, "Don't have an account? ", "Create one"];
+            }
+
+            const nu = dash_clientside.no_update;
+
+            // Opening the modal from the sidebar - or logging out - always
+            // returns to a clean login view.
+            if (triggered === "open-login-btn" || triggered === "logout-btn") {
+                try { document.body.classList.remove("sidebar-open"); } catch (e) {}
+                return [true, ""].concat(view("login"));
+            }
+
+            // Switch link toggles the mode and keeps the modal open.
+            if (triggered === "auth-switch-btn") {
+                const next = (current_mode === "register") ? "login" : "register";
+                return [true, ""].concat(view(next));
+            }
+
+            return [nu, nu, nu, nu, nu, nu, nu, nu];
+        }
+        """,
+        [Output("login-modal", "is_open"),
+         Output("login-error", "children"),
+         Output("auth-mode", "data"),
+         Output("auth-title", "children"),
+         Output("auth-submit-btn", "children"),
+         Output("auth-confirm-wrap", "style"),
+         Output("auth-switch-prompt", "children"),
+         Output("auth-switch-btn", "children")],
+        [Input("auth-switch-btn", "n_clicks"),
+         Input("open-login-btn", "n_clicks"),
+         Input("logout-btn", "n_clicks")],
+        [State("auth-mode", "data")],
+        prevent_initial_call=True,
+    )
+
+    # Main auth callback - handles submit (login OR register based on mode),
+    # logout, and session restore, with user-namespaced data.
+    app.clientside_callback(
+        """
+        function(submit_clicks, logout_clicks, username, password, confirm, mode, current_user, active_portfolio) {
             try {
                 const ctx = dash_clientside.callback_context;
                 const triggered = (ctx && ctx.triggered && ctx.triggered.length)
                     ? ctx.triggered[0].prop_id.split(".")[0]
                     : null;
+                const nu = dash_clientside.no_update;
+                const err = function(msg) { return [nu, true, msg, nu]; };
 
                 function simpleHash(str) {
                     let h = 0;
@@ -82,65 +164,78 @@ def register_auth_callbacks(app):
                     if (userCreds) {
                         localStorage.setItem("tr-encrypted-creds", userCreds);
                     }
-                    return [current_user, false, "", userPortfolio || dash_clientside.no_update];
-                }
-                
-                // Initial load - no user, stay closed (demo mode)
-                if (!triggered) {
-                    return [dash_clientside.no_update, false, "", dash_clientside.no_update];
+                    return [current_user, false, "", userPortfolio || nu];
                 }
 
-                // Open login modal from sidebar button
-                if (triggered === "open-login-btn") {
-                    try { document.body.classList.remove("sidebar-open"); } catch(e) {}
-                    return [dash_clientside.no_update, true, "", dash_clientside.no_update];
+                // Initial load - no user, stay closed (demo mode)
+                if (!triggered) {
+                    return [nu, false, "", nu];
                 }
-                
-                // Need credentials for login/register
-                if (!username || !password) {
-                    return [dash_clientside.no_update, true, "Enter email and password", dash_clientside.no_update];
+
+                // From here on we're handling a submit click.
+                const email = (username || "").trim();
+                if (!email || !password) {
+                    return err("Please enter your email and password.");
                 }
-                
+                // Lightweight email sanity check.
+                if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+                    return err("Please enter a valid email address.");
+                }
+
                 const pwd_hash = simpleHash(password + "apex_salt");
-                const stored_key = "apex_user_" + username;
+                const stored_key = "apex_user_" + email;
                 const stored_hash = localStorage.getItem(stored_key);
-                
-                if (triggered === "register-btn") {
-                    if (stored_hash) return [dash_clientside.no_update, true, "User exists", dash_clientside.no_update];
+
+                // ---- Create account ----
+                if (mode === "register") {
+                    if (password.length < 6) {
+                        return err("Password must be at least 6 characters.");
+                    }
+                    if (password !== confirm) {
+                        return err("Passwords don't match.");
+                    }
+                    if (stored_hash) {
+                        return err("An account with this email already exists. Try signing in instead.");
+                    }
                     localStorage.setItem(stored_key, pwd_hash);
-                    return [username, false, "", null];
+                    // Fresh account starts with no portfolio data.
+                    localStorage.removeItem("tr-encrypted-creds");
+                    return [email, false, "", null];
                 }
-                
-                // Login - restore user's saved data
-                if (!stored_hash) return [dash_clientside.no_update, true, "User not found", dash_clientside.no_update];
-                if (stored_hash !== pwd_hash) return [dash_clientside.no_update, true, "Wrong password", dash_clientside.no_update];
-                
+
+                // ---- Sign in ----
+                if (!stored_hash) {
+                    return err("No account found for this email. Create one to get started.");
+                }
+                if (stored_hash !== pwd_hash) {
+                    return err("Incorrect password. Please try again.");
+                }
+
                 // Successful login - restore this user's data from their namespace
-                const userPortfolio = localStorage.getItem("portfolio-data-" + username);
-                const userCreds = localStorage.getItem("tr-creds-" + username);
-                // Restore TR creds directly
+                const userPortfolio = localStorage.getItem("portfolio-data-" + email);
+                const userCreds = localStorage.getItem("tr-creds-" + email);
                 if (userCreds) {
                     localStorage.setItem("tr-encrypted-creds", userCreds);
                 } else {
                     localStorage.removeItem("tr-encrypted-creds");
                 }
-                return [username, false, "", userPortfolio || null];
+                return [email, false, "", userPortfolio || null];
             } catch (e) {
                 console.error("Auth error:", e);
-                return [dash_clientside.no_update, true, "Auth error", dash_clientside.no_update];
+                return [dash_clientside.no_update, true, "Something went wrong. Please try again.", dash_clientside.no_update];
             }
         }
         """,
         [Output("current-user-store", "data"),
-         Output("login-modal", "is_open"),
-         Output("login-error", "children"),
+         Output("login-modal", "is_open", allow_duplicate=True),
+         Output("login-error", "children", allow_duplicate=True),
          Output("portfolio-data-store", "data", allow_duplicate=True)],
-        [Input("login-btn", "n_clicks"),
-         Input("register-btn", "n_clicks"),
-         Input("logout-btn", "n_clicks"),
-         Input("open-login-btn", "n_clicks")],
+        [Input("auth-submit-btn", "n_clicks"),
+         Input("logout-btn", "n_clicks")],
         [State("login-username", "value"),
          State("login-password", "value"),
+         State("login-password-confirm", "value"),
+         State("auth-mode", "data"),
          State("current-user-store", "data"),
          State("portfolio-data-store", "data")],
         prevent_initial_call='initial_duplicate'

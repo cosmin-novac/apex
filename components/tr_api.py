@@ -67,6 +67,61 @@ def decrypt_credentials(encrypted: str) -> Tuple[Optional[str], Optional[str]]:
         return None, None
 
 
+import re
+
+
+def normalize_phone(phone_no: str) -> Optional[str]:
+    """Normalize a phone number to E.164 (``+<countrycode><number>``).
+
+    Trade Republic only accepts international format. Users routinely type the
+    number with spaces, dashes or parentheses (the input placeholder even shows
+    ``+49 XXX XXXXXXX``), so we strip formatting before sending it on.
+
+    Returns the cleaned number, or ``None`` if it can't be made valid.
+    """
+    if not phone_no:
+        return None
+    # Keep a single leading '+', drop every other non-digit character.
+    cleaned = phone_no.strip()
+    plus = cleaned.startswith("+") or cleaned.startswith("00")
+    digits = re.sub(r"\D", "", cleaned)
+    if cleaned.startswith("00"):
+        digits = digits[2:]  # 0049... -> 49...
+    if not digits:
+        return None
+    # E.164 numbers are 8–15 digits incl. country code.
+    if len(digits) < 8 or len(digits) > 15:
+        return None
+    if not plus and not cleaned.startswith("+"):
+        # No country code indicated – we can't safely guess one.
+        return None
+    return "+" + digits
+
+
+def friendly_tr_error(exc: Exception) -> str:
+    """Translate a raw pytr/requests exception into an actionable message.
+
+    pytr surfaces transport-level failures verbatim – e.g. an empty HTTP body
+    becomes ``Expecting value: line 1 column 1 (char 0)`` from ``r.json()``,
+    which is meaningless to a user. Map the common cases to plain language.
+    """
+    msg = str(exc)
+    low = msg.lower()
+    if "expecting value" in low or "json" in low:
+        return ("Trade Republic returned an empty response. The service may be "
+                "temporarily unavailable or is rate-limiting logins - please wait "
+                "a minute and try again.")
+    if "number_invalid" in low or "phonenumber" in low:
+        return "That phone number wasn't accepted. Use international format, e.g. +49 151 23456789."
+    if "too_many" in low or "rate" in low or "429" in low:
+        return "Too many attempts. Please wait a few minutes before trying again."
+    if "401" in low or "unauthorized" in low or "pin" in low:
+        return "Login was rejected. Please double-check your phone number and PIN."
+    if "validation" in low or "code" in low or "400" in low:
+        return "The verification code was invalid or has expired. Please request a new code."
+    return msg or "Connection to Trade Republic failed. Please try again."
+
+
 class TRConnection:
     """Manages Trade Republic connection state.
 
@@ -2157,34 +2212,47 @@ class TRConnection:
     
     async def _initiate_web_login(self, phone_no: str, pin: str) -> Dict[str, Any]:
         """
-        Initiate web login - this sends a 4-digit code to the TR app.
-        Returns countdown seconds for verification step.
+        Initiate the Trade Republic login - sends a 4-digit code to the TR app.
+
+        Uses pytr's *device-reset* (app pairing) flow rather than the legacy
+        web-login endpoint. Trade Republic disabled ``/api/v1/auth/web/login``
+        (it now returns HTTP 405 with an empty body, which pytr would surface as
+        the cryptic ``Expecting value: line 1 column 1`` JSON error). The
+        device-reset flow is the one that's still live and, on completion, writes
+        the keyfile that :meth:`_reconnect` depends on.
         """
         try:
-            self.phone_no = phone_no
+            normalized = normalize_phone(phone_no)
+            if not normalized:
+                return {
+                    "success": False,
+                    "error": "Please enter your phone number in international format, e.g. +49 151 23456789.",
+                }
+
+            self.phone_no = normalized
             self.pin = pin
-            
+
             # Create API instance
             self.api = TradeRepublicApi(
-                phone_no=phone_no,
+                phone_no=normalized,
                 pin=pin,
                 keyfile=str(self._keyfile_path)
             )
-            
-            # Initiate web login (sends 4-digit code to app) - THIS IS SYNC, not async!
-            countdown = self.api.initiate_weblogin()
-            
+
+            # Pair this device (sends a 4-digit code to the TR app) - SYNC call.
+            self.api.initiate_device_reset()
+
             return {
                 "success": True,
-                "message": f"Verification code sent to your Trade Republic app (expires in {countdown}s)",
+                "message": "Verification code sent to your Trade Republic app.",
                 "requires_code": True,
-                "countdown": countdown
+                "countdown": 60,
             }
         except Exception as e:
-            log.error(f"Web login initiation failed: {e}")
+            log.error(f"TR login initiation failed: {e}")
             return {
                 "success": False,
-                "error": str(e)
+                "error": friendly_tr_error(e)
             }
     
     async def _complete_web_login(self, code: str) -> Dict[str, Any]:
@@ -2194,28 +2262,39 @@ class TRConnection:
         """
         try:
             if not self.api:
-                return {"success": False, "error": "No login in progress"}
-            
-            # Complete the web login with code - THIS IS SYNC, not async!
-            self.api.complete_weblogin(code)
-            
+                return {"success": False, "error": "No login in progress. Please start again."}
+
+            code = (code or "").strip()
+            if len(code) != 4 or not code.isdigit():
+                return {"success": False, "error": "Please enter the 4-digit code from your TR app."}
+
+            # Complete device pairing with the code. On success pytr writes the
+            # keyfile; we then log in to obtain session tokens. Both are SYNC.
+            self.api.complete_device_reset(code)
+
+            if not self._keyfile_path.exists():
+                # pytr only writes the keyfile on a 200 response, so a missing
+                # keyfile means the code was wrong or expired.
+                return {"success": False, "error": "The verification code was invalid or has expired. Please request a new code."}
+
+            self.api.login()
             self.is_connected = True
-            
+
             # Return encrypted credentials for browser storage
             encrypted_creds = None
             if self.phone_no and self.pin:
                 encrypted_creds = self.get_encrypted_credentials(self.phone_no, self.pin)
-            
+
             return {
                 "success": True,
                 "message": "Successfully connected to Trade Republic",
                 "encrypted_credentials": encrypted_creds
             }
         except Exception as e:
-            log.error(f"Web login completion failed: {e}")
+            log.error(f"TR login completion failed: {e}")
             return {
                 "success": False,
-                "error": str(e)
+                "error": friendly_tr_error(e)
             }
     
     async def _fetch_portfolio(self) -> Dict[str, Any]:
@@ -2654,7 +2733,7 @@ class TRConnection:
             log.error(f"Reconnect failed: {e}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": friendly_tr_error(e),
                 "needs_reauth": True
             }
 
