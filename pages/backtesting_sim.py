@@ -720,7 +720,7 @@ def _download_asset(asset_ticker):
 
     Caching hierarchy:
       1. In-memory dict (_asset_cache) — instant, per-session.
-      2. Local CSV file (data/asset_cache/<TICKER>.csv) — persistent across restarts.
+      2. Local runtime CSV file (~/.apex/asset_cache/<TICKER>.csv by default).
          On subsequent calls only the *delta* (new rows since last saved date)
          is fetched from Yahoo Finance and appended to the local file.
     """

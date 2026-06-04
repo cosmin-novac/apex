@@ -32,7 +32,13 @@
     var slot = document.getElementById("clerk-user-button");
     var signInBtn = document.getElementById("open-login-btn");
     var label = document.getElementById("current-user-label");
+    var setUserLabel = function (text) {
+      if (!label) return;
+      label.textContent = text || "";
+      label.style.display = text ? "flex" : "none";
+    };
     if (!clerk) {
+      setUserLabel("");
       if (signInBtn && window.__apexClerkLoadFailed) {
         signInBtn.disabled = true;
         signInBtn.textContent = "Sign in unavailable";
@@ -52,10 +58,8 @@
         }
       }
       if (signInBtn) signInBtn.style.display = "none";
-      if (label) {
-        var pa = clerk.user.primaryEmailAddress;
-        label.textContent = pa ? pa.emailAddress : "";
-      }
+      var pa = clerk.user.primaryEmailAddress;
+      setUserLabel(pa ? pa.emailAddress : "");
     } else {
       // Signed out: tear down the UserButton, show the sign-in button.
       if (slot) {
@@ -69,7 +73,7 @@
         signInBtn.style.display = "";
         signInBtn.disabled = false;
       }
-      if (label) label.textContent = "";
+      setUserLabel("");
     }
   }
 

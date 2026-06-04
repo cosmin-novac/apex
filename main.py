@@ -82,6 +82,13 @@ if clerk_auth.PUBLISHABLE_KEY and _clerk_fapi:
         f'src="https://{_clerk_fapi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js" '
         f'type="text/javascript"></script>'
     )
+elif not clerk_auth.PUBLISHABLE_KEY:
+    log.warning("Clerk sign-in is disabled because CLERK_PUBLISHABLE_KEY is not configured")
+else:
+    log.warning(
+        "Clerk sign-in is disabled because the frontend API host could not be resolved; "
+        "set CLERK_FRONTEND_API to your Clerk account host"
+    )
 
 app.index_string = """<!DOCTYPE html>
 <html>

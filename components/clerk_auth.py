@@ -25,6 +25,11 @@ PUBLISHABLE_KEY = (
     or ""
 )
 SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
+FRONTEND_API = (
+    os.environ.get("CLERK_FRONTEND_API")
+    or os.environ.get("NEXT_PUBLIC_CLERK_FRONTEND_API")
+    or ""
+)
 
 SESSION_COOKIE = "__session"
 
@@ -38,6 +43,11 @@ def frontend_api_host() -> str:
     Publishable keys look like ``pk_test_<base64(host + "$")>``. Base64-decoding
     the part after the prefix yields e.g. ``assured-kangaroo-0.clerk.accounts.dev$``.
     """
+    if FRONTEND_API:
+        host = FRONTEND_API.strip()
+        host = host.removeprefix("https://").removeprefix("http://")
+        return host.split("/", 1)[0].strip()
+
     key = PUBLISHABLE_KEY
     if not key:
         return ""

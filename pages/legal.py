@@ -12,8 +12,8 @@ Hibbelenstr. 10
 Deutschland
 
 Geschaeftsfuehrer: Cosmin Novac  
-E-Mail: info@fundation.de  
-Internet: www.fundation.de
+E-Mail: info@fundation.one  
+Internet: https://www.fundation.one
 
 **Apex Portfolio**  
 Website: https://apexportfolio.de/
@@ -61,8 +61,8 @@ Hibbelenstr. 10
 Germany
 
 Managing Director: Cosmin Novac  
-Email: info@fundation.de  
-Web: www.fundation.de
+Email: info@fundation.one  
+Web: www.fundation.one
 
 **Apex Portfolio**  
 Website: https://apexportfolio.de/
@@ -116,7 +116,7 @@ Hibbelenstr. 10
 Deutschland
 
 Vertretungsberechtigt: Cosmin Novac  
-E-Mail: info@fundation.de  
+E-Mail: info@fundation.one  
 Impressum: https://apexportfolio.de/impressum
 
 ## Welche Daten wir verarbeiten
@@ -171,7 +171,7 @@ Sie haben zudem das Recht, sich bei einer Datenschutzaufsichtsbehoerde zu beschw
 
 ## Kontakt
 
-Bei Fragen zum Datenschutz erreichen Sie uns unter: info@fundation.de
+Bei Fragen zum Datenschutz erreichen Sie uns unter: info@fundation.one
 """
 
 
@@ -190,7 +190,7 @@ Hibbelenstr. 10
 Germany
 
 Represented by: Cosmin Novac  
-Email: info@fundation.de  
+Email: info@fundation.one  
 Legal notice: https://apexportfolio.de/impressum
 
 ## Data we process
@@ -245,7 +245,7 @@ You also have the right to lodge a complaint with a data protection supervisory 
 
 ## Contact
 
-For privacy questions, contact us at: info@fundation.de
+For privacy questions, contact us at: info@fundation.one
 """
 
 
