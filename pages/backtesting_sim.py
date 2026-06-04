@@ -8,6 +8,7 @@ from dash.exceptions import PreventUpdate
 import logging
 import ta
 import os
+import tempfile
 from core.utils import *
 import yfinance as yf
 
@@ -693,7 +694,24 @@ def layout(lang="en"):
 # ── Shared helpers ──────────────────────────────────────────────────────────
 
 _asset_cache: dict = {}                    # {ticker: DataFrame}
-_ASSET_CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "asset_cache"
+
+
+def _asset_cache_dir() -> Path:
+    """Shared server-side cache for public Yahoo/yfinance price data.
+
+    Local dev stores this on the developer machine. In production it lives on
+    the app server, shared across users, which is fine because the data is
+    public market data and contains no user-specific state.
+    """
+    primary = Path(os.environ.get("APEX_ASSET_CACHE_DIR") or (Path.home() / ".apex" / "asset_cache"))
+    try:
+        primary.mkdir(parents=True, exist_ok=True)
+        return primary
+    except Exception as e:
+        fallback = Path(tempfile.gettempdir()) / "apex" / "asset_cache"
+        fallback.mkdir(parents=True, exist_ok=True)
+        _log.warning("Asset cache dir %s unavailable (%s); using %s", primary, e, fallback)
+        return fallback
 
 def _download_asset(asset_ticker):
     """Download price data for *any* ticker via yfinance.
@@ -710,10 +728,9 @@ def _download_asset(asset_ticker):
     if asset_ticker in _asset_cache:
         return _asset_cache[asset_ticker].copy()
 
-    # --- Try loading from local CSV first ---
-    _ASSET_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    # --- Try loading from local runtime CSV first ---
     safe_name = asset_ticker.replace("^", "_").replace("/", "_")
-    csv_path = _ASSET_CACHE_DIR / f"{safe_name}.csv"
+    csv_path = _asset_cache_dir() / f"{safe_name}.csv"
 
     local_df = None
     if csv_path.exists():

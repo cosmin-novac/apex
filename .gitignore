@@ -19,6 +19,9 @@
 /data/banksync_server/
 /data/.banksync_master.key
 
+# Runtime cache for public Yahoo/yfinance asset prices
+/data/asset_cache/
+
 # Local-only Azure publish profile (do not commit)
 /apex-publish-profile.xml
 
