@@ -27,3 +27,8 @@
 
 # Unused local analysis spreadsheet
 strategy_analysis.xlsx
+
+# Local debugging / screenshot scratch files (never commit)
+_shot_*.py
+landing_en.png
+landing_de.png
