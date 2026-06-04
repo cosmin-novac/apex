@@ -25,6 +25,7 @@ from pages.portfolio_sim import layout as portfolio_sim_layout, register_callbac
 from pages.riskbands import layout as riskbands_layout, register_callbacks as register_riskbands_callbacks
 from pages.portfolio_analysis import layout as portfolio_analysis_layout, register_callbacks as register_portfolio_analysis_callbacks
 from pages.the_real_cost import layout as real_cost_layout, register_callbacks as register_real_cost_callbacks
+from pages.landing import layout as landing_layout
 from components.settings_modal import settings_button, settings_modal, api_key_store, register_settings_callbacks
 from components.rule_builder import register_rule_builder_callbacks
 from components.auth import login_modal, user_store, auth_mode_store, register_auth_callbacks
@@ -64,10 +65,10 @@ app = dash.Dash(
 )
 
 sidebar = html.Div([
-    html.Div([
+    dcc.Link([
         html.H2("APEX", className="sidebar-logo"),
         html.P("Portfolio & Backtesting", id="sidebar-tagline", className="sidebar-tagline"),
-    ], className="sidebar-brand"),
+    ], href="/", className="sidebar-brand"),
     html.Hr(className="sidebar-divider"),
     dbc.Nav([
         dbc.NavLink([html.I(className="bi bi-bar-chart-line me-2"), html.Span("Portfolio Analysis", id="nav-text-compare")], href="/compare", id="compare-link", className="nav-link-modern"),
@@ -128,6 +129,7 @@ app.layout = dbc.Container([
 
 app.validation_layout = html.Div([
     app.layout,
+    landing_layout("en"),
     portfolio_analysis_layout("en"),
     backtesting_layout("en"),
     portfolio_sim_layout("en"),
@@ -138,18 +140,20 @@ app.validation_layout = html.Div([
 
 @app.callback(Output("url", "pathname"), Input("url", "pathname"))
 def redirect_to_default(pathname):
-    routes = {"/compare", "/backtesting", "/portfolio", "/riskbands", "/realcost"}
-    if pathname in (None, "", "/"):
-        return "/compare"
+    routes = {"/", "/compare", "/backtesting", "/portfolio", "/riskbands", "/realcost"}
+    if pathname in (None, ""):
+        return "/"
     if pathname not in routes:
-        return "/compare"
+        return "/"
     return dash.no_update
 
 
 @app.callback(Output("page-content", "children"), [Input("url", "pathname"), Input("lang-store", "data")])
 def render_page_content(pathname, lang_data):
     lang = get_lang(lang_data)
-    if pathname in (None, "", "/", "/compare"):
+    if pathname in (None, "", "/"):
+        return landing_layout(lang)
+    if pathname == "/compare":
         return portfolio_analysis_layout(lang)
     if pathname == "/backtesting":
         return backtesting_layout(lang)
@@ -167,7 +171,7 @@ def render_page_content(pathname, lang_data):
     Input("url", "pathname"),
 )
 def set_active_link(pathname):
-    return pathname == "/backtesting", pathname == "/portfolio", pathname in ("/", "/compare"), pathname == "/riskbands", pathname == "/realcost"
+    return pathname == "/backtesting", pathname == "/portfolio", pathname == "/compare", pathname == "/riskbands", pathname == "/realcost"
 
 
 app.clientside_callback(

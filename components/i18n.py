@@ -408,7 +408,35 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     # Settings
     # Step UI (bank_sync.py)
     # Per-rule notification toggles
-    # Landing page additions
+
+    # ── Landing page (/) ────────────────────────────────────────────────
+    "landing.badge_free":      {"en": "100% free",                  "de": "100% kostenlos"},
+    "landing.hero_pre":        {"en": "Make sense of your money with ", "de": "Verstehe dein Geld mit "},
+    "landing.hero_post":       {"en": ".",                          "de": "."},
+    "landing.hero_subtitle":   {"en": "A free toolkit to analyse, backtest and project your investments. No subscription, no catch - your data stays in your browser.",
+                                "de": "Ein kostenloses Toolkit, um deine Investments zu analysieren, zu backtesten und in die Zukunft zu projizieren. Kein Abo, kein Haken - deine Daten bleiben in deinem Browser."},
+    "landing.cta_primary":     {"en": "Analyse my portfolio",       "de": "Portfolio analysieren"},
+    "landing.cta_secondary":   {"en": "Explore backtesting",        "de": "Backtesting entdecken"},
+    "landing.section_title":   {"en": "What you can do",            "de": "Was du tun kannst"},
+
+    "landing.f1_title":        {"en": "Benchmark your portfolio",   "de": "Portfolio vergleichen"},
+    "landing.f1_desc":         {"en": "Connect your Trade Republic portfolio and see how it really performs against the MSCI World and S&P 500.",
+                                "de": "Verbinde dein Trade-Republic-Portfolio und sieh, wie es wirklich gegen den MSCI World und S&P 500 abschneidet."},
+    "landing.f1_cta":          {"en": "Compare performance",        "de": "Performance vergleichen"},
+
+    "landing.f2_title":        {"en": "Backtest your strategy",     "de": "Strategie backtesten"},
+    "landing.f2_desc":         {"en": "Try your buy and sell rules on historical data with simple, visual backtesting.",
+                                "de": "Teste deine Kauf- und Verkaufsregeln an historischen Daten - einfach und visuell."},
+    "landing.f2_cta":          {"en": "Open backtesting",           "de": "Backtesting öffnen"},
+
+    "landing.f3_title":        {"en": "Project your growth",        "de": "Wachstum projizieren"},
+    "landing.f3_desc":         {"en": "Calculate how your investment could develop and evolve over the years to come.",
+                                "de": "Berechne, wie sich deine Investition über die kommenden Jahre entwickeln könnte."},
+    "landing.f3_cta":          {"en": "Run a simulation",           "de": "Simulation starten"},
+
+    "landing.footer_note":     {"en": "100% free · No account required · Your data never leaves your browser.",
+                                "de": "100% kostenlos · Kein Konto nötig · Deine Daten verlassen nie deinen Browser."},
+
     # ── Landlord landing page (/mieteingangskontrolle) ─────────────────
     # Monitoring row labels
 }
