@@ -486,7 +486,7 @@ def register_rule_builder_callbacks(app):
                 children.append(html.Div(
                     [html.I(className="bi bi-key me-2"),
                      "OpenAI API key is missing. Set it in ",
-                     html.Strong("Settings"), " (gear icon in the sidebar)."],
+                     html.Strong("Settings"), "."],
                     className="text-danger small p-2 mb-2",
                     style={"backgroundColor": "#fef2f2", "borderRadius": "6px"},
                 ))
@@ -497,7 +497,7 @@ def register_rule_builder_callbacks(app):
                     error_msg = str(rule_expression) if rule_expression else "Unknown error"
                     # Extract user-friendly message from OpenAI errors
                     if "invalid_api_key" in error_msg or "401" in error_msg:
-                        error_msg = "Invalid OpenAI API key. Check your key in Settings (gear icon in the sidebar)."
+                        error_msg = "Invalid OpenAI API key. Check your key in Settings."
                     children.append(html.Div(
                         [html.I(className="bi bi-exclamation-triangle me-2"),
                          html.Strong("AI Error: "), error_msg],
@@ -509,7 +509,7 @@ def register_rule_builder_callbacks(app):
             except Exception as e:
                 error_msg = str(e)
                 if "invalid_api_key" in error_msg or "401" in error_msg:
-                    error_msg = "Invalid OpenAI API key. Check your key in Settings (gear icon in the sidebar)."
+                    error_msg = "Invalid OpenAI API key. Check your key in Settings."
                 children.append(html.Div(
                     [html.I(className="bi bi-exclamation-triangle me-2"),
                      html.Strong("AI Error: "), error_msg],

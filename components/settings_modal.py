@@ -11,11 +11,15 @@ def _server_has_openai_key() -> bool:
 
 settings_button = html.Div(
     dbc.Button(
-        html.I(className="bi bi-gear-fill"),
-        id="open-settings-modal",
-        className="settings-btn",
+        [
+            html.I(id="theme-mode-icon", className="bi bi-moon-stars-fill"),
+            html.Span("Night mode", id="theme-mode-label", className="visually-hidden"),
+        ],
+        id="theme-mode-toggle",
+        className="settings-btn theme-mode-btn",
         color="link",
         n_clicks=0,
+        title="Night mode",
     ),
     className="settings-trigger",
 )
@@ -80,24 +84,63 @@ settings_modal = dbc.Modal(
 api_key_store = html.Div(
     [
         dcc.Store(id="api_key_store", storage_type="memory"),
+        dcc.Store(id="theme-store", storage_type="local", data="day"),
         html.Div(id="apikey-save-trigger", style={"display": "none"}),
+        html.Div(id="theme-apply-trigger", style={"display": "none"}),
     ]
 )
 
 
 def register_settings_callbacks(app):
+    app.clientside_callback(
+        """
+        function(n_clicks, current) {
+            current = current || 'day';
+            if (!n_clicks) return current;
+            return current === 'night' ? 'day' : 'night';
+        }
+        """,
+        Output("theme-store", "data"),
+        Input("theme-mode-toggle", "n_clicks"),
+        State("theme-store", "data"),
+    )
+
+    app.clientside_callback(
+        """
+        function(theme) {
+            theme = theme || 'day';
+            document.body.classList.toggle('theme-night', theme === 'night');
+            return theme;
+        }
+        """,
+        Output("theme-apply-trigger", "children"),
+        Input("theme-store", "data"),
+    )
+
+    @app.callback(
+        [
+            Output("theme-mode-icon", "className"),
+            Output("theme-mode-toggle", "title"),
+            Output("theme-mode-label", "children"),
+        ],
+        Input("theme-store", "data"),
+    )
+    def update_theme_button(theme):
+        if theme == "night":
+            return "bi bi-sun-fill", "Day mode", "Day mode"
+        return "bi bi-moon-stars-fill", "Night mode", "Night mode"
+
     @app.callback(
         Output("settings-modal", "is_open"),
         [
-            Input("open-settings-modal", "n_clicks"),
             Input("close-settings-modal", "n_clicks"),
             Input("open-settings-link", "n_clicks"),
         ],
         State("settings-modal", "is_open"),
         prevent_initial_call=True,
     )
-    def toggle_settings_modal(open_clicks, close_clicks, link_clicks, is_open):
-        if open_clicks or close_clicks or link_clicks:
+    def toggle_settings_modal(close_clicks, link_clicks, is_open):
+        if close_clicks or link_clicks:
             return not is_open
         return is_open
 

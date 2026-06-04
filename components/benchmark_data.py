@@ -40,6 +40,39 @@ _fetch_lock = threading.Lock()
 _sim_cache: Dict[Tuple[str, str, str], Dict[str, List[Dict]]] = {}
 
 
+def _to_naive_timestamp(value):
+    """Return a timezone-naive pandas Timestamp for date comparisons."""
+    if value is None:
+        return None
+    ts = pd.Timestamp(value)
+    if ts.tz is not None:
+        ts = ts.tz_convert(None)
+    return ts
+
+
+def _normalize_benchmark_df(df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """Normalize benchmark frames to a naive DatetimeIndex and Close column."""
+    if df is None or len(df) == 0:
+        return None
+    df = df.copy()
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        if getattr(df["Date"].dt, "tz", None) is not None:
+            df["Date"] = df["Date"].dt.tz_convert(None)
+        df = df.dropna(subset=["Date"]).set_index("Date")
+    else:
+        idx = pd.to_datetime(df.index, errors="coerce")
+        if getattr(idx, "tz", None) is not None:
+            idx = idx.tz_convert(None)
+        df.index = idx
+        df = df[~df.index.isna()]
+    df = df.sort_index()
+    if "Close" not in df.columns:
+        return None
+    df.index.name = "Date"
+    return df[["Close"]]
+
+
 def _signature_portfolio_history(portfolio_history: List[Dict]) -> str:
     if not portfolio_history:
         return "empty"
@@ -95,9 +128,9 @@ def _load_cache() -> Dict:
                 for symbol, records in data.get("benchmarks", {}).items():
                     if records:
                         df = pd.DataFrame(records)
-                        df['Date'] = pd.to_datetime(df['Date'])
-                        df = df.set_index('Date')
-                        _benchmark_cache[symbol] = df
+                        df = _normalize_benchmark_df(df)
+                        if df is not None and len(df) > 0:
+                            _benchmark_cache[symbol] = df
                 _cache_loaded = True
                 log.debug("Loaded benchmark cache with %s indices", len(_benchmark_cache))
                 return data
@@ -139,8 +172,9 @@ def fetch_benchmark(symbol: str, start_date: datetime, end_date: datetime = None
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(start=start_date, end=end_date)
-        if len(df) > 0:
-            return df[['Close']]
+        df = _normalize_benchmark_df(df)
+        if df is not None and len(df) > 0:
+            return df
     except Exception as e:
         log.debug("Error fetching %s: %s", symbol, e)
     
@@ -188,19 +222,25 @@ def get_benchmark_data(symbol: str, start_date = None, end_date = None) -> Optio
     
     # Parse dates if strings
     if isinstance(start_date, str):
-        start_date = pd.to_datetime(start_date)
+        start_date = _to_naive_timestamp(start_date)
     if isinstance(end_date, str):
-        end_date = pd.to_datetime(end_date)
+        end_date = _to_naive_timestamp(end_date)
+    start_date = _to_naive_timestamp(start_date) if start_date is not None else None
+    end_date = _to_naive_timestamp(end_date) if end_date is not None else None
     
     # Check cache
     if symbol in _benchmark_cache:
-        df = _benchmark_cache[symbol].copy()
-        if start_date:
-            df = df[df.index >= start_date]
-        if end_date:
-            df = df[df.index <= end_date]
-        if len(df) > 0:
-            return df
+        df = _normalize_benchmark_df(_benchmark_cache[symbol])
+        if df is None:
+            _benchmark_cache.pop(symbol, None)
+        else:
+            _benchmark_cache[symbol] = df.copy()
+            if start_date:
+                df = df[df.index >= start_date]
+            if end_date:
+                df = df[df.index <= end_date]
+            if len(df) > 0:
+                return df
     
     # Fetch if not in cache or filtered result is empty
     if start_date is None:

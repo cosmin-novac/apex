@@ -388,10 +388,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "rl.last_lowest":           {"en": "Last Lowest",               "de": "Letztes Tief"},
     "rl.api_key_missing":       {"en": "OpenAI API key is missing. Set it in ",
                                  "de": "OpenAI API-Schlüssel fehlt. Setze ihn in den "},
-    "rl.settings_gear":         {"en": " (gear icon in the sidebar).",
-                                 "de": " (Zahnrad-Symbol in der Seitenleiste)."},
-    "rl.invalid_key":           {"en": "Invalid OpenAI API key. Check your key in Settings (gear icon in the sidebar).",
-                                 "de": "Ungültiger OpenAI API-Schlüssel. Überprüfe ihn in den Einstellungen (Zahnrad-Symbol in der Seitenleiste)."},
+    "rl.settings_gear":         {"en": ".",
+                                 "de": "."},
+    "rl.invalid_key":           {"en": "Invalid OpenAI API key. Check your key in Settings.",
+                                 "de": "Ungültiger OpenAI API-Schlüssel. Überprüfe ihn in den Einstellungen."},
     "rl.ai_error":              {"en": "AI Error: ",                "de": "KI-Fehler: "},
 
     # ── Legacy standalone labels ────────────────────────────────────────

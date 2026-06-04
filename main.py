@@ -124,14 +124,14 @@ sidebar = html.Div([
                     html.Div([html.Span("Deutsch", className="small")], id="lang-opt-de", className="lang-dropdown-item", n_clicks=0),
                 ], id="lang-dropdown-menu", className="lang-dropdown-menu", style={"display": "none"}),
             ], className="position-relative"),
-        ], className="d-flex align-items-center justify-content-center gap-1"),
+        ], className="sidebar-control-row"),
         html.Div([
             # Clerk mounts the <UserButton> here when signed in (avatar + menu).
             html.Div(id="clerk-user-button", className="clerk-user-button-slot", style={"display": "none"}),
             html.Div(id="current-user-label", className="sidebar-user-label"),
             # Clerk's prebuilt sign-in modal opens on click (wired in clerk_init.js).
             dbc.Button([html.I(className="bi bi-person me-1"), "Sign in"], id="open-login-btn", color="primary", outline=True, size="sm", className="w-100"),
-        ], className="mt-2"),
+        ], className="sidebar-user-area"),
     ], className="sidebar-bottom"),
 ], className="sidebar")
 
@@ -160,7 +160,7 @@ app.layout = dbc.Container([
     mobile_overlay,
     dbc.Row([
         dbc.Col(sidebar, width=2, className="p-0 sidebar-col"),
-        dbc.Col(content, width=10, className="p-0"),
+        dbc.Col(content, width=10, className="p-0 content-col"),
     ], className="g-0"),
 ], fluid=True, className="app-container p-0")
 
