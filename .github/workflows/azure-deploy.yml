@@ -1,0 +1,58 @@
+# Build and deploy Apex (Dash) to Azure Web App - apex-fundation
+name: Build and deploy Apex to Azure Web App - apex-fundation
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create and start virtual environment and install dependencies
+        run: |
+          python -m venv antenv
+          source antenv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Stage filtered deployment package
+        run: |
+          mkdir -p .deploy-package
+          rsync -av --delete \
+            --exclude-from='.webappignore' \
+            --exclude='.deploy-package' \
+            --exclude='antenv' \
+            ./ ./.deploy-package/
+
+      - name: 'Deploy to Azure Web App'
+        uses: azure/webapps-deploy@v3
+        id: deploy-to-webapp
+        continue-on-error: true
+        with:
+          app-name: 'apex-fundation'
+          slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
+          package: ./.deploy-package
+
+      - name: Wait before retry (SCM warm-up)
+        if: steps.deploy-to-webapp.outcome == 'failure'
+        run: sleep 45
+
+      - name: 'Retry Deploy to Azure Web App'
+        if: steps.deploy-to-webapp.outcome == 'failure'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'apex-fundation'
+          slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
+          package: ./.deploy-package
