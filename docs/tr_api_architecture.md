@@ -36,10 +36,10 @@ This document captures the technical findings about Trade Republic (TR) API inte
 
 | Method | How It Works | Status |
 |--------|--------------|--------|
-| **Web Login (Cookies)** | User logs in via browser, session cookies stored | ✅ WORKING - This is what we use |
-| **Keyfile (pytr)** | Phone + PIN + keyfile.pem for API auth | ❌ NOT USED - Requires 2FA setup per device |
+| **Web Login (Cookies)** | pytr web login matching `app.traderepublic.com`; session cookies stored | ✅ WORKING - This is what we use |
+| **Keyfile / device reset (old pytr)** | Phone + PIN + keyfile.pem for API auth | ❌ REMOVED - TR rejects the old client version |
 
-**Key Finding:** The user authenticates via web browser. The `pytr` library's keyfile-based auth requires a separate 2FA flow that most users won't do. We work around this by using cached data.
+**Key Finding:** TR now expects the pytr web-login flow with WAF handling and persisted cookies. The old keyfile/device-reset flow is not used.
 
 ### 1.2 pytr Library Endpoints
 
@@ -333,13 +333,13 @@ This gives a series that:
 
 **Solution:** Use name-based heuristics (works offline, instant)
 
-### 8.3 Keyfile-based Authentication
+### 8.3 Legacy Keyfile / Device-Reset Authentication
 
-**Attempted:** Use pytr's standard auth flow with keyfile.pem
+**Attempted:** Use pytr's old app-device auth flow with keyfile.pem
 
-**Result:** Requires user to do 2FA setup per device, most users use web login
+**Result:** Trade Republic now rejects this flow with `CLIENT_VERSION_OUTDATED`
 
-**Solution:** Support web login via cookies, use cached data
+**Solution:** Use pytr web login with WAF handling and persisted cookies
 
 ---
 

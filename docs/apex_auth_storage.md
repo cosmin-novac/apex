@@ -36,22 +36,22 @@ localStorage email/password auth has been removed.
 
 - One blob per user: `users/{uid}.enc` in the `apex-data` container.
 - Contents (JSON, then Fernet-encrypted):
-  `{portfolio, tr_creds, tr_keyfile, cached_at}`.
+  `{portfolio, tr_creds, tr_cookies, cached_at}`.
 - Per-user encryption: a Fernet key is derived from the master key
   `APEX_ENCRYPTION_KEY` via HKDF-SHA256 with the uid as `info`, so one user's
   derived key never exposes another's data.
-- **Durability**: the pytr device `tr_keyfile` is stored in the blob and
-  restored to disk on login, so silent reconnect survives App Service restarts
-  (the local disk is ephemeral).
+- **Durability**: pytr web-session cookies (`tr_cookies`) are stored in the
+  blob and restored to disk on login, so silent reconnect survives App Service
+  restarts (the local disk is ephemeral).
 
 ### Lifecycle
 
 - **Login** (`pages/portfolio_analysis.py::on_auth_change`): `restore_for_user(uid)`
-  loads the blob, materialises the keyfile, and hydrates `portfolio-data-store`
-  and `tr-encrypted-creds`.
+  loads the blob, materialises web-session cookies, and hydrates
+  `portfolio-data-store` and `tr-encrypted-creds`.
 - **TR connect / refresh / reconnect** (`components/tr_connector.py`) and
   **manual sync** (`portfolio_analysis.py::sync_data`): `snapshot_for_user(uid, …)`
-  writes the refreshed portfolio + creds + keyfile back to the blob.
+  writes the refreshed portfolio + creds + web-session cookies back to the blob.
 - **Logout**: connections are dropped server-side; the blob is left intact.
 
 If blob storage isn't configured (`AZURE_STORAGE_CONNECTION_STRING` unset, e.g.

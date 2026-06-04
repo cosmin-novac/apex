@@ -7,7 +7,7 @@ Stored as one Fernet-encrypted JSON blob per user in Azure Blob Storage:
     {
         "portfolio":  <portfolio-data-store JSON string>,   # last synced TR data
         "tr_creds":   <encrypted TR credentials string>,    # for silent reconnect
-        "tr_keyfile": <pytr keyfile PEM text>,              # device key (survives restarts)
+        "tr_cookies": <pytr web-session cookie jar text>,   # web session (survives restarts)
         "cached_at":  <ISO timestamp>
     }
 
@@ -80,10 +80,10 @@ def delete_user_data(uid: str) -> bool:
 
 def snapshot_for_user(uid: str, portfolio_json: Optional[str] = None,
                       tr_creds: Optional[str] = None) -> bool:
-    """Persist a user's portfolio, TR credentials and device keyfile to the blob.
+    """Persist a user's portfolio, TR credentials and web-session cookies.
 
-    The keyfile is read from the pytr cache so a silent reconnect survives the
-    ephemeral App Service disk being wiped.
+    The cookie jar is read from the pytr cache so a silent reconnect survives
+    the ephemeral App Service disk being wiped.
     """
     if not uid or not is_enabled():
         return False
@@ -93,21 +93,21 @@ def snapshot_for_user(uid: str, portfolio_json: Optional[str] = None,
         fields["portfolio"] = portfolio_json
     if tr_creds is not None:
         fields["tr_creds"] = tr_creds
-    pem = tr_api.read_keyfile(uid)
-    if pem:
-        fields["tr_keyfile"] = pem
+    cookie_text = tr_api.read_cookiefile(uid)
+    if cookie_text:
+        fields["tr_cookies"] = cookie_text
     return update_user_data(uid, **fields)
 
 
 def restore_for_user(uid: str) -> Dict[str, Any]:
-    """Load a user's blob and materialise the keyfile to disk for pytr.
+    """Load a user's blob and materialise web-session cookies to disk for pytr.
 
     Returns the decrypted data dict (``{}`` if none) so callers can hydrate
     the portfolio and TR-credential stores.
     """
     data = load_user_data(uid)
-    pem = data.get("tr_keyfile")
-    if pem:
+    cookie_text = data.get("tr_cookies")
+    if cookie_text:
         from components import tr_api
-        tr_api.restore_keyfile(uid, pem)
+        tr_api.restore_cookiefile(uid, cookie_text)
     return data

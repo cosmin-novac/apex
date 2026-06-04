@@ -20,13 +20,13 @@ from components.tr_api import (
     disconnect,
     drop_connection,
     is_connected,
-    has_keyfile
+    has_session
 )
 from components import user_data, clerk_auth
 
 
 def _persist_user_blob(uid, portfolio_data, creds=None):
-    """Back up a user's portfolio (+ optional creds + device keyfile) to the
+    """Back up a user's portfolio (+ optional creds + web-session cookies) to the
     durable encrypted blob. No-op when blob storage isn't configured."""
     try:
         vid = clerk_auth.current_user_id() or uid
@@ -350,8 +350,8 @@ def register_tr_callbacks(app):
     )
     def check_saved_credentials(_, encrypted_creds, current_user):
         uid = current_user or "_default"
-        # Show reconnect option if we have encrypted creds in browser AND keyfile on server
-        if encrypted_creds and has_keyfile(user_id=uid):
+        # Show reconnect option if we have encrypted creds in browser and TR web-session cookies on server.
+        if encrypted_creds and has_session(user_id=uid):
             return {"display": "block"}
         return {"display": "none"}
     

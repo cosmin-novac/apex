@@ -330,7 +330,7 @@ history = self._merge_history_with_invested(aggregate_history, invested_series)
 **Server storage** (`~/.pytr/`):
 - `portfolio_cache.json`: Persistent cache with pre-calculated TWR/drawdown series
 - `transactions_cache.json`: Raw transaction history
-- `keyfile.pem`: TR authentication key (required for reconnect)
+- `cookies.txt`: pytr web-session cookies (required for reconnect)
 
 **Data flow**: Server cache → Browser storage → UI
 **Priority**: Browser storage takes precedence for display (allows offline viewing)

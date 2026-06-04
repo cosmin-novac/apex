@@ -9,7 +9,7 @@ import os
 import json
 import base64
 import hashlib
-import requests
+import inspect
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import threading
@@ -24,18 +24,26 @@ from pytr.api import TradeRepublicApi
 from pytr.utils import get_logger
 from pytr.timeline import Timeline
 from pytr.event import Event
-from ecdsa import NIST256p, SigningKey
 
 # Setup logging
 log = get_logger(__name__)
 
-# Credentials storage path (server-side for keyfile only)
+# Credentials storage path (server-side for TR web-session cookies)
 TR_CREDENTIALS_DIR = Path.home() / ".pytr"
-TR_KEYFILE = TR_CREDENTIALS_DIR / "keyfile.pem"
 TR_TRANSACTIONS_CACHE = TR_CREDENTIALS_DIR / "transactions_cache.json"
 
 # Encryption key from environment (set this in your .env or hosting config)
 ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY", "default-dev-key-change-in-prod")
+TR_WAF_TOKEN_METHOD = os.environ.get("TR_WAF_TOKEN_METHOD", "playwright")
+
+
+def _without_waf_cookie(cookie_text: str) -> str:
+    """Remove volatile AWS WAF cookies from persisted Netscape cookie text."""
+    if not cookie_text:
+        return cookie_text
+    lines = [line for line in cookie_text.splitlines() if "aws-waf-token" not in line]
+    trailing_newline = "\n" if cookie_text.endswith(("\n", "\r\n")) and lines else ""
+    return "\n".join(lines) + trailing_newline
 
 
 def _get_cipher_key():
@@ -109,9 +117,12 @@ def friendly_tr_error(exc: Exception) -> str:
     """
     msg = str(exc)
     low = msg.lower()
-    if "processid" in low or "process id" in low:
-        return ("Trade Republic did not start the device pairing flow. "
-                "Please verify your phone number/PIN and try again in a minute.")
+    if "waf" in low:
+        return "Trade Republic web login could not obtain a WAF token. Try again, or set TR_WAF_TOKEN_METHOD=playwright."
+    if "unexpected keyword argument" in low and "waf_token" in low:
+        return "The installed pytr package is too old. Install pytr 0.4.9 or newer."
+    if "405" in low or "method not allowed" in low or "not allowed" in low:
+        return "Trade Republic rejected the web-login request. Restart the app and retry with TR_WAF_TOKEN_METHOD=playwright."
     if "expecting value" in low or "json" in low:
         return ("Trade Republic returned an empty response. The service may be "
                 "temporarily unavailable or is rate-limiting logins - please wait "
@@ -122,52 +133,20 @@ def friendly_tr_error(exc: Exception) -> str:
         return "Too many attempts. Please wait a few minutes before trying again."
     if "401" in low or "unauthorized" in low or "pin" in low:
         return "Login was rejected. Please double-check your phone number and PIN."
+    if "client_version_outdated" in low or "426" in low:
+        return "Trade Republic rejected the client version. Install pytr 0.4.9 or newer and restart the app."
     if "validation" in low or "code" in low or "400" in low:
         return "The verification code was invalid or has expired. Please request a new code."
     return msg or "Connection to Trade Republic failed. Please try again."
 
 
-class TRLoginError(RuntimeError):
-    """A sanitized Trade Republic login error suitable for logs and UI."""
-
-
-def _extract_process_id(payload: Any) -> Optional[str]:
-    """Find the process id in a TR auth response.
-
-    pytr assumes exactly ``processId``. TR has changed response shapes before,
-    so accept common spellings and one-level nested payloads while still
-    failing loudly when the response is actually an error object.
-    """
-    if not isinstance(payload, dict):
-        return None
-    for key in ("processId", "processID", "process_id", "id"):
-        value = payload.get(key)
-        if isinstance(value, str) and value:
-            return value
-    for key in ("data", "result", "process"):
-        nested = payload.get(key)
-        if isinstance(nested, dict):
-            value = _extract_process_id(nested)
-            if value:
-                return value
-    return None
-
-
-def _summarize_tr_errors(payload: Any) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    errors = payload.get("errors") or payload.get("error") or payload.get("message")
-    if isinstance(errors, list):
-        parts = []
-        for item in errors:
-            if isinstance(item, dict):
-                parts.append(str(item.get("message") or item.get("code") or item.get("error") or item))
-            else:
-                parts.append(str(item))
-        return "; ".join(parts)
-    if isinstance(errors, dict):
-        return str(errors.get("message") or errors.get("code") or errors)
-    return str(errors or "")
+def _modern_web_login_supported() -> bool:
+    """True when installed pytr supports the current WAF-aware web login."""
+    try:
+        params = inspect.signature(TradeRepublicApi).parameters
+        return "waf_token" in params and "cookies_file" in params
+    except Exception:
+        return False
 
 
 class TRConnection:
@@ -196,12 +175,12 @@ class TRConnection:
         self._user_cache_dir = TR_CREDENTIALS_DIR / user_id
         self._user_cache_dir.mkdir(parents=True, exist_ok=True)
         self._instrument_cache_path = self._user_cache_dir / "instrument_cache.json"
-        self._keyfile_path = self._user_cache_dir / "keyfile.pem"
+        self._cookies_path = self._user_cache_dir / "cookies.txt"
 
         # Migrate legacy (non-namespaced) caches into the _default bucket
         # so existing single-user setups keep working without a re-sync.
         if user_id == "_default":
-            for legacy_name in ("portfolio_cache.json", "transactions_cache.json", "instrument_cache.json", "keyfile.pem"):
+            for legacy_name in ("portfolio_cache.json", "transactions_cache.json", "instrument_cache.json", "cookies.txt"):
                 legacy = TR_CREDENTIALS_DIR / legacy_name
                 dest   = self._user_cache_dir / legacy_name
                 if legacy.exists() and not dest.exists():
@@ -256,9 +235,33 @@ class TRConnection:
         with self._op_lock:
             return self.run(coro, timeout=timeout)
 
+    def _new_api(self) -> TradeRepublicApi:
+        if not _modern_web_login_supported():
+            raise RuntimeError("The installed pytr package is too old. Install pytr 0.4.9 or newer.")
+        return TradeRepublicApi(
+            phone_no=self.phone_no,
+            pin=self.pin,
+            save_cookies=True,
+            cookies_file=str(self._cookies_path),
+            waf_token=TR_WAF_TOKEN_METHOD,
+        )
+
+    def _strip_waf_cookie_file(self) -> None:
+        """Drop stale AWS WAF token cookies from the persisted pytr jar."""
+        if not self._cookies_path.exists():
+            return
+        try:
+            current = self._cookies_path.read_text(encoding="utf-8")
+            cleaned = _without_waf_cookie(current)
+            if cleaned != current:
+                self._cookies_path.write_text(cleaned, encoding="utf-8")
+                log.info("Removed persisted aws-waf-token cookie for user=%s", self.user_id)
+        except Exception as e:
+            log.warning("Failed to sanitize TR cookie file for %s: %s", self.user_id, e)
+
     def has_credentials(self) -> bool:
-        """Best-effort check for a reusable TR session (keyfile)."""
-        return self._keyfile_path.exists()
+        """Best-effort check for a reusable TR web session."""
+        return self._cookies_path.exists()
 
     def _load_instrument_cache(self) -> Dict[str, str]:
         try:
@@ -2232,9 +2235,9 @@ class TRConnection:
         
         return history
     
-    def has_keyfile(self) -> bool:
-        """Check if keyfile exists (needed for reconnect)."""
-        return self._keyfile_path.exists()
+    def has_session(self) -> bool:
+        """Check if a pytr web-session cookie file exists (needed for reconnect)."""
+        return self._cookies_path.exists()
     
     def get_encrypted_credentials(self, phone_no: str, pin: str) -> str:
         """Encrypt credentials for browser storage."""
@@ -2250,81 +2253,19 @@ class TRConnection:
         return False
     
     def clear_credentials(self):
-        """Clear credentials and keyfile."""
-        if self._keyfile_path.exists():
-            self._keyfile_path.unlink()
+        """Clear credentials and web-session cookies."""
+        if self._cookies_path.exists():
+            self._cookies_path.unlink()
         self.phone_no = None
         self.pin = None
         self.is_connected = False
         self.api = None
-
-    def _initiate_device_reset(self) -> int:
-        """Start TR device pairing and store the process id on the pytr client.
-
-        The installed pytr version indexes ``response["processId"]`` directly,
-        which turns any changed/error response into a bare ``KeyError``. Keeping
-        the request here lets Apex handle TR's response safely without forking
-        pytr.
-        """
-        if not self.api:
-            raise TRLoginError("Trade Republic API client is not initialized.")
-
-        self.api.sk = SigningKey.generate(curve=NIST256p, hashfunc=hashlib.sha512)
-        url = f"{self.api._host}/api/v1/auth/account/reset/device"
-        response = requests.post(
-            url,
-            json={"phoneNumber": self.phone_no, "pin": self.pin},
-            headers=self.api._default_headers,
-            timeout=30,
-        )
-
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise TRLoginError(
-                f"Trade Republic returned HTTP {response.status_code} without a JSON body."
-            ) from exc
-
-        process_id = _extract_process_id(payload)
-        if not process_id:
-            error_text = _summarize_tr_errors(payload)
-            keys = sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__
-            log.warning(
-                "TR device reset did not include process id: status=%s keys=%s error=%s",
-                response.status_code,
-                keys,
-                error_text or "<none>",
-            )
-            if response.status_code in (401, 403):
-                raise TRLoginError("Trade Republic rejected the phone number or PIN.")
-            if response.status_code == 429:
-                raise TRLoginError("Trade Republic is rate-limiting login attempts.")
-            if error_text:
-                raise TRLoginError(error_text)
-            raise TRLoginError(
-                f"Trade Republic did not return a process id (HTTP {response.status_code})."
-            )
-
-        self.api._process_id = process_id
-        countdown = 60
-        if isinstance(payload, dict):
-            raw_countdown = payload.get("countdownInSeconds") or payload.get("countdown")
-            try:
-                countdown = max(1, int(raw_countdown))
-            except Exception:
-                pass
-        return countdown
     
     async def _initiate_web_login(self, phone_no: str, pin: str) -> Dict[str, Any]:
         """
         Initiate the Trade Republic login - sends a 4-digit code to the TR app.
 
-        Uses pytr's *device-reset* (app pairing) flow rather than the legacy
-        web-login endpoint. Trade Republic disabled ``/api/v1/auth/web/login``
-        (it now returns HTTP 405 with an empty body, which pytr would surface as
-        the cryptic ``Expecting value: line 1 column 1`` JSON error). The
-        device-reset flow is the one that's still live and, on completion, writes
-        the keyfile that :meth:`_reconnect` depends on.
+        Uses pytr's current WAF-aware web login, matching app.traderepublic.com.
         """
         try:
             normalized = normalize_phone(phone_no)
@@ -2337,15 +2278,15 @@ class TRConnection:
             self.phone_no = normalized
             self.pin = pin
 
-            # Create API instance
-            self.api = TradeRepublicApi(
-                phone_no=normalized,
-                pin=pin,
-                keyfile=str(self._keyfile_path)
-            )
+            self._user_cache_dir.mkdir(parents=True, exist_ok=True)
+            if self._cookies_path.exists():
+                self._cookies_path.unlink()
+            self.api = self._new_api()
 
-            # Pair this device (sends a 4-digit code to the TR app) - SYNC call.
-            countdown = self._initiate_device_reset()
+            # Starts web login and sends a 4-digit code to the TR app/SMS.
+            # pytr's Playwright WAF resolver is sync-only, so keep it out of
+            # Apex's asyncio worker loop.
+            countdown = await asyncio.to_thread(self.api.initiate_weblogin)
 
             return {
                 "success": True,
@@ -2373,16 +2314,9 @@ class TRConnection:
             if len(code) != 4 or not code.isdigit():
                 return {"success": False, "error": "Please enter the 4-digit code from your TR app."}
 
-            # Complete device pairing with the code. On success pytr writes the
-            # keyfile; we then log in to obtain session tokens. Both are SYNC.
-            self.api.complete_device_reset(code)
-
-            if not self._keyfile_path.exists():
-                # pytr only writes the keyfile on a 200 response, so a missing
-                # keyfile means the code was wrong or expired.
-                return {"success": False, "error": "The verification code was invalid or has expired. Please request a new code."}
-
-            self.api.login()
+            # Complete web login. pytr persists session cookies for reconnect.
+            await asyncio.to_thread(self.api.complete_weblogin, code)
+            self._strip_waf_cookie_file()
             self.is_connected = True
 
             # Return encrypted credentials for browser storage
@@ -2805,7 +2739,7 @@ class TRConnection:
         return None
     
     async def _reconnect(self, encrypted_credentials: str = None) -> Dict[str, Any]:
-        """Reconnect using encrypted credentials from browser."""
+        """Reconnect using encrypted credentials and persisted web-session cookies."""
         try:
             # Decrypt credentials from browser storage
             if encrypted_credentials:
@@ -2815,19 +2749,14 @@ class TRConnection:
             if not self.phone_no or not self.pin:
                 return {"success": False, "error": "No credentials available", "needs_reauth": True}
             
-            if not self._keyfile_path.exists():
+            if not self._cookies_path.exists():
                 return {"success": False, "error": "Session expired - please log in again", "needs_reauth": True}
             
             self._user_cache_dir.mkdir(parents=True, exist_ok=True)
-            
-            self.api = TradeRepublicApi(
-                phone_no=self.phone_no,
-                pin=self.pin,
-                keyfile=str(self._keyfile_path)
-            )
-            
-            # Try to login with existing keyfile - THIS IS SYNC, not async!
-            self.api.login()
+            self._strip_waf_cookie_file()
+
+            self.api = self._new_api()
+            await asyncio.to_thread(self.api.resume_websession)
             self.is_connected = True
             
             return {
@@ -2931,9 +2860,9 @@ def disconnect(user_id: str = "_default"):
     drop_connection(user_id)
 
 
-def has_keyfile(user_id: str = "_default") -> bool:
-    """Check if keyfile exists for reconnect."""
-    return get_connection(user_id).has_keyfile()
+def has_session(user_id: str = "_default") -> bool:
+    """Check if persisted pytr web-session cookies exist for reconnect."""
+    return get_connection(user_id).has_session()
 
 
 def is_connected(user_id: str = "_default") -> bool:
@@ -2941,28 +2870,24 @@ def is_connected(user_id: str = "_default") -> bool:
     return get_connection(user_id).is_connected
 
 
-def read_keyfile(user_id: str = "_default") -> Optional[str]:
-    """Return the pytr device keyfile (PEM text) for *user_id*, or None.
-
-    Used to back the keyfile up into the per-user encrypted blob so that
-    silent reconnect keeps working after the ephemeral server disk is wiped.
-    """
-    p = get_connection(user_id)._keyfile_path
+def read_cookiefile(user_id: str = "_default") -> Optional[str]:
+    """Return the pytr web-session cookie jar text for *user_id*, or None."""
+    p = get_connection(user_id)._cookies_path
     try:
-        return p.read_text() if p.exists() else None
+        return _without_waf_cookie(p.read_text(encoding="utf-8")) if p.exists() else None
     except Exception:
         return None
 
 
-def restore_keyfile(user_id: str, pem: str) -> bool:
-    """Write a previously backed-up keyfile (PEM text) back to disk for pytr."""
-    if not pem:
+def restore_cookiefile(user_id: str, cookie_text: str) -> bool:
+    """Write a previously backed-up pytr web-session cookie jar to disk."""
+    if not cookie_text:
         return False
     conn = get_connection(user_id)
     try:
         conn._user_cache_dir.mkdir(parents=True, exist_ok=True)
-        conn._keyfile_path.write_text(pem)
+        conn._cookies_path.write_text(_without_waf_cookie(cookie_text), encoding="utf-8")
         return True
     except Exception as e:
-        log.warning(f"Failed to restore keyfile for {user_id}: {e}")
+        log.warning(f"Failed to restore TR web-session cookies for {user_id}: {e}")
         return False
