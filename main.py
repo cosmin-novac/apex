@@ -31,9 +31,14 @@ from components.settings_modal import settings_button, settings_modal, api_key_s
 from components.rule_builder import register_rule_builder_callbacks
 from components.auth import user_store, register_auth_callbacks
 from components.i18n import t, get_lang
+from components.tr_api import ensure_playwright_browser
 
 log = logging.getLogger(__name__)
 log.info("Starting Apex application")
+try:
+    ensure_playwright_browser()
+except Exception as exc:
+    log.warning("Playwright browser bootstrap failed during startup: %s", exc)
 
 _dash_duplicate_callback_counter = _count(1)
 

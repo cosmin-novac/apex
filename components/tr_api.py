@@ -11,6 +11,8 @@ import base64
 import hashlib
 import inspect
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import threading
@@ -36,6 +38,22 @@ TR_TRANSACTIONS_CACHE = TR_CREDENTIALS_DIR / "transactions_cache.json"
 # Encryption key from environment (set this in your .env or hosting config)
 ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY", "default-dev-key-change-in-prod")
 TR_WAF_TOKEN_METHOD = os.environ.get("TR_WAF_TOKEN_METHOD", "playwright")
+
+
+def _default_playwright_browsers_dir() -> Path:
+    """Pick a browser cache path that survives Azure App Service restarts."""
+    if os.name != "nt" and Path("/home").exists():
+        return Path("/home") / "playwright-browsers"
+    return TR_CREDENTIALS_DIR / "playwright-browsers"
+
+
+PLAYWRIGHT_BROWSERS_DIR = Path(
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(_default_playwright_browsers_dir()))
+)
+PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 10 * 60
+TR_LOGIN_INIT_TIMEOUT_SECONDS = 5 * 60
+_playwright_install_lock = threading.Lock()
+_playwright_install_completed = False
 
 
 def _safe_user_id(user_id: str) -> str:
@@ -156,6 +174,37 @@ def _modern_web_login_supported() -> bool:
         return "waf_token" in params and "cookies_file" in params
     except Exception:
         return False
+
+
+def _playwright_browser_install_needed() -> bool:
+    """Return True when the configured browser cache is still empty."""
+    return not any(PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-linux/chrome")) and not any(
+        PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-win/chrome.exe")
+    ) and not any(PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-mac/Chromium.app"))
+
+
+def ensure_playwright_browser() -> None:
+    """Install the Playwright Chromium bundle once when WAF login needs it."""
+    global _playwright_install_completed
+
+    if TR_WAF_TOKEN_METHOD != "playwright":
+        return
+    if _playwright_install_completed and not _playwright_browser_install_needed():
+        return
+
+    with _playwright_install_lock:
+        if _playwright_install_completed and not _playwright_browser_install_needed():
+            return
+
+        PLAYWRIGHT_BROWSERS_DIR.mkdir(parents=True, exist_ok=True)
+        log.info("Ensuring Playwright Chromium browser is installed in %s", PLAYWRIGHT_BROWSERS_DIR)
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            check=True,
+            timeout=PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS,
+            env=os.environ.copy(),
+        )
+        _playwright_install_completed = True
 
 
 class TRConnection:
@@ -2384,6 +2433,7 @@ class TRConnection:
             self._user_cache_dir.mkdir(parents=True, exist_ok=True)
             if self._cookies_path.exists():
                 self._cookies_path.unlink()
+            await asyncio.to_thread(ensure_playwright_browser)
             self.api = self._new_api()
 
             # Starts web login and sends a 4-digit code to the TR app/SMS.
@@ -2930,7 +2980,7 @@ def has_saved_credentials(user_id: str = "_default") -> bool:
 def initiate_login(phone_no: str, pin: str, user_id: str = "_default") -> Dict[str, Any]:
     """Start the login process - sends verification code to TR app."""
     conn = get_connection(user_id)
-    return conn.run(conn._initiate_web_login(phone_no, pin))
+    return conn.run(conn._initiate_web_login(phone_no, pin), timeout=TR_LOGIN_INIT_TIMEOUT_SECONDS)
 
 
 def complete_login(code: str, user_id: str = "_default") -> Dict[str, Any]:

@@ -61,7 +61,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "pa.demo_banner":           {"en": " - You are viewing sample data. ",
                                  "de": " - Du siehst Beispieldaten. "},
     "pa.demo_login":            {"en": "Log in",                   "de": "Anmelden"},
-    "pa.demo_login_connected":   {"en": "Connect Trade Republic",  "de": "Trade Republic Verbinden"},
+    "pa.demo_login_connected":   {"en": "Connect Trade Republic",  "de": "Verbinde Trade Republic"},
     "pa.demo_suffix":           {"en": " and sync your Trade Republic account to see your real portfolio.",
                                  "de": " und synchronisiere dein Trade Republic-Konto, um dein echtes Portfolio zu sehen."},
     "pa.demo_suffix_connected": {"en": " to see your real portfolio.",
