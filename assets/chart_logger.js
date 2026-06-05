@@ -283,7 +283,8 @@
           paper_bgcolor: theme.cardBg,
           plot_bgcolor: theme.cardBg,
           'annotations[0].font.color': theme.textSecondary,
-          'annotations[1].font.color': theme.textPrimary
+          'annotations[1].font.color': theme.textPrimary,
+          'annotations[2].font.color': theme.textPrimary
         });
         // Clear flag after plot settles (promise if available; fallback timeout).
         if (p && typeof p.then === 'function') {
@@ -305,31 +306,19 @@
       };
     }
 
-    function setCenterText(nameText, valueText) {
+    function setCenterText(nameText, valueText, percentText) {
       if (typeof Plotly !== 'undefined' && Plotly.relayout) {
         Plotly.relayout(gd, {
           'annotations[0].text': nameText,
-          'annotations[1].text': valueText
+          'annotations[1].text': valueText,
+          'annotations[2].text': percentText || ''
         });
       }
-    }
-
-    function suppressNativeTooltip() {
-      if (typeof Plotly === 'undefined' || !Plotly.restyle) return;
-      try {
-        var trace = gd.data && gd.data[0];
-        if (trace && trace.hoverinfo === 'none' && (trace.hovertemplate == null || trace.hovertemplate === '')) return;
-        Plotly.restyle(gd, {
-          hoverinfo: 'none',
-          hovertemplate: null
-        }, [0]);
-      } catch (e) {}
     }
 
     var defaults = getDefaultCenter();
     gd.__donutBaseCenter = defaults;
     gd.__donutHovering = false;
-    suppressNativeTooltip();
     applyTheme();
 
     if (typeof gd.on === 'function') {
@@ -341,20 +330,19 @@
           var label = pt.label || (pt.data && pt.data.name) || 'Position';
           var value = (pt.value != null) ? pt.value : (pt.y != null ? pt.y : null);
           var percent = getPointPercent(pt);
-          var percentText = percent == null ? '' : '<br><span style="font-size:12px">' + formatPercent(percent) + '</span>';
-          setCenterText(String(label).slice(0, 24), formatCurrency(value) + percentText);
+          var percentText = percent == null ? '' : formatPercent(percent);
+          setCenterText(String(label).slice(0, 24), formatCurrency(value), percentText);
         } catch (e) {}
       });
 
       gd.on('plotly_unhover', function () {
         gd.__donutHovering = false;
         defaults = gd.__donutBaseCenter || defaults;
-        setCenterText(defaults.name, defaults.value);
+        setCenterText(defaults.name, defaults.value, defaults.percent);
       });
 
       gd.on('plotly_afterplot', function () {
         if (gd.__donutThemeApplying) return;
-        suppressNativeTooltip();
         if (!gd.__donutHovering) {
           defaults = getDefaultCenter();
           gd.__donutBaseCenter = defaults;

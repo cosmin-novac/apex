@@ -440,7 +440,7 @@ def layout(lang="en"):
                     ),
                 ], className="py-2"),
             ], className="card-modern h-100"),
-        ], md=7, className="mb-3"),
+        ], md=8, className="mb-3"),
         
         # Hover details
         dbc.Col([
@@ -450,10 +450,10 @@ def layout(lang="en"):
                     t("pa.chart_details", lang)
                 ], className="card-header-modern"),
                 dbc.CardBody([
-                    html.Div(id="chart-hover-details", className="chart-hover-details"),
+                    html.Div(id="chart-hover-details", className="chart-hover-details sensitive"),
                 ], className="py-2"),
             ], className="card-modern h-100"),
-        ], md=5, className="mb-3"),
+        ], md=4, className="mb-3"),
     ]),
 
     # Performance Comparison Table
@@ -911,7 +911,7 @@ def register_callbacks(app):
                 values=values, labels=labels, hole=0.7,
                 marker=dict(colors=colors[:len(values)]),
                 textinfo="none",
-                hovertemplate="<b>%{label}</b><br>€%{value:,.2f}<br>%{percent:.1%}<extra></extra>",
+                hoverinfo="none",
             ))
 
             fig.update_layout(
@@ -920,10 +920,12 @@ def register_callbacks(app):
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 annotations=[
-                    dict(text=t("pa.portfolio", lang), x=0.5, y=0.55, showarrow=False,
+                    dict(text=t("pa.portfolio", lang), x=0.5, y=0.60, showarrow=False,
                          font=dict(size=11, color="#94a3b8")),
-                    dict(text=center_value, x=0.5, y=0.45, showarrow=False,
+                    dict(text=center_value, x=0.5, y=0.49, showarrow=False,
                          font=dict(size=18, color="#f8fafc")),
+                    dict(text="", x=0.5, y=0.38, showarrow=False,
+                         font=dict(size=12, color="#f8fafc")),
                 ]
             )
             return fig
@@ -1854,7 +1856,7 @@ def register_callbacks(app):
                 y_data = df['value']
                 y_title = t("pa.yaxis_value", lang)
                 y_prefix = "€"
-                fill_color = "rgba(99, 102, 241, 0.1)"
+                fill_color = "rgba(99, 102, 241, 0.12)"
             elif chart_type == "tab-performance":
                 # Time-Weighted Return (TWR) - use cached if available, else calculate
                 if use_cached and 'twr' in df.columns:
@@ -1879,7 +1881,7 @@ def register_callbacks(app):
                     y_data = pd.Series(dd_list, index=df.index)
                 y_title = t("pa.yaxis_drawdown", lang)
                 y_prefix = ""
-                fill_color = "rgba(239, 68, 68, 0.2)"
+                fill_color = "rgba(239, 68, 68, 0.14)"
             
             # Portfolio line
             if chart_type == "tab-value":
@@ -1940,7 +1942,7 @@ def register_callbacks(app):
                     name='Portfolio',
                     line=dict(color='#10b981', width=0),
                     fill='tozeroy',
-                    fillcolor='rgba(16, 185, 129, 0.4)',
+                    fillcolor='rgba(16, 185, 129, 0.16)',
                     hoverinfo='skip',
                     showlegend=False,
                 ))
@@ -1953,7 +1955,7 @@ def register_callbacks(app):
                     name='Portfolio (negative)',
                     line=dict(color='#ef4444', width=0),
                     fill='tozeroy',
-                    fillcolor='rgba(239, 68, 68, 0.4)',
+                    fillcolor='rgba(239, 68, 68, 0.16)',
                     hoverinfo='skip',
                     showlegend=False,
                 ))
@@ -2036,8 +2038,13 @@ def register_callbacks(app):
                             y=_series_to_number_list(bench_y),
                             mode='lines',
                             name=benchmark_names.get(bench, bench),
-                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.5, dash='dot'),
-                            hovertemplate=hovertemplate,
+                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6, dash='dot', shape='spline', smoothing=0.35),
+                            customdata=_make_hover_meta(
+                                benchmark_names.get(bench, bench),
+                                "percent" if chart_type == "tab-performance" else "currency",
+                                len(sim_df),
+                            ),
+                            hoverinfo='none',
                         ))
                     else:
                         # Fallback: if simulation isn't available, use normalized index data.
@@ -2061,34 +2068,57 @@ def register_callbacks(app):
                             y=_series_to_number_list(bench_y),
                             mode='lines',
                             name=benchmark_names.get(bench, bench),
-                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.5, dash='dot'),
+                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6, dash='dot', shape='spline', smoothing=0.35),
+                            customdata=_make_hover_meta(
+                                benchmark_names.get(bench, bench),
+                                "percent" if chart_type == "tab-performance" else "currency",
+                                len(bench_data),
+                            ),
+                            hoverinfo='none',
                         ))
             
             fig.update_layout(
                 height=320,
-                margin=dict(l=40, r=20, t=20, b=40),
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                font=dict(family="Inter, sans-serif", size=11),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                margin=dict(l=34, r=12, t=12, b=34),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Inter, sans-serif", size=11, color="#64748b"),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="center",
+                    x=0.5,
+                    bgcolor="rgba(255,255,255,0)",
+                    font=dict(size=10),
+                ),
                 xaxis=dict(
                     showgrid=True, 
-                    gridcolor="#f3f4f6", 
+                    gridcolor="rgba(148, 163, 184, 0.14)",
                     tickformat="%b %Y" if selected_range in ["max", "1y"] else "%d %b",
-                    hoverformat="%d %b %Y",  # Always show full date in hover tooltip
+                    hoverformat="%d %b %Y",
+                    showline=False,
+                    zeroline=False,
+                    showspikes=True,
+                    spikecolor="rgba(99, 102, 241, 0.28)",
+                    spikethickness=1,
+                    spikedash="solid",
+                    spikesnap="cursor",
                 ),
                 yaxis=dict(
                     showgrid=True, 
-                    gridcolor="#f3f4f6", 
-                    title=y_title,
+                    gridcolor="rgba(148, 163, 184, 0.14)",
+                    title="",
                     tickprefix=y_prefix if chart_type == "tab-value" else "",
                     ticksuffix="%" if chart_type != "tab-value" else "",
                     zeroline=True if chart_type == "tab-performance" else False,
-                    zerolinecolor="#9ca3af",
+                    zerolinecolor="rgba(100, 116, 139, 0.35)",
                     zerolinewidth=1,
                     rangemode="tozero" if chart_type == "tab-performance" else "normal",
                 ),
-                hovermode="x unified",
+                hovermode="x",
+                hoverdistance=80,
+                spikedistance=80,
             )
 
             # Cache successful figure builds so reloads are instant.
@@ -2153,32 +2183,70 @@ def register_callbacks(app):
             lang=lang,
         )
 
-    # Performance chart (benchmarks only here)
     @app.callback(
-        Output("performance-chart", "figure"),
-        [Input("portfolio-data-store", "data"),
-         Input("selected-range", "data"),
-         Input("benchmark-selector", "value"),
-         Input("asset-class-filter", "value")],
-        [State("url", "pathname"),
-         State("lang-store", "data")],
+        Output("chart-hover-details", "children"),
+        [Input("main-portfolio-chart-v2", "hoverData"),
+         Input("chart-tabs", "active_tab")],
+        State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_performance_chart(data_json, selected_range, benchmarks, asset_class, pathname, lang_data):
+    def update_chart_hover_details(hover_data, active_tab, lang_data):
         lang = get_lang(lang_data)
-        # Use deposits for benchmark simulation if "cash" is included in asset filter
-        use_deposits = "cash" in (asset_class or [])
-        return build_portfolio_chart(
-            data_json,
-            "tab-performance",
-            selected_range,
-            benchmarks,
-            pathname,
-            include_benchmarks=True,
-            asset_class=asset_class,
-            use_deposits=use_deposits,
-            lang=lang,
-        )
+
+        def _fmt_date(value):
+            try:
+                dt = pd.to_datetime(value)
+                return dt.strftime("%d %b %Y")
+            except Exception:
+                return value or ""
+
+        def _fmt_value(value, unit):
+            try:
+                v = float(value)
+            except Exception:
+                return "—"
+            if unit == "currency":
+                return f"€{v:,.2f}"
+            return f"{v:+.2f}%"
+
+        if not hover_data or not hover_data.get("points"):
+            label = {
+                "tab-value": t("pa.value", lang),
+                "tab-drawdown": t("pa.drawdown", lang),
+                "tab-performance": t("pa.performance", lang),
+            }.get(active_tab, t("pa.value", lang))
+            return html.Div([
+                html.Div(label, className="chart-detail-kicker"),
+                html.Div(t("pa.chart_hover_empty", lang), className="chart-detail-empty"),
+            ])
+
+        points = hover_data.get("points", [])
+        date_text = _fmt_date(points[0].get("x"))
+        rows = []
+        seen = set()
+        for point in points:
+            meta = point.get("customdata") or []
+            if not isinstance(meta, (list, tuple)) or len(meta) < 2:
+                continue
+            name, unit = str(meta[0]), str(meta[1])
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            rows.append(html.Div([
+                html.Span(name, className="chart-detail-name"),
+                html.Span(_fmt_value(point.get("y"), unit), className="chart-detail-value"),
+            ], className="chart-detail-row"))
+
+        if not rows:
+            return html.Div([
+                html.Div(date_text, className="chart-detail-date"),
+                html.Div(t("pa.chart_hover_empty", lang), className="chart-detail-empty"),
+            ])
+
+        return html.Div([
+            html.Div(date_text, className="chart-detail-date"),
+            html.Div(rows, className="chart-detail-list"),
+        ])
 
     # Privacy mode toggle (clientside so it reacts instantly)
     app.clientside_callback(

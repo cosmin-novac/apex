@@ -201,7 +201,7 @@ def create_rule_builder_card():
             ], className="rules-action-group"),
             html.Div([
                 dbc.Button(
-                    [html.I(className="bi bi-floppy me-1"), "Save"],
+                    [html.I(className="bi bi-save me-1"), "Save"],
                     id="open-save-rules-modal",
                     color="secondary",
                     outline=True,

@@ -1335,11 +1335,13 @@ input.compact-input {
     margin-bottom: 14px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    overflow: hidden;
+    overflow: visible;
     background: var(--content-bg);
+    position: relative;
 }
 .qb-details[open] {
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    z-index: 1100;
 }
 
 .qb-summary {
@@ -1373,6 +1375,7 @@ input.compact-input {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    overflow: visible;
 }
 
 .qb-row {
@@ -1380,6 +1383,7 @@ input.compact-input {
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
+    overflow: visible;
 }
 
 .qb-dropdown {
@@ -1387,11 +1391,27 @@ input.compact-input {
     min-width: 150px;
     max-width: 220px;
     font-size: 0.8rem !important;
+    position: relative;
+    z-index: 1101;
 }
 
 .qb-dropdown-small {
     width: 80px !important;
     flex: 0 0 auto;
+    position: relative;
+    z-index: 1101;
+}
+
+.qb-dropdown .Select-menu-outer,
+.qb-dropdown-small .Select-menu-outer {
+    z-index: 1200 !important;
+    min-width: 260px;
+    max-width: min(360px, calc(100vw - 48px));
+    overflow: visible;
+}
+
+.qb-dropdown-small .Select-menu-outer {
+    min-width: 96px;
 }
 
 .qb-custom-input {
@@ -2481,6 +2501,77 @@ hr {
 .portfolio-analysis-page .nav-tabs .nav-link.active {
     color: var(--primary-color);
     background: rgba(99, 102, 241, 0.12);
+}
+
+/* Minimal main chart: details live in the side panel instead of Plotly hover boxes */
+#main-portfolio-chart-v2 .hoverlayer,
+#holdings-donut-chart .hoverlayer {
+    display: none !important;
+}
+
+.chart-hover-details {
+    min-height: 286px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.chart-detail-kicker {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+}
+
+.chart-detail-date {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+}
+
+.chart-detail-empty {
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    line-height: 1.5;
+    padding: 16px 0;
+}
+
+.chart-detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chart-detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.chart-detail-row:last-child {
+    border-bottom: none;
+}
+
+.chart-detail-name {
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chart-detail-value {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 /* Range Buttons */
