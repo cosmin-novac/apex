@@ -419,6 +419,7 @@ def layout(lang="en"):
                     dbc.Tabs([
                         dbc.Tab(label=t("pa.value", lang), tab_id="tab-value"),
                         dbc.Tab(label=t("pa.drawdown", lang), tab_id="tab-drawdown"),
+                        dbc.Tab(label=t("pa.performance", lang), tab_id="tab-performance"),
                     ], id="chart-tabs", active_tab="tab-value", className="mb-2"),
                     
                     dcc.Loading(
@@ -431,6 +432,7 @@ def layout(lang="en"):
                                 "doubleClick": "reset",
                                 "responsive": True,
                             },
+                            clear_on_unhover=True,
                             style={"height": "330px"},
                         ),
                         type="circle",
@@ -440,29 +442,15 @@ def layout(lang="en"):
             ], className="card-modern h-100"),
         ], md=7, className="mb-3"),
         
-        # Performance Chart
+        # Hover details
         dbc.Col([
             dbc.Card([
                 dbc.CardHeader([
-                    html.I(className="bi bi-graph-up-arrow me-2"),
-                    t("pa.performance", lang)
+                    html.I(className="bi bi-crosshair me-2"),
+                    t("pa.chart_details", lang)
                 ], className="card-header-modern"),
                 dbc.CardBody([
-                    dcc.Loading(
-                        dcc.Graph(
-                            id="performance-chart",
-                            config={
-                                "displayModeBar": False,
-                                "displaylogo": False,
-                                "scrollZoom": False,
-                                "doubleClick": "reset",
-                                "responsive": True,
-                            },
-                            style={"height": "330px"},
-                        ),
-                        type="circle",
-                        color="#10b981"
-                    ),
+                    html.Div(id="chart-hover-details", className="chart-hover-details"),
                 ], className="py-2"),
             ], className="card-modern h-100"),
         ], md=5, className="mb-3"),
@@ -1852,6 +1840,9 @@ def register_callbacks(app):
 
             # Use ISO date strings to keep JSON simple and avoid dtype encodings
             x_dates = df['date'].dt.strftime('%Y-%m-%d').tolist()
+
+            def _make_hover_meta(name, unit, n):
+                return [[name, unit] for _ in range(n)]
             
             # Get actual portfolio data
             portfolio = data.get("data", {})
@@ -1913,10 +1904,11 @@ def register_callbacks(app):
                     y=_series_to_number_list(y_data),
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#6366f1', width=2),
+                    line=dict(color='#6366f1', width=2.5, shape='spline', smoothing=0.35),
                     fill='tonexty',
                     fillcolor=fill_color,
-                    hovertemplate=portfolio_hover,
+                    customdata=_make_hover_meta(t("pa.portfolio", lang), "currency", len(x_dates)),
+                    hoverinfo='none',
                 ))
                 
                 # Add invested/added capital line (shows money added over time)
@@ -1927,8 +1919,9 @@ def register_callbacks(app):
                         y=_series_to_number_list(df['invested']),
                         mode='lines',
                         name=t("pa.added_capital", lang),
-                        line=dict(color='#f59e0b', width=2),
-                        hovertemplate=invested_hover,
+                        line=dict(color='#f59e0b', width=2, shape='spline', smoothing=0.35),
+                        customdata=_make_hover_meta(t("pa.added_capital", lang), "currency", len(x_dates)),
+                        hoverinfo='none',
                     ))
             elif chart_type == "tab-performance":
                 # Performance chart with green above 0% and red below 0% (Parqet style)
@@ -1971,8 +1964,9 @@ def register_callbacks(app):
                     y=y_values,
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#6366f1', width=2),
-                    hovertemplate=portfolio_hover,
+                    line=dict(color='#10b981', width=2.5, shape='spline', smoothing=0.35),
+                    customdata=_make_hover_meta(t("pa.portfolio", lang), "percent", len(x_dates)),
+                    hoverinfo='none',
                 ))
             else:
                 # Drawdown chart
@@ -1982,10 +1976,11 @@ def register_callbacks(app):
                     y=_series_to_number_list(y_data),
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#6366f1', width=2),
+                    line=dict(color='#ef4444', width=2.5, shape='spline', smoothing=0.35),
                     fill='tozeroy' if fill_color else None,
                     fillcolor=fill_color,
-                    hovertemplate=portfolio_hover,
+                    customdata=_make_hover_meta(t("pa.portfolio", lang), "percent", len(x_dates)),
+                    hoverinfo='none',
                 ))
             
             if include_benchmarks and chart_type in ["tab-performance", "tab-value"]:

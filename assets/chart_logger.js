@@ -186,6 +186,41 @@
     }
   }
 
+  function formatPercent(value) {
+    var n = Number(value);
+    if (!isFiniteNumber(n)) return '';
+    try {
+      return n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+    } catch (e) {
+      return n.toFixed(1) + '%';
+    }
+  }
+
+  function getTraceValues(t) {
+    if (!t) return [];
+    if (isArrayLike(t.values)) return t.values;
+    if (isBinaryArrayObject(t.values)) {
+      var decoded = decodeBinaryArrayObject(t.values);
+      if (decoded && isArrayLike(decoded)) return decoded;
+    }
+    return [];
+  }
+
+  function getPointPercent(pt) {
+    if (!pt) return null;
+    var pointPercent = Number(pt.percent);
+    if (isFiniteNumber(pointPercent)) return pointPercent <= 1 ? pointPercent * 100 : pointPercent;
+    var value = Number(pt.value);
+    var values = getTraceValues(pt.data);
+    var total = 0;
+    for (var i = 0; i < values.length; i++) {
+      var n = Number(values[i]);
+      if (isFiniteNumber(n) && n > 0) total += n;
+    }
+    if (!isFiniteNumber(value) || total <= 0) return null;
+    return (value / total) * 100;
+  }
+
   function attachMainLogger() {
     if (!isChartDebugEnabled()) return false;
     var gd = getGraphDivById(TARGET_ID);
@@ -279,7 +314,22 @@
       }
     }
 
+    function suppressNativeTooltip() {
+      if (typeof Plotly === 'undefined' || !Plotly.restyle) return;
+      try {
+        var trace = gd.data && gd.data[0];
+        if (trace && trace.hoverinfo === 'none' && (trace.hovertemplate == null || trace.hovertemplate === '')) return;
+        Plotly.restyle(gd, {
+          hoverinfo: 'none',
+          hovertemplate: null
+        }, [0]);
+      } catch (e) {}
+    }
+
     var defaults = getDefaultCenter();
+    gd.__donutBaseCenter = defaults;
+    gd.__donutHovering = false;
+    suppressNativeTooltip();
     applyTheme();
 
     if (typeof gd.on === 'function') {
@@ -287,20 +337,28 @@
         try {
           var pt = eventData && eventData.points ? eventData.points[0] : null;
           if (!pt) return;
+          gd.__donutHovering = true;
           var label = pt.label || (pt.data && pt.data.name) || 'Position';
           var value = (pt.value != null) ? pt.value : (pt.y != null ? pt.y : null);
-          setCenterText(String(label).slice(0, 24), formatCurrency(value));
+          var percent = getPointPercent(pt);
+          var percentText = percent == null ? '' : '<br><span style="font-size:12px">' + formatPercent(percent) + '</span>';
+          setCenterText(String(label).slice(0, 24), formatCurrency(value) + percentText);
         } catch (e) {}
       });
 
       gd.on('plotly_unhover', function () {
-        defaults = getDefaultCenter();
+        gd.__donutHovering = false;
+        defaults = gd.__donutBaseCenter || defaults;
         setCenterText(defaults.name, defaults.value);
       });
 
       gd.on('plotly_afterplot', function () {
         if (gd.__donutThemeApplying) return;
-        defaults = getDefaultCenter();
+        suppressNativeTooltip();
+        if (!gd.__donutHovering) {
+          defaults = getDefaultCenter();
+          gd.__donutBaseCenter = defaults;
+        }
         applyTheme();
       });
     }

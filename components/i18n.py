@@ -87,6 +87,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "pa.value":                 {"en": "Value",                    "de": "Wert"},
     "pa.drawdown":              {"en": "Drawdown",                 "de": "Drawdown"},
     "pa.performance":           {"en": "Performance",              "de": "Performance"},
+    "pa.chart_details":         {"en": "Chart Details",            "de": "Chartdetails"},
     "pa.perf_comparison":       {"en": "Performance Comparison",   "de": "Performance-Vergleich"},
     "pa.returns_summary":       {"en": "Returns Summary",          "de": "Renditeübersicht"},
     "pa.recent_activity":       {"en": "Recent Activity",          "de": "Letzte Aktivitäten"},
