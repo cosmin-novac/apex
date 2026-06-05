@@ -35,9 +35,20 @@ log = get_logger(__name__)
 TR_CREDENTIALS_DIR = Path.home() / ".pytr"
 TR_TRANSACTIONS_CACHE = TR_CREDENTIALS_DIR / "transactions_cache.json"
 
+
+def _default_waf_token_method() -> str:
+    """Choose the lightest viable WAF solver for the current host."""
+    configured = (os.environ.get("TR_WAF_TOKEN_METHOD") or "").strip()
+    if configured:
+        return configured
+    if os.environ.get("WEBSITE_SITE_NAME") and os.name != "nt":
+        return "awswaf"
+    return "playwright"
+
+
 # Encryption key from environment (set this in your .env or hosting config)
 ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY", "default-dev-key-change-in-prod")
-TR_WAF_TOKEN_METHOD = os.environ.get("TR_WAF_TOKEN_METHOD", "playwright")
+TR_WAF_TOKEN_METHOD = _default_waf_token_method()
 
 
 def _default_playwright_browsers_dir() -> Path:
@@ -144,6 +155,20 @@ def friendly_tr_error(exc: Exception) -> str:
     """
     msg = str(exc)
     low = msg.lower()
+    response = getattr(exc, "response", None)
+    request = getattr(response, "request", None)
+    request_url = str(getattr(request, "url", "") or getattr(response, "url", ""))
+
+    if (
+        "browsertype.launch" in low
+        or "chrome-headless-shell" in low
+        or "libglib-2.0.so.0" in low
+        or "error while loading shared libraries" in low
+    ):
+        return (
+            "Trade Republic login could not start the browser runtime on this server. "
+            "Apex should use the awswaf login path here instead of Playwright."
+        )
     if "waf" in low:
         return "Trade Republic web login could not obtain a WAF token. Try again, or set TR_WAF_TOKEN_METHOD=playwright."
     if "unexpected keyword argument" in low and "waf_token" in low:
@@ -162,7 +187,9 @@ def friendly_tr_error(exc: Exception) -> str:
         return "Login was rejected. Please double-check your phone number and PIN."
     if "client_version_outdated" in low or "426" in low:
         return "Trade Republic rejected the client version. Install pytr 0.4.9 or newer and restart the app."
-    if "validation" in low or "code" in low or "400" in low:
+    if re.search(r"/api/v1/auth/web/login/[^/]+/\d{4}$", request_url) and getattr(response, "status_code", None) in {400, 401}:
+        return "The verification code was invalid or has expired. Please request a new code."
+    if "verification code" in low and ("invalid" in low or "expired" in low):
         return "The verification code was invalid or has expired. Please request a new code."
     return msg or "Connection to Trade Republic failed. Please try again."
 
@@ -293,7 +320,7 @@ class TRConnection:
         with self._op_lock:
             return self.run(coro, timeout=timeout)
 
-    def _new_api(self) -> TradeRepublicApi:
+    def _new_api(self, waf_token: Optional[str] = None) -> TradeRepublicApi:
         if not _modern_web_login_supported():
             raise RuntimeError("The installed pytr package is too old. Install pytr 0.4.9 or newer.")
         return TradeRepublicApi(
@@ -301,8 +328,46 @@ class TRConnection:
             pin=self.pin,
             save_cookies=True,
             cookies_file=str(self._cookies_path),
-            waf_token=TR_WAF_TOKEN_METHOD,
+            waf_token=waf_token or TR_WAF_TOKEN_METHOD,
         )
+
+    def _login_waf_methods(self) -> List[str]:
+        """Return WAF strategies in the order we should attempt them."""
+        if TR_WAF_TOKEN_METHOD == "playwright":
+            return ["playwright", "awswaf"]
+        return [TR_WAF_TOKEN_METHOD]
+
+    def _initiate_weblogin_sync(self) -> int:
+        """Run pytr web login with a narrow fallback for browser launch failures."""
+        last_error: Optional[Exception] = None
+
+        for waf_method in self._login_waf_methods():
+            try:
+                if waf_method == "playwright":
+                    ensure_playwright_browser()
+                api = self._new_api(waf_token=waf_method)
+                countdown = api.initiate_weblogin()
+                self.api = api
+                return countdown
+            except Exception as exc:
+                last_error = exc
+                if waf_method == "playwright" and (
+                    "browsertype.launch" in str(exc).lower()
+                    or "chrome-headless-shell" in str(exc).lower()
+                    or "libglib-2.0.so.0" in str(exc).lower()
+                    or "error while loading shared libraries" in str(exc).lower()
+                ):
+                    log.warning(
+                        "Playwright WAF login unavailable for user=%s, retrying with awswaf: %s",
+                        self.user_id,
+                        exc,
+                    )
+                    continue
+                raise
+
+        if last_error:
+            raise last_error
+        raise RuntimeError("Trade Republic login could not be started.")
 
     def _strip_waf_cookie_file(self) -> None:
         """Drop stale AWS WAF token cookies from the persisted pytr jar."""
@@ -2433,13 +2498,11 @@ class TRConnection:
             self._user_cache_dir.mkdir(parents=True, exist_ok=True)
             if self._cookies_path.exists():
                 self._cookies_path.unlink()
-            await asyncio.to_thread(ensure_playwright_browser)
-            self.api = self._new_api()
 
             # Starts web login and sends a 4-digit code to the TR app/SMS.
             # pytr's Playwright WAF resolver is sync-only, so keep it out of
             # Apex's asyncio worker loop.
-            countdown = await asyncio.to_thread(self.api.initiate_weblogin)
+            countdown = await asyncio.to_thread(self._initiate_weblogin_sync)
 
             return {
                 "success": True,
