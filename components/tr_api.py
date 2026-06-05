@@ -2365,11 +2365,17 @@ class TRConnection:
         Uses pytr's current WAF-aware web login, matching app.traderepublic.com.
         """
         try:
+            if not (phone_no or "").strip():
+                return {
+                    "success": False,
+                    "error": "Please enter your phone number.",
+                }
+
             normalized = normalize_phone(phone_no)
             if not normalized:
                 return {
                     "success": False,
-                    "error": "Please enter your phone number in international format, e.g. +49 151 23456789.",
+                    "error": "Use international phone format, e.g. +49 151 23456789.",
                 }
 
             self.phone_no = normalized

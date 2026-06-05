@@ -355,6 +355,17 @@ def register_tr_callbacks(app):
         if encrypted_creds and has_session(user_id=uid):
             return {"display": "block"}
         return {"display": "none"}
+
+    @app.callback(
+        Output('tr-auth-feedback', 'children', allow_duplicate=True),
+        [Input('tr-phone-input', 'value'),
+         Input('tr-pin-input', 'value')],
+        prevent_initial_call=True
+    )
+    def clear_auth_feedback_on_input(phone, pin):
+        if phone or pin:
+            return ""
+        return no_update
     
     # Handle reconnect link click
     @app.callback(
