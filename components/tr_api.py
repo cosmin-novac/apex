@@ -13,6 +13,7 @@ import inspect
 import re
 import subprocess
 import sys
+import ctypes
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import threading
@@ -37,12 +38,10 @@ TR_TRANSACTIONS_CACHE = TR_CREDENTIALS_DIR / "transactions_cache.json"
 
 
 def _default_waf_token_method() -> str:
-    """Choose the lightest viable WAF solver for the current host."""
+    """Choose the default WAF solver unless the environment overrides it."""
     configured = (os.environ.get("TR_WAF_TOKEN_METHOD") or "").strip()
     if configured:
         return configured
-    if os.environ.get("WEBSITE_SITE_NAME") and os.name != "nt":
-        return "awswaf"
     return "playwright"
 
 
@@ -167,14 +166,14 @@ def friendly_tr_error(exc: Exception) -> str:
     ):
         return (
             "Trade Republic login could not start the browser runtime on this server. "
-            "Apex should use the awswaf login path here instead of Playwright."
+            "Install the Linux browser dependencies Playwright needs, then retry."
         )
     if "waf" in low:
-        return "Trade Republic web login could not obtain a WAF token. Try again, or set TR_WAF_TOKEN_METHOD=playwright."
+        return "Trade Republic web login could not obtain a WAF token. Try again after the browser runtime is available."
     if "unexpected keyword argument" in low and "waf_token" in low:
         return "The installed pytr package is too old. Install pytr 0.4.9 or newer."
     if "405" in low or "method not allowed" in low or "not allowed" in low:
-        return "Trade Republic rejected the web-login request. Restart the app and retry with TR_WAF_TOKEN_METHOD=playwright."
+        return "Trade Republic rejected the web-login request. The server may still be missing the working browser runtime this login flow needs."
     if "expecting value" in low or "json" in low:
         return ("Trade Republic returned an empty response. The service may be "
                 "temporarily unavailable or is rate-limiting logins - please wait "
@@ -210,23 +209,65 @@ def _playwright_browser_install_needed() -> bool:
     ) and not any(PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-mac/Chromium.app"))
 
 
+def _running_on_azure_linux() -> bool:
+    return os.name != "nt" and bool(os.environ.get("WEBSITE_SITE_NAME"))
+
+
+def _playwright_runtime_deps_ready() -> bool:
+    """Best-effort check for the shared libraries Chromium needs on Linux."""
+    if os.name == "nt":
+        return True
+
+    required_libs = [
+        "libglib-2.0.so.0",
+        "libnss3.so",
+        "libnspr4.so",
+    ]
+    for lib_name in required_libs:
+        try:
+            ctypes.CDLL(lib_name)
+        except OSError:
+            return False
+    return True
+
+
+def _playwright_install_command() -> List[str]:
+    """Return the right Playwright install command for the current host."""
+    if _running_on_azure_linux() and not _playwright_runtime_deps_ready():
+        return [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"]
+    return [sys.executable, "-m", "playwright", "install", "chromium"]
+
+
 def ensure_playwright_browser() -> None:
     """Install the Playwright Chromium bundle once when WAF login needs it."""
     global _playwright_install_completed
 
     if TR_WAF_TOKEN_METHOD != "playwright":
         return
-    if _playwright_install_completed and not _playwright_browser_install_needed():
+    needs_browser = _playwright_browser_install_needed()
+    needs_runtime_deps = _running_on_azure_linux() and not _playwright_runtime_deps_ready()
+    if not needs_browser and not needs_runtime_deps:
+        _playwright_install_completed = True
+        return
+    if _playwright_install_completed and not needs_browser and not needs_runtime_deps:
         return
 
     with _playwright_install_lock:
-        if _playwright_install_completed and not _playwright_browser_install_needed():
+        needs_browser = _playwright_browser_install_needed()
+        needs_runtime_deps = _running_on_azure_linux() and not _playwright_runtime_deps_ready()
+        if not needs_browser and not needs_runtime_deps:
+            _playwright_install_completed = True
+            return
+        if _playwright_install_completed and not needs_browser and not needs_runtime_deps:
             return
 
         PLAYWRIGHT_BROWSERS_DIR.mkdir(parents=True, exist_ok=True)
         log.info("Ensuring Playwright Chromium browser is installed in %s", PLAYWRIGHT_BROWSERS_DIR)
+        install_cmd = _playwright_install_command()
+        if "--with-deps" in install_cmd:
+            log.info("Playwright Linux runtime dependencies are missing; installing Chromium with OS dependencies")
         subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "chromium"],
+            install_cmd,
             check=True,
             timeout=PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS,
             env=os.environ.copy(),
@@ -340,6 +381,7 @@ class TRConnection:
     def _initiate_weblogin_sync(self) -> int:
         """Run pytr web login with a narrow fallback for browser launch failures."""
         last_error: Optional[Exception] = None
+        playwright_runtime_error: Optional[Exception] = None
 
         for waf_method in self._login_waf_methods():
             try:
@@ -357,12 +399,24 @@ class TRConnection:
                     or "libglib-2.0.so.0" in str(exc).lower()
                     or "error while loading shared libraries" in str(exc).lower()
                 ):
+                    playwright_runtime_error = exc
                     log.warning(
                         "Playwright WAF login unavailable for user=%s, retrying with awswaf: %s",
                         self.user_id,
                         exc,
                     )
                     continue
+                if playwright_runtime_error and (
+                    "405" in str(exc).lower()
+                    or "method not allowed" in str(exc).lower()
+                    or "not allowed" in str(exc).lower()
+                ):
+                    raise RuntimeError(
+                        "Trade Republic web login failed on this server. "
+                        f"Playwright could not launch because {playwright_runtime_error}, "
+                        f"and the awswaf fallback was rejected with {exc}. "
+                        "This host still needs a working Playwright runtime for first-time login."
+                    ) from exc
                 raise
 
         if last_error:

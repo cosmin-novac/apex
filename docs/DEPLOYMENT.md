@@ -182,6 +182,7 @@ az webapp update --name backtesting-ai --resource-group rg-backtesting --set sit
 | Clerk sign-in does not open | Verify `CLERK_PUBLISHABLE_KEY` and that its decoded Clerk frontend host resolves publicly |
 | User data does not persist | Verify `AZURE_STORAGE_CONNECTION_STRING`, `APEX_ENCRYPTION_KEY`, and that the blob container can be created |
 | Trade Republic sync cannot reconnect | Verify `TR_ENCRYPTION_KEY` is stable across deploys, `pytr==0.4.9` is installed, and the user's encrypted blob contains `tr_cookies` |
+| Trade Republic first login fails with `libglib-2.0.so.0` or `BrowserType.launch` | App Service Linux is missing Playwright's Chromium runtime deps. Apex now attempts `playwright install --with-deps chromium` during startup when Playwright login is active. If your hosting policy blocks that, use a custom container or another host for the initial login bootstrap. |
 | 502 / timeout on startup | Increase timeout: `--timeout 900`. Gunicorn needs time to load all modules |
 | Static assets not loading | Ensure `assets/` folder is included in the deployment zip |
 | Logs are empty | Enable application logging: App Service → Monitoring → App Service logs → Application logging: On |
