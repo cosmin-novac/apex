@@ -83,7 +83,7 @@ _clerk_fapi = clerk_auth.frontend_api_host()
 _clerk_script = ""
 if clerk_auth.PUBLISHABLE_KEY and _clerk_fapi:
     _clerk_script = (
-        f'<script async crossorigin="anonymous" '
+        f'<script defer crossorigin="anonymous" '
         f'data-clerk-publishable-key="{clerk_auth.PUBLISHABLE_KEY}" '
         f'src="https://{_clerk_fapi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js" '
         f'type="text/javascript"></script>'
@@ -145,7 +145,7 @@ sidebar = html.Div([
             html.Div(id="clerk-user-button", className="clerk-user-button-slot", style={"display": "none"}),
             html.Div(id="current-user-label", className="sidebar-user-label"),
             # Clerk's prebuilt sign-in modal opens on click (wired in clerk_init.js).
-            dbc.Button([html.I(className="bi bi-person me-1"), "Sign in"], id="open-login-btn", color="primary", outline=True, size="sm", className="w-100"),
+            dbc.Button([html.I(className="bi bi-person me-1"), "Sign in"], id="open-login-btn", color="primary", outline=True, size="sm", className="w-100", style={"display": "none"}),
         ], className="sidebar-user-area"),
         html.Div([
             dcc.Link("Impressum", href="/impressum", id="sidebar-link-impressum", className="sidebar-legal-link"),

@@ -40,6 +40,7 @@
     if (!clerk) {
       setUserLabel("");
       if (signInBtn && window.__apexClerkLoadFailed) {
+        signInBtn.style.display = "";
         signInBtn.disabled = true;
         signInBtn.textContent = "Sign in unavailable";
       }

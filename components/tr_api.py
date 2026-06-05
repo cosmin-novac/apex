@@ -62,6 +62,8 @@ PLAYWRIGHT_BROWSERS_DIR = Path(
 )
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 10 * 60
 TR_LOGIN_INIT_TIMEOUT_SECONDS = 5 * 60
+TR_LOGIN_COMPLETE_TIMEOUT_SECONDS = 2 * 60
+TR_SYNC_TIMEOUT_SECONDS = int(os.environ.get("TR_SYNC_TIMEOUT_SECONDS", str(5 * 60)))
 _playwright_install_lock = threading.Lock()
 _playwright_install_completed = False
 
@@ -361,6 +363,12 @@ class TRConnection:
         with self._op_lock:
             return self.run(coro, timeout=timeout)
 
+    async def _recv_response(self, timeout: float = 30.0):
+        """Receive one pytr websocket response without waiting indefinitely."""
+        if not self.api:
+            raise RuntimeError("Trade Republic API is not initialized")
+        return await asyncio.wait_for(self.api.recv(), timeout=timeout)
+
     def _new_api(self, waf_token: Optional[str] = None) -> TradeRepublicApi:
         if not _modern_web_login_supported():
             raise RuntimeError("The installed pytr package is too old. Install pytr 0.4.9 or newer.")
@@ -440,18 +448,25 @@ class TRConnection:
         """Best-effort check for a reusable TR web session."""
         return self._cookies_path.exists()
 
-    def _load_instrument_cache(self) -> Dict[str, str]:
+    def _load_instrument_cache(self) -> Dict[str, Any]:
         try:
             if self._instrument_cache_path.exists():
                 data = json.loads(self._instrument_cache_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
-                    # values should be shortName/name strings
-                    return {str(k): str(v) for k, v in data.items() if k and v}
+                    normalized = {}
+                    for k, v in data.items():
+                        if not k or not v:
+                            continue
+                        if isinstance(v, dict):
+                            normalized[str(k)] = v
+                        else:
+                            normalized[str(k)] = {"name": str(v)}
+                    return normalized
         except Exception as e:
             log.warning(f"Failed to load instrument cache: {e}")
         return {}
 
-    def _save_instrument_cache(self, cache: Dict[str, str]) -> None:
+    def _save_instrument_cache(self, cache: Dict[str, Any]) -> None:
         try:
             TR_CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
             self._instrument_cache_path.write_text(json.dumps(cache), encoding="utf-8")
@@ -702,7 +717,7 @@ class TRConnection:
             try:
                 # Subscribe to timeline transactions
                 await self.api.timeline_transactions(after=after_cursor)
-                sub_id, sub_params, response = await self.api.recv()
+                sub_id, sub_params, response = await self._recv_response()
                 await self.api.unsubscribe(sub_id)
                 
                 # Handle unexpected response types
@@ -804,7 +819,7 @@ class TRConnection:
         for attempt in range(retries + 1):
             try:
                 await self.api.timeline_detail_v2(transaction_id)
-                sub_id, sub_params, response = await self.api.recv()
+                sub_id, sub_params, response = await self._recv_response()
                 await self.api.unsubscribe(sub_id)
                 
                 # Check if we got a valid response
@@ -904,7 +919,7 @@ class TRConnection:
         try:
             log.info("Testing TR connection before enrichment...")
             await self.api.cash()
-            sub_id, _, _ = await self.api.recv()
+            sub_id, _, _ = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             log.info("TR connection verified")
         except Exception as e:
@@ -1298,7 +1313,7 @@ class TRConnection:
         try:
             log.info(f"Fetching portfolio aggregate history (timeframe={timeframe})...")
             await self.api.portfolio_history(timeframe)
-            sub_id, sub_params, response = await self.api.recv()
+            sub_id, sub_params, response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
             # Response should contain historical data points
@@ -1336,7 +1351,7 @@ class TRConnection:
         try:
             log.info(f"Fetching history for {isin}...")
             await self.api.performance_history(isin, timeframe, exchange="LSX")
-            sub_id, sub_params, response = await self.api.recv()
+            sub_id, sub_params, response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
             aggregates = response.get('aggregates', response.get('expectedHistoryLight', []))
@@ -2615,14 +2630,14 @@ class TRConnection:
             # Get compact portfolio (correct subscription type)
             # WebSocket connects automatically on first subscribe
             await self.api.compact_portfolio()
-            sub_id, sub_params, portfolio_response = await self.api.recv()
+            sub_id, sub_params, portfolio_response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
             log.info(f"Portfolio response: {portfolio_response}")
             
             # Get cash balance
             await self.api.cash()
-            sub_id, sub_params, cash_response = await self.api.recv()
+            sub_id, sub_params, cash_response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
             log.info(f"Cash response: {cash_response}")
@@ -2692,7 +2707,7 @@ class TRConnection:
             
             # Get compact portfolio - handle async responses properly
             await self.api.compact_portfolio()
-            sub_id, sub_params, portfolio_response = await self.api.recv()
+            sub_id, sub_params, portfolio_response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
             # Check if we got the right response type
@@ -2704,14 +2719,14 @@ class TRConnection:
                 else:
                     # Try to receive again
                     await self.api.compact_portfolio()
-                    sub_id, sub_params, portfolio_response = await self.api.recv()
+                    sub_id, sub_params, portfolio_response = await self._recv_response()
                     await self.api.unsubscribe(sub_id)
             
             log.info(f"Got portfolio with {len(portfolio_response.get('positions', []))} positions")
             
             # Get cash balance - TR returns an array: [{amount, currencyId}, ...]
             await self.api.cash()
-            sub_id, sub_params, cash_response = await self.api.recv()
+            sub_id, sub_params, cash_response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
             # Handle case where cash response contains portfolio data (async ordering issue)
@@ -2768,7 +2783,7 @@ class TRConnection:
                 if needs_fetch:
                     try:
                         await self.api.instrument_details(isin)
-                        inst_sub_id, inst_params, inst_response = await self.api.recv()
+                        inst_sub_id, inst_params, inst_response = await self._recv_response()
                         await self.api.unsubscribe(inst_sub_id)
                         new_name = inst_response.get('shortName', inst_response.get('name', isin))
                         new_type = inst_response.get('typeId', inst_response.get('type', ''))
@@ -3103,7 +3118,15 @@ def initiate_login(phone_no: str, pin: str, user_id: str = "_default") -> Dict[s
 def complete_login(code: str, user_id: str = "_default") -> Dict[str, Any]:
     """Complete login with the 4-digit verification code."""
     conn = get_connection(user_id)
-    return conn.run(conn._complete_web_login(code))
+    try:
+        return conn.run(conn._complete_web_login(code), timeout=TR_LOGIN_COMPLETE_TIMEOUT_SECONDS)
+    except FuturesTimeoutError:
+        conn.is_connected = False
+        log.warning("Trade Republic login completion timed out for user=%s", conn.user_id)
+        return {
+            "success": False,
+            "error": "Trade Republic did not finish verifying the code in time. Please wait a moment and try again.",
+        }
 
 
 def fetch_portfolio(user_id: str = "_default") -> Dict[str, Any]:
@@ -3119,7 +3142,19 @@ def fetch_all_data(user_id: str = "_default") -> Dict[str, Any]:
     The cache is only used for page loads (via get_cached_portfolio).
     """
     conn = get_connection(user_id)
-    return conn.run_serialized(conn._fetch_all_data())
+    try:
+        return conn.run_serialized(conn._fetch_all_data(), timeout=TR_SYNC_TIMEOUT_SECONDS)
+    except FuturesTimeoutError:
+        conn.is_connected = False
+        conn.api = None
+        log.warning("Trade Republic portfolio sync timed out for user=%s", conn.user_id)
+        return {
+            "success": False,
+            "error": (
+                "Trade Republic portfolio sync timed out. Your login may still be valid; "
+                "please retry the sync in a minute."
+            ),
+        }
 
 
 def get_cached_portfolio(user_id: str = "_default") -> Optional[Dict[str, Any]]:

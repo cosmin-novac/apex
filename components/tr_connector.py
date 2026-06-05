@@ -25,6 +25,23 @@ from components.tr_api import (
 from components import user_data, clerk_auth
 
 
+def _tr_error_alert(message, color="warning"):
+    return dbc.Alert(message or "Trade Republic sync failed. Please try again.", color=color, className="mb-0 small")
+
+
+def _fetch_portfolio_data(uid):
+    """Fetch TR portfolio data and normalize failures into result dictionaries."""
+    try:
+        result = fetch_all_data(user_id=uid)
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+    if not isinstance(result, dict):
+        return {"success": False, "error": "Trade Republic returned an unexpected response."}
+    if not result.get("success"):
+        result.setdefault("error", "Trade Republic sync failed. Please try again.")
+    return result
+
+
 def _persist_user_blob(uid, portfolio_data, creds=None):
     """Back up a user's portfolio (+ optional creds + web-session cookies) to the
     durable encrypted blob. No-op when blob storage isn't configured."""
@@ -395,7 +412,20 @@ def register_tr_callbacks(app):
         
         if result.get("success"):
             # Fetch full portfolio data including history
-            portfolio_data = fetch_all_data(user_id=uid)
+            portfolio_data = _fetch_portfolio_data(uid)
+            if not portfolio_data.get("success"):
+                return (
+                    {"display": "block"},  # show initial
+                    {"display": "none"},  # hide otp
+                    {"display": "none"},  # hide syncing
+                    {"display": "none"},
+                    "initial",
+                    _tr_error_alert(portfolio_data.get("error")),
+                    "connection-status disconnected",
+                    "Sync failed",
+                    no_update,
+                    no_update
+                )
             _persist_user_blob(uid, portfolio_data, creds=encrypted_creds)
 
             return (
@@ -497,7 +527,19 @@ def register_tr_callbacks(app):
         if triggered == 'tr-refresh-btn':
             if not uid:
                 raise PreventUpdate
-            portfolio_data = fetch_all_data(user_id=uid)
+            portfolio_data = _fetch_portfolio_data(uid)
+            if not portfolio_data.get("success"):
+                return (
+                    {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
+                    "connected", "", _tr_error_alert(portfolio_data.get("error")),
+                    "connection-status disconnected", "Sync failed",
+                    no_update,
+                    no_update,
+                    no_update,
+                    no_update,
+                    btn_disabled, btn_children,
+                    no_update,
+                )
             portfolio_data["cached_at"] = datetime.now().isoformat()
             _persist_user_blob(uid, portfolio_data)
             return (
@@ -599,11 +641,24 @@ def register_tr_callbacks(app):
             
             if result.get("success"):
                 # Fetch full portfolio data including history
-                portfolio_data = fetch_all_data(user_id=uid)
+                portfolio_data = _fetch_portfolio_data(uid)
+                encrypted_creds = result.get("encrypted_credentials")
+                if not portfolio_data.get("success"):
+                    return (
+                        {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"},
+                        "initial",
+                        _tr_error_alert(portfolio_data.get("error")),
+                        "",
+                        "connection-status disconnected", "Sync failed",
+                        no_update, no_update,
+                        encrypted_creds,
+                        no_update,
+                        btn_disabled, btn_children,
+                        no_update,
+                    )
                 portfolio_data["cached_at"] = datetime.now().isoformat()
                 
                 # Get encrypted credentials for browser storage
-                encrypted_creds = result.get("encrypted_credentials")
                 _persist_user_blob(uid, portfolio_data, creds=encrypted_creds)
 
                 return (
