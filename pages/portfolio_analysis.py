@@ -876,7 +876,10 @@ def register_callbacks(app):
         if not data_json:
             fig.add_trace(go.Pie(
                 values=[1], labels=[t("pa.no_data", lang)], hole=0.7,
-                marker=dict(colors=["#374151"]),
+                marker=dict(
+                    colors=["#374151"],
+                    line=dict(width=0, color="rgba(0,0,0,0)"),
+                ),
                 textinfo="none", hoverinfo="none"
             ))
             fig.update_layout(
@@ -897,7 +900,10 @@ def register_callbacks(app):
 
             if not positions:
                 fig.add_trace(go.Pie(values=[1], labels=["Empty"], hole=0.7,
-                                     marker=dict(colors=["#374151"]), textinfo="none"))
+                                     marker=dict(
+                                         colors=["#374151"],
+                                         line=dict(width=0, color="rgba(0,0,0,0)"),
+                                     ), textinfo="none"))
                 fig.update_layout(**_empty_layout)
                 return fig
 
@@ -909,7 +915,10 @@ def register_callbacks(app):
 
             fig.add_trace(go.Pie(
                 values=values, labels=labels, hole=0.7,
-                marker=dict(colors=colors[:len(values)]),
+                marker=dict(
+                    colors=colors[:len(values)],
+                    line=dict(width=0, color="rgba(0,0,0,0)"),
+                ),
                 textinfo="none",
                 hoverinfo="none",
             ))
@@ -934,7 +943,10 @@ def register_callbacks(app):
             _log.warning("Donut chart error: %s", e, exc_info=True)
             fig = go.Figure()
             fig.add_trace(go.Pie(values=[1], labels=["Error"], hole=0.7,
-                                 marker=dict(colors=["#374151"]), textinfo="none"))
+                                 marker=dict(
+                                     colors=["#374151"],
+                                     line=dict(width=0, color="rgba(0,0,0,0)"),
+                                 ), textinfo="none"))
             fig.update_layout(**_empty_layout)
             return fig
     
@@ -1356,12 +1368,12 @@ def register_callbacks(app):
                                 html.Div(title_raw, className="fw-medium small", title=title_raw),
                                 html.Div(date_str, className="text-muted small"),
                             ]),
-                        ], className="d-flex align-items-center"),
+                        ], className="recent-activity-main d-flex align-items-center"),
                         html.Div([
-                            dbc.Badge(label, color=badge_color, className="me-2"),
-                            html.Div(amount_str, className="small fw-semibold text-end sensitive"),
-                        ], className="d-flex align-items-center"),
-                    ], className="d-flex justify-content-between align-items-center py-2 border-bottom")
+                            dbc.Badge(label, color=badge_color, className="recent-activity-badge me-2"),
+                            html.Div(amount_str, className="recent-activity-amount small fw-semibold text-end sensitive"),
+                        ], className="recent-activity-meta d-flex align-items-center"),
+                    ], className="recent-activity-row d-flex justify-content-between align-items-center py-2 border-bottom")
                 )
 
             recent_list = html.Div(recent_items) if recent_items else html.Div(t("pa.no_recent_activity", lang), className="text-muted text-center py-3")
@@ -1921,6 +1933,7 @@ def register_callbacks(app):
                         y=_series_to_number_list(df['invested']),
                         mode='lines',
                         name=t("pa.added_capital", lang),
+                        visible='legendonly',
                         line=dict(color='#f59e0b', width=2, shape='spline', smoothing=0.35),
                         customdata=_make_hover_meta(t("pa.added_capital", lang), "currency", len(x_dates)),
                         hoverinfo='none',
@@ -2224,7 +2237,13 @@ def register_callbacks(app):
         date_text = _fmt_date(points[0].get("x"))
         rows = []
         seen = set()
-        for point in points:
+        def _sort_value(point):
+            try:
+                return float(point.get("y"))
+            except Exception:
+                return float("-inf")
+
+        for point in sorted(points, key=_sort_value, reverse=True):
             meta = point.get("customdata") or []
             if not isinstance(meta, (list, tuple)) or len(meta) < 2:
                 continue

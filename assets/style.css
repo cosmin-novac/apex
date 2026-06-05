@@ -572,6 +572,13 @@ textarea::placeholder {
     display: none !important;
 }
 
+#holdings-donut-chart path.surface,
+#holdings-donut-chart .slice path.surface {
+    stroke: none !important;
+    stroke-width: 0 !important;
+    stroke-opacity: 0 !important;
+}
+
 /* ===== Utility Classes ===== */
 .mt-0 { margin-top: 0 !important; }
 .mt-1 { margin-top: 8px !important; }
@@ -2491,11 +2498,13 @@ hr {
     padding: 6px 12px;
     border-radius: 6px;
     transition: all 0.15s ease;
+    cursor: default;
 }
 
 .portfolio-analysis-page .nav-tabs .nav-link:hover {
     color: var(--text-primary);
     background: rgba(99, 102, 241, 0.06);
+    cursor: default;
 }
 
 .portfolio-analysis-page .nav-tabs .nav-link.active {
@@ -2507,6 +2516,33 @@ hr {
 #main-portfolio-chart-v2 .hoverlayer,
 #holdings-donut-chart .hoverlayer {
     display: none !important;
+}
+
+.recent-activity-row {
+    gap: 12px;
+}
+
+.recent-activity-main {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.recent-activity-meta {
+    flex: 0 0 180px;
+    min-width: 180px;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.recent-activity-badge {
+    min-width: 84px;
+    text-align: center;
+}
+
+.recent-activity-amount {
+    min-width: 92px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 
 .chart-hover-details {
