@@ -132,6 +132,17 @@ sidebar = html.Div([
     html.Div([
         html.Div([
             settings_button,
+            html.Div(
+                dbc.Button(
+                    html.I(className="bi bi-gear"),
+                    id="open-settings-btn",
+                    className="settings-btn",
+                    color="link",
+                    n_clicks=0,
+                    title="Settings",
+                ),
+                className="settings-trigger",
+            ),
             html.Div([
                 dbc.Button(html.Span("EN", id="lang-flag-icon", style={"fontSize": "0.8rem", "fontWeight": "700"}), id="lang-dropdown-toggle", className="settings-btn", color="link", n_clicks=0),
                 html.Div([

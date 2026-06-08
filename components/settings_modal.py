@@ -169,14 +169,15 @@ def register_settings_callbacks(app):
         [
             Input("close-settings-modal", "n_clicks"),
             Input("open-settings-link", "n_clicks"),
+            Input("open-settings-btn", "n_clicks"),
         ],
         State("settings-modal", "is_open"),
         prevent_initial_call=True,
     )
-    def toggle_settings_modal(close_clicks, link_clicks, is_open):
-        if close_clicks or link_clicks:
-            return not is_open
-        return is_open
+    def toggle_settings_modal(close_clicks, link_clicks, gear_clicks, is_open):
+        # Any of the triggers (gear icon, hidden link, or Done button) toggles
+        # the modal. prevent_initial_call ensures we only react to real clicks.
+        return not is_open
 
     @app.callback(
         Output("api_key_store", "data", allow_duplicate=True),
