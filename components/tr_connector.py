@@ -161,30 +161,24 @@ def create_tr_connector_card():
                     "Fetching your positions, transactions, and price history..."
                 ], className="text-center text-muted small mb-3"),
                 
-                # Progress steps indicator
-                html.Div([
-                    html.Div([
-                        html.I(className="bi bi-check-circle-fill text-success me-2"),
-                        html.Span("Connected to Trade Republic", className="small"),
-                    ], className="sync-step completed mb-2"),
-                    html.Div([
-                        html.Div(className="sync-step-spinner me-2"),
-                        html.Span("Fetching portfolio positions...", className="small", id="tr-sync-current-step"),
-                    ], className="sync-step active mb-2"),
-                    html.Div([
-                        html.I(className="bi bi-circle text-muted me-2"),
-                        html.Span("Loading transaction history", className="small text-muted"),
-                    ], className="sync-step pending mb-2"),
-                    html.Div([
-                        html.I(className="bi bi-circle text-muted me-2"),
-                        html.Span("Building price histories", className="small text-muted"),
-                    ], className="sync-step pending"),
-                ], className="sync-steps-container border rounded p-3 bg-light"),
-                
+                # Live progress, polled from the server while the fetch runs.
+                dbc.Progress(
+                    id="tr-sync-progress-bar",
+                    value=0, label="", striped=True, animated=True,
+                    className="mb-2", style={"height": "20px"},
+                ),
+                html.Div("Starting…", id="tr-sync-current-step",
+                         className="text-center small fw-medium mb-1"),
+                html.Div("", id="tr-sync-elapsed",
+                         className="text-center text-muted small mb-0"),
+
                 html.P([
                     html.I(className="bi bi-info-circle me-1"),
                     "This may take 30-60 seconds for large portfolios."
                 ], className="text-center text-muted small mt-3 mb-0"),
+
+                # Polls fetch progress; enabled on sync start, disabled when done.
+                dcc.Interval(id="tr-sync-progress-interval", interval=800, disabled=True),
             ], id="tr-syncing-view", style={"display": "none"}),
             
             # === CONNECTED VIEW ===
@@ -402,6 +396,55 @@ def register_tr_callbacks(app):
         [Input('tr-auth-step', 'data'), Input('tr-auth-feedback', 'children')],
         prevent_initial_call=True,
     )
+
+    # ── Live sync progress ────────────────────────────────────────────────
+    # Start polling progress when a data fetch begins (verify / reconnect /
+    # refresh), and stop when the fetch lands a result or an error.
+    app.clientside_callback(
+        "function(v, r, f){ if (v || r || f) { return false; } return window.dash_clientside.no_update; }",
+        Output('tr-sync-progress-interval', 'disabled', allow_duplicate=True),
+        [Input('tr-verify-otp-btn', 'n_clicks'),
+         Input('tr-reconnect-link', 'n_clicks'),
+         Input('tr-refresh-btn', 'n_clicks')],
+        prevent_initial_call=True,
+    )
+    app.clientside_callback(
+        "function(){ return true; }",
+        Output('tr-sync-progress-interval', 'disabled', allow_duplicate=True),
+        [Input('tr-portfolio-summary', 'children'),
+         Input('tr-auth-feedback', 'children'),
+         Input('tr-otp-feedback', 'children')],
+        prevent_initial_call=True,
+    )
+
+    @app.callback(
+        [Output('tr-sync-progress-bar', 'value'),
+         Output('tr-sync-progress-bar', 'label'),
+         Output('tr-sync-current-step', 'children'),
+         Output('tr-sync-elapsed', 'children')],
+        Input('tr-sync-progress-interval', 'n_intervals'),
+        State('current-user-store', 'data'),
+        prevent_initial_call=True,
+    )
+    def update_sync_progress(_n, current_user):
+        uid = clerk_auth.verified_user_id(current_user)
+        if not uid:
+            raise PreventUpdate
+        from components.tr_api import get_fetch_progress
+        prog = get_fetch_progress(uid)
+        if not prog:
+            # Fetch hasn't written progress yet (e.g. still completing login).
+            return no_update, no_update, no_update, no_update
+        pct = max(0, min(100, int(prog.get('pct', 0))))
+        stage = prog.get('stage', '')
+        detail = prog.get('detail', '')
+        ago = max(0, int(datetime.now().timestamp() - float(prog.get('ts', 0))))
+        step_line = stage + (f" — {detail}" if detail else "")
+        if ago >= 12:
+            elapsed_line = f"⚠ Still working… no update for {ago}s"
+        else:
+            elapsed_line = f"Last update {ago}s ago"
+        return pct, f"{pct}%", step_line, elapsed_line
 
     # Check for saved credentials on load (check browser storage)
     @app.callback(

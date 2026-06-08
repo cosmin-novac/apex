@@ -49,7 +49,7 @@ def _default_waf_token_method() -> str:
 # Used to encrypt the browser reconnect token (phone number only — never the PIN).
 ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY")
 if not ENCRYPTION_KEY:
-    logging.getLogger(__name__).warning(
+    log.warning(
         "TR_ENCRYPTION_KEY is not set - using an insecure development key. "
         "Set a strong random value in production."
     )
@@ -320,6 +320,7 @@ class TRConnection:
         self._user_cache_dir.mkdir(parents=True, exist_ok=True)
         self._instrument_cache_path = self._user_cache_dir / "instrument_cache.json"
         self._cookies_path = self._user_cache_dir / "cookies.txt"
+        self._progress_path = self._user_cache_dir / "progress.json"
 
         # Migrate legacy (non-namespaced) caches into the _default bucket
         # so existing single-user setups keep working without a re-sync.
@@ -2726,8 +2727,9 @@ class TRConnection:
             if not self.api or not self.is_connected:
                 return {"success": False, "error": "Not connected"}
 
+            self._write_progress(3, "Connecting", "Fetching portfolio…")
             log.info("Fetching compact portfolio...")
-            
+
             # Get compact portfolio - handle async responses properly
             await self.api.compact_portfolio()
             sub_id, sub_params, portfolio_response = await self._recv_response()
@@ -2779,8 +2781,15 @@ class TRConnection:
             # Fetch instrument names only (skip ticker - too slow and unreliable)
             instrument_cache = self._load_instrument_cache()
             enriched_positions = []
-            
+            _n_pos = len(positions)
+            self._write_progress(10, "Instruments", f"0/{_n_pos} positions")
+
             for i, p in enumerate(positions):
+                # 10% → 40% across the instrument-detail loop.
+                self._write_progress(
+                    10 + int(30 * i / _n_pos) if _n_pos else 40,
+                    "Instruments", f"{i + 1}/{_n_pos} positions",
+                )
                 isin = p.get('instrumentId', '')
                 qty = float(p.get('netSize', 0))
                 avg_buy = float(p.get('averageBuyIn', 0))
@@ -2861,6 +2870,7 @@ class TRConnection:
             log.info(f"Portfolio summary: invested={total_invested:.2f}, value={total_value:.2f}, profit={total_profit:.2f} ({total_profit_pct:.2f}%)")
             
             # Fetch timeline transactions (for history reconstruction)
+            self._write_progress(50, "Transactions", "Loading timeline…")
             log.info("Fetching timeline transactions...")
             transactions = await self._fetch_timeline_transactions()
             if transactions:
@@ -2871,6 +2881,7 @@ class TRConnection:
             
             # Enrich transactions with share quantities from TR (needed for holdings tracking)
             # This calls timeline_detail_v2 for each trade transaction
+            self._write_progress(65, "Transactions", "Enriching trade details…")
             log.info("Enriching transactions with share quantities...")
             transactions = await self._enrich_transactions_with_shares(transactions)
             
@@ -2886,6 +2897,7 @@ class TRConnection:
             log.info(f"Built invested series with {len(invested_series)} cash flow dates")
             
             # Build per-position price histories from TRANSACTION PRICES (PRIMARY)
+            self._write_progress(75, "Price history", "Building price histories…")
             log.info("Building per-position price histories from transaction prices...")
             position_histories = self._build_position_histories_from_transactions(
                 transactions, enriched_positions
@@ -2916,8 +2928,9 @@ class TRConnection:
             # transaction-derived prices above are exact execution prices, but
             # they can be stale and caused both total-value drift and a false
             # last-day chart drop.
+            self._write_progress(85, "Live prices", "Fetching current prices…")
             await self._update_positions_with_live_tickers(enriched_positions, position_histories)
-            
+
             # Recalculate totals with updated position values
             total_current_value = sum(p['value'] for p in enriched_positions)
             total_invested = sum(p['invested'] for p in enriched_positions)
@@ -2930,6 +2943,7 @@ class TRConnection:
             # Build history after current positions have their latest values.
             # Otherwise today's chart point is pinned to the pre-update fallback
             # total and creates a false cliff in value/performance/drawdown.
+            self._write_progress(92, "Portfolio history", "Calculating performance…")
             log.info("Calculating portfolio history from holdings × prices + cash...")
             history = self._build_history_with_market_values(
                 transactions,
@@ -2941,6 +2955,7 @@ class TRConnection:
             )
 
             # Download logos from TR CDN into assets/logos/ for local serving
+            self._write_progress(97, "Finishing", "Downloading logos…")
             try:
                 self._download_logos(enriched_positions)
             except Exception as e:
@@ -2971,9 +2986,9 @@ class TRConnection:
             
             # Save to local cache
             self._save_portfolio_cache(result)
-            
+
             return result
-            
+
         except Exception as e:
             log.error(f"Fetch all data failed: {e}")
             import traceback
@@ -2982,7 +2997,10 @@ class TRConnection:
                 "success": False,
                 "error": str(e)
             }
-    
+        finally:
+            # Clear progress so the UI poll knows the fetch has ended.
+            self._clear_progress()
+
     def _calculate_and_cache_twr_series(self, history: List[Dict]) -> Dict[str, List]:
         """Pre-calculate TWR series for caching. This avoids recalculation on every chart render.
         
@@ -3048,6 +3066,31 @@ class TRConnection:
         except Exception as e:
             log.error(f"Failed to cache portfolio: {e}")
     
+    def _write_progress(self, pct: int, stage: str, detail: str = ""):
+        """Record fetch progress so the UI can poll it. Best-effort, never raises.
+
+        Written to a per-user file on the (shared) instance disk so a separate
+        request/worker handling the UI poll can read it while the fetch runs.
+        """
+        try:
+            self._user_cache_dir.mkdir(parents=True, exist_ok=True)
+            with open(self._progress_path, "w") as f:
+                json.dump(
+                    {"pct": int(pct), "stage": stage, "detail": detail,
+                     "ts": datetime.now().timestamp()},
+                    f,
+                )
+        except Exception:
+            pass
+
+    def _clear_progress(self):
+        """Remove the progress file (fetch finished/aborted). Never raises."""
+        try:
+            if self._progress_path.exists():
+                self._progress_path.unlink()
+        except Exception:
+            pass
+
     def _load_portfolio_cache(self) -> Optional[Dict[str, Any]]:
         """Load portfolio data from local cache (user-scoped)."""
         cache_file = self._user_cache_dir / "portfolio_cache.json"
@@ -3185,6 +3228,26 @@ def get_cached_portfolio(user_id: str = "_default") -> Optional[Dict[str, Any]]:
     """Get cached portfolio data without connecting."""
     conn = get_connection(user_id)
     return conn._load_portfolio_cache()
+
+
+def get_fetch_progress(user_id: str = "_default") -> Optional[Dict[str, Any]]:
+    """Return the live fetch progress for a user, or None if none/stale.
+
+    Reads the per-user progress file directly (no connection needed) so the UI
+    poll can see progress written by the worker running the fetch. Progress
+    older than 3 minutes is treated as stale (abandoned fetch) and ignored.
+    """
+    try:
+        path = TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "progress.json"
+        if not path.exists():
+            return None
+        with open(path) as f:
+            data = json.load(f)
+        if datetime.now().timestamp() - float(data.get("ts", 0)) > 180:
+            return None
+        return data
+    except Exception:
+        return None
 
 
 def get_cached_transactions(user_id: str = "_default") -> List[Dict]:

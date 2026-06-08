@@ -63,6 +63,10 @@ settings_modal = dbc.Modal(
                             label="Sync my data to the cloud",
                             value=False,
                             className="settings-switch",
+                            # Persist the switch itself so we don't need a
+                            # store->switch callback (which would create a cycle).
+                            persistence=True,
+                            persistence_type="local",
                         ),
                         html.P(
                             [
@@ -207,22 +211,17 @@ def register_settings_callbacks(app):
         return None
 
     # ── Cloud Sync toggle ────────────────────────────────────────────────
-    # Reflect the persisted flag into the switch on load.
-    @app.callback(
-        Output("cloud-sync-toggle", "value"),
-        Input("cloud-sync-enabled", "data"),
-    )
-    def initialize_cloud_sync_toggle(enabled):
-        return bool(enabled)
-
-    # Persist the switch into the browser-stored flag and act on the change:
+    # The switch persists its own value (persistence=local), and the store also
+    # persists (storage_type=local); both restore independently on load, so no
+    # store->switch callback is needed. This single callback mirrors the switch
+    # into the store (read everywhere as the flag) and acts on the change:
     #  - enabling  → immediately back up the current real portfolio to the cloud
     #  - disabling → delete the user's cloud copy (data then lives only locally)
+    # prevent_initial_call keeps the persistence-restore on load from firing it.
     @app.callback(
         Output("cloud-sync-enabled", "data"),
         Input("cloud-sync-toggle", "value"),
         [
-            State("cloud-sync-enabled", "data"),
             State("portfolio-data-store", "data"),
             State("tr-encrypted-creds", "data"),
             State("demo-mode", "data"),
@@ -230,13 +229,8 @@ def register_settings_callbacks(app):
         ],
         prevent_initial_call=True,
     )
-    def apply_cloud_sync_toggle(value, current, portfolio, creds, demo_mode, current_user):
+    def apply_cloud_sync_toggle(value, portfolio, creds, demo_mode, current_user):
         value = bool(value)
-        # Guard against the init callback echoing the same value (avoids a loop
-        # and spurious cloud deletes on page load).
-        if value == bool(current):
-            return no_update
-
         from components import clerk_auth, user_data
 
         uid = clerk_auth.verified_user_id(current_user)
