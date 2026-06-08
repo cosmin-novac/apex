@@ -1,8 +1,11 @@
 """Live Trade Republic login smoke test for local debugging.
 
-Runs a full TR web login and portfolio fetch in a single process. The
-verification code is read from a file so the test stays non-interactive.
-Local developer verification only; not used by the app.
+Runs a full TR web login and portfolio fetch in a single process. The 4-digit
+verification code is read from a file so the test stays non-interactive: write
+the code your TR app shows into the path given by ``APEX_TR_CODE_FILE`` (default:
+a ``tr_code.txt`` in the system temp directory).
+
+Intended for local developer verification only; not used by the app.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -23,7 +27,7 @@ load_dotenv()
 from components.tr_api import TRConnection, normalize_phone  # noqa: E402
 
 
-CODE_PATH = Path(os.path.expanduser("~")) / "tr_code.txt"
+CODE_PATH = Path(os.environ.get("APEX_TR_CODE_FILE", Path(tempfile.gettempdir()) / "tr_code.txt"))
 
 
 def _read_saved_credentials() -> tuple[str, str]:

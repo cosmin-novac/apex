@@ -42,9 +42,13 @@ def _fetch_portfolio_data(uid):
     return result
 
 
-def _persist_user_blob(uid, portfolio_data, creds=None):
+def _persist_user_blob(uid, portfolio_data, creds=None, cloud_sync=False):
     """Back up a user's portfolio (+ optional creds + web-session cookies) to the
-    durable encrypted blob. No-op when blob storage isn't configured."""
+    durable encrypted blob. No-op when the user hasn't opted into cloud sync or
+    when blob storage isn't configured — in that case the data stays only in the
+    user's browser."""
+    if not cloud_sync:
+        return
     try:
         vid = clerk_auth.verified_user_id(uid)
         if vid and vid != "_default":
@@ -398,10 +402,11 @@ def register_tr_callbacks(app):
          Output('tr-portfolio-summary', 'children', allow_duplicate=True)],
         Input('tr-reconnect-link', 'n_clicks'),
         [State('tr-encrypted-creds', 'data'),
-         State('current-user-store', 'data')],
+         State('current-user-store', 'data'),
+         State('cloud-sync-enabled', 'data')],
         prevent_initial_call=True
     )
-    def handle_reconnect(n_clicks, encrypted_creds, current_user):
+    def handle_reconnect(n_clicks, encrypted_creds, current_user, cloud_sync):
         if not n_clicks:
             raise PreventUpdate
         
@@ -426,7 +431,7 @@ def register_tr_callbacks(app):
                     no_update,
                     no_update
                 )
-            _persist_user_blob(uid, portfolio_data, creds=encrypted_creds)
+            _persist_user_blob(uid, portfolio_data, creds=encrypted_creds, cloud_sync=cloud_sync)
 
             return (
                 {"display": "none"},  # hide initial
@@ -484,11 +489,12 @@ def register_tr_callbacks(app):
          State('tr-otp-input', 'value'),
          State('tr-auth-step', 'data'),
          State('tr-encrypted-creds', 'data'),
-         State('current-user-store', 'data')],
+         State('current-user-store', 'data'),
+         State('cloud-sync-enabled', 'data')],
         prevent_initial_call=True,
     )
     def handle_auth_flow(start_clicks, verify_clicks, back_clicks, disconnect_clicks, refresh_clicks,
-                         phone, pin, otp, current_step, existing_encrypted_creds, current_user):
+                         phone, pin, otp, current_step, existing_encrypted_creds, current_user, cloud_sync):
         triggered = ctx.triggered_id
         uid = clerk_auth.verified_user_id(current_user)
         
@@ -541,7 +547,7 @@ def register_tr_callbacks(app):
                     no_update,
                 )
             portfolio_data["cached_at"] = datetime.now().isoformat()
-            _persist_user_blob(uid, portfolio_data)
+            _persist_user_blob(uid, portfolio_data, cloud_sync=cloud_sync)
             return (
                 {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
                 "connected", "", "",
@@ -659,7 +665,7 @@ def register_tr_callbacks(app):
                 portfolio_data["cached_at"] = datetime.now().isoformat()
                 
                 # Get encrypted credentials for browser storage
-                _persist_user_blob(uid, portfolio_data, creds=encrypted_creds)
+                _persist_user_blob(uid, portfolio_data, creds=encrypted_creds, cloud_sync=cloud_sync)
 
                 return (
                     {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},

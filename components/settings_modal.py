@@ -1,8 +1,11 @@
 """Apex settings modal component."""
+import logging
 import os
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output, State, no_update
+
+log = logging.getLogger(__name__)
 
 
 def _server_has_openai_key() -> bool:
@@ -47,6 +50,37 @@ settings_modal = dbc.Modal(
                             placeholder="sk-...",
                             className="settings-input",
                             style={"display": "none"} if _server_has_openai_key() else {},
+                        ),
+                    ],
+                    className="settings-section",
+                ),
+                html.Hr(className="settings-divider"),
+                html.Div(
+                    [
+                        html.Label("Cloud Sync", className="settings-label"),
+                        dbc.Switch(
+                            id="cloud-sync-toggle",
+                            label="Sync my data to the cloud",
+                            value=False,
+                            className="settings-switch",
+                        ),
+                        html.P(
+                            [
+                                "Off by default. While off, your portfolio and Trade Republic "
+                                "credentials stay only in this browser and are never written to "
+                                "our cloud storage. Turn this on to securely back up your data "
+                                "(end-to-end encrypted) so it follows you across devices and "
+                                "survives clearing your browser. Turning it off again deletes "
+                                "the cloud copy. ",
+                                html.A(
+                                    "Learn what we store",
+                                    href="/privacy",
+                                    target="_blank",
+                                    className="settings-link",
+                                ),
+                                ".",
+                            ],
+                            className="settings-help",
                         ),
                     ],
                     className="settings-section",
@@ -170,3 +204,51 @@ def register_settings_callbacks(app):
     )
     def clear_api_key_on_user_change(_current_user):
         return None
+
+    # ── Cloud Sync toggle ────────────────────────────────────────────────
+    # Reflect the persisted flag into the switch on load.
+    @app.callback(
+        Output("cloud-sync-toggle", "value"),
+        Input("cloud-sync-enabled", "data"),
+    )
+    def initialize_cloud_sync_toggle(enabled):
+        return bool(enabled)
+
+    # Persist the switch into the browser-stored flag and act on the change:
+    #  - enabling  → immediately back up the current real portfolio to the cloud
+    #  - disabling → delete the user's cloud copy (data then lives only locally)
+    @app.callback(
+        Output("cloud-sync-enabled", "data"),
+        Input("cloud-sync-toggle", "value"),
+        [
+            State("cloud-sync-enabled", "data"),
+            State("portfolio-data-store", "data"),
+            State("tr-encrypted-creds", "data"),
+            State("demo-mode", "data"),
+            State("current-user-store", "data"),
+        ],
+        prevent_initial_call=True,
+    )
+    def apply_cloud_sync_toggle(value, current, portfolio, creds, demo_mode, current_user):
+        value = bool(value)
+        # Guard against the init callback echoing the same value (avoids a loop
+        # and spurious cloud deletes on page load).
+        if value == bool(current):
+            return no_update
+
+        from components import clerk_auth, user_data
+
+        uid = clerk_auth.verified_user_id(current_user)
+        try:
+            if value:
+                # Opt-in: push the current real portfolio (not demo) to the cloud
+                # so it's available across devices right away.
+                if uid and portfolio and not demo_mode:
+                    user_data.snapshot_for_user(uid, portfolio_json=portfolio, tr_creds=creds)
+            else:
+                # Opt-out: remove any cloud copy so data exists only in the browser.
+                if uid:
+                    user_data.delete_user_data(uid)
+        except Exception as e:
+            log.warning("Cloud sync toggle side-effect failed: %s", e)
+        return value

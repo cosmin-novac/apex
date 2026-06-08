@@ -45,8 +45,15 @@ def _default_waf_token_method() -> str:
     return "playwright"
 
 
-# Encryption key from environment (set this in your .env or hosting config)
-ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY", "default-dev-key-change-in-prod")
+# Encryption key from environment (set this in your .env or hosting config).
+# Used to encrypt the browser reconnect token (phone number only — never the PIN).
+ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY")
+if not ENCRYPTION_KEY:
+    logging.getLogger(__name__).warning(
+        "TR_ENCRYPTION_KEY is not set - using an insecure development key. "
+        "Set a strong random value in production."
+    )
+    ENCRYPTION_KEY = "default-dev-key-change-in-prod"
 TR_WAF_TOKEN_METHOD = _default_waf_token_method()
 
 
@@ -90,19 +97,28 @@ def _get_cipher_key():
     return hashlib.sha256(ENCRYPTION_KEY.encode()).digest()
 
 
-def encrypt_credentials(phone_no: str, pin: str) -> str:
-    """Encrypt credentials for browser storage."""
+def encrypt_credentials(phone_no: str, pin: str = None) -> str:
+    """Encrypt the reconnect token for browser storage.
+
+    Security: the PIN is **never** persisted. Only the phone number is stored
+    (encrypted), which is enough to identify the session for reconnect; the
+    web-session itself is resumed from the server-side cookie jar. The ``pin``
+    parameter is accepted for backward compatibility but deliberately ignored.
+    """
     from cryptography.fernet import Fernet
     # Derive Fernet key from our encryption key
     key = base64.urlsafe_b64encode(_get_cipher_key())
     f = Fernet(key)
-    data = json.dumps({"phone": phone_no, "pin": pin})
+    data = json.dumps({"phone": phone_no})
     encrypted = f.encrypt(data.encode())
     return base64.urlsafe_b64encode(encrypted).decode()
 
 
 def decrypt_credentials(encrypted: str) -> Tuple[Optional[str], Optional[str]]:
-    """Decrypt credentials from browser storage."""
+    """Decrypt the reconnect token from browser storage.
+
+    Returns ``(phone, None)`` — the PIN is never stored, so it is always None.
+    """
     try:
         from cryptography.fernet import Fernet
         key = base64.urlsafe_b64encode(_get_cipher_key())
@@ -110,7 +126,7 @@ def decrypt_credentials(encrypted: str) -> Tuple[Optional[str], Optional[str]]:
         encrypted_bytes = base64.urlsafe_b64decode(encrypted.encode())
         decrypted = f.decrypt(encrypted_bytes).decode()
         data = json.loads(decrypted)
-        return data.get("phone"), data.get("pin")
+        return data.get("phone"), None
     except Exception as e:
         log.error(f"Failed to decrypt credentials: {e}")
         return None, None
@@ -2519,16 +2535,19 @@ class TRConnection:
         """Check if a pytr web-session cookie file exists (needed for reconnect)."""
         return self._cookies_path.exists()
     
-    def get_encrypted_credentials(self, phone_no: str, pin: str) -> str:
-        """Encrypt credentials for browser storage."""
-        return encrypt_credentials(phone_no, pin)
+    def get_encrypted_credentials(self, phone_no: str, pin: str = None) -> str:
+        """Build the browser reconnect token (phone only; the PIN is never stored)."""
+        return encrypt_credentials(phone_no)
     
     def set_credentials_from_encrypted(self, encrypted: str) -> bool:
-        """Set credentials from encrypted browser storage."""
-        phone, pin = decrypt_credentials(encrypted)
-        if phone and pin:
+        """Restore the phone number from the encrypted browser token.
+
+        The PIN is never stored, so only the phone is restored. Reconnect relies
+        on the server-side web-session cookies, not the PIN.
+        """
+        phone, _ = decrypt_credentials(encrypted)
+        if phone:
             self.phone_no = phone
-            self.pin = pin
             return True
         return False
     
@@ -2604,10 +2623,14 @@ class TRConnection:
             self._strip_waf_cookie_file()
             self.is_connected = True
 
-            # Return encrypted credentials for browser storage
+            # Build the browser reconnect token (phone only — never the PIN).
             encrypted_creds = None
-            if self.phone_no and self.pin:
-                encrypted_creds = self.get_encrypted_credentials(self.phone_no, self.pin)
+            if self.phone_no:
+                encrypted_creds = self.get_encrypted_credentials(self.phone_no)
+
+            # The PIN was only needed to complete this login. Drop it from memory
+            # now so it is never persisted and not held longer than necessary.
+            self.pin = None
 
             return {
                 "success": True,
@@ -3037,16 +3060,17 @@ class TRConnection:
         return None
     
     async def _reconnect(self, encrypted_credentials: str = None) -> Dict[str, Any]:
-        """Reconnect using encrypted credentials and persisted web-session cookies."""
+        """Reconnect by resuming the persisted web-session cookies.
+
+        The PIN is never stored, so reconnect does not use it: it resumes the
+        server-side TR web session from the cookie jar. If the session has
+        expired (no cookies), the user must log in again with their PIN + OTP.
+        """
         try:
-            # Decrypt credentials from browser storage
+            # Restore the phone number (for context/UI); the PIN is never stored.
             if encrypted_credentials:
-                if not self.set_credentials_from_encrypted(encrypted_credentials):
-                    return {"success": False, "error": "Invalid stored credentials"}
-            
-            if not self.phone_no or not self.pin:
-                return {"success": False, "error": "No credentials available", "needs_reauth": True}
-            
+                self.set_credentials_from_encrypted(encrypted_credentials)
+
             if not self._cookies_path.exists():
                 return {"success": False, "error": "Session expired - please log in again", "needs_reauth": True}
             

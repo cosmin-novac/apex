@@ -40,6 +40,41 @@ def _load_demo_json() -> str:
         _log.warning("Could not load demo data: %s", e)
         return json.dumps({"success": False, "error": "Demo data file not found"})
 
+def _is_real_portfolio(data) -> bool:
+    """True if *data* is a successful, non-empty portfolio JSON string.
+
+    Used to decide whether the browser-only backup holds real synced data we
+    can restore (the backup never stores demo data)."""
+    if not data:
+        return False
+    try:
+        parsed = json.loads(data) if isinstance(data, str) else data
+        return bool(isinstance(parsed, dict) and parsed.get("success"))
+    except Exception:
+        return False
+
+
+def _wrap_backup(uid: str, portfolio_json) -> str:
+    """Wrap a real portfolio with its owner uid for the browser-only backup."""
+    return json.dumps({"uid": uid, "portfolio": portfolio_json})
+
+
+def _backup_for_uid(local_backup, uid):
+    """Return the real portfolio JSON string from the browser backup iff it
+    belongs to *uid*; otherwise None. Scoping by uid prevents one user from
+    seeing another user's data on a shared browser."""
+    if not local_backup or not uid:
+        return None
+    try:
+        wrap = json.loads(local_backup) if isinstance(local_backup, str) else local_backup
+        if not isinstance(wrap, dict) or wrap.get("uid") != uid:
+            return None
+        portfolio = wrap.get("portfolio")
+        return portfolio if _is_real_portfolio(portfolio) else None
+    except Exception:
+        return None
+
+
 # Timeframe pill-bar constants (shared between layout and callbacks)
 _TF_IDS  = ["tf-1w", "tf-1m", "tf-ytd", "tf-1y", "tf-3y", "tf-5y", "tf-max"]
 _TF_VALS = ["1W",    "1M",    "YTD",    "1Y",    "3Y",    "5Y",    "MAX"]
@@ -558,16 +593,56 @@ def register_callbacks(app):
     
     # (debug clientside callbacks removed)
     
+    # ── Mirror real portfolio data into the browser-only backup ──
+    # Any time real (non-demo) data lands in the live store, copy it to the
+    # localStorage backup so it survives reloads with no server round-trip.
+    @app.callback(
+        Output("local-portfolio-backup", "data"),
+        Input("portfolio-data-store", "data"),
+        [State("demo-mode", "data"),
+         State("current-user-store", "data")],
+        prevent_initial_call=True,
+    )
+    def mirror_real_portfolio(portfolio_data, demo_mode, current_user):
+        uid = clerk_auth.verified_user_id(current_user)
+        if demo_mode or not uid or not _is_real_portfolio(portfolio_data):
+            return no_update
+        return _wrap_backup(uid, portfolio_data)
+
+    # ── Hydrate the view from the (decrypted) browser backup ──
+    # When the encrypted vault restores the backup on load/login, surface it in
+    # the live store and exit demo. Guarded so it can't loop with the mirror.
+    @app.callback(
+        [Output("portfolio-data-store", "data", allow_duplicate=True),
+         Output("demo-mode", "data", allow_duplicate=True)],
+        Input("local-portfolio-backup", "data"),
+        [State("portfolio-data-store", "data"),
+         State("demo-mode", "data"),
+         State("current-user-store", "data")],
+        prevent_initial_call=True,
+    )
+    def hydrate_from_backup(local_backup, portfolio, demo_mode, current_user):
+        uid = clerk_auth.verified_user_id(current_user)
+        backup = _backup_for_uid(local_backup, uid)
+        if not backup:
+            raise PreventUpdate
+        # Already showing this user's real data → nothing to do (prevents loops).
+        if not demo_mode and _is_real_portfolio(portfolio):
+            raise PreventUpdate
+        return backup, False
+
     # ── Load initial data on page load (fires once) ──
     @app.callback(
         Output("portfolio-data-store", "data", allow_duplicate=True),
         Input("load-cached-data-interval", "n_intervals"),
         [State("current-user-store", "data"),
          State("demo-mode", "data"),
-         State("url", "pathname")],
+         State("url", "pathname"),
+         State("cloud-sync-enabled", "data"),
+         State("local-portfolio-backup", "data")],
         prevent_initial_call='initial_duplicate'
     )
-    def load_initial_data(n_intervals, current_user, demo_mode, pathname):
+    def load_initial_data(n_intervals, current_user, demo_mode, pathname, cloud_sync, local_backup):
         """Load initial portfolio data once on page load."""
         uid = clerk_auth.verified_user_id(current_user)
         # Not logged in → always demo
@@ -578,14 +653,20 @@ def register_callbacks(app):
         if demo_mode:
             return _load_demo_json()
 
-        # Logged in, not in demo → try server cache
-        try:
-            from components.tr_api import get_cached_portfolio
-            cached = get_cached_portfolio(user_id=uid)
-            if cached and cached.get("success"):
-                return json.dumps(cached)
-        except Exception as e:
-            _log.warning("Error loading server cache: %s", e)
+        # Logged in, not in demo. Prefer the browser-only backup so data stays
+        # local. Only consult the server cache when the user opted into cloud sync.
+        backup = _backup_for_uid(local_backup, uid)
+        if backup:
+            return backup
+
+        if cloud_sync:
+            try:
+                from components.tr_api import get_cached_portfolio
+                cached = get_cached_portfolio(user_id=uid)
+                if cached and cached.get("success"):
+                    return json.dumps(cached)
+            except Exception as e:
+                _log.warning("Error loading server cache: %s", e)
 
         # No cached data yet → show demo until they sync
         return _load_demo_json()
@@ -636,16 +717,23 @@ def register_callbacks(app):
          Output("tr-encrypted-creds", "data", allow_duplicate=True)],
         Input("current-user-store", "data"),
         [State("demo-mode", "data"),
-         State("url", "pathname")],
+         State("url", "pathname"),
+         State("cloud-sync-enabled", "data"),
+         State("local-portfolio-backup", "data")],
         prevent_initial_call=True,
     )
-    def on_auth_change(current_user, demo_mode, pathname):
-        """When user logs in → hydrate from their encrypted blob (portfolio +
-        TR credentials + device keyfile) and exit demo. When user logs out →
-        enter demo. Falls back to the local server cache when blob storage
-        isn't configured (e.g. local dev)."""
+    def on_auth_change(current_user, demo_mode, pathname, cloud_sync, local_backup):
+        """When a user logs in, hydrate their portfolio and exit demo; on logout,
+        enter demo and clear browser credentials.
+
+        Hydration source depends on the user's cloud-sync choice:
+        - Cloud sync ON → restore from the durable encrypted blob (Azure),
+          which also materialises the TR web-session keyfile for reconnect.
+        - Cloud sync OFF (default) → restore from the browser-only backup; no
+          cloud storage is read. TR credentials already live in the browser.
+        """
         if not current_user:
-            # Logged out → demo
+            # Logged out → demo, and clear browser-held TR credentials.
             return True, _load_demo_json(), None
 
         # Use the server-verified Clerk uid for any data access.
@@ -653,26 +741,41 @@ def register_callbacks(app):
         if not uid:
             return True, _load_demo_json(), None
 
-        # 1) Durable per-user blob (Azure). Restores keyfile to disk too.
+        backup = _backup_for_uid(local_backup, uid)
+
+        # Cloud sync OFF → browser is the only home for the user's data.
+        if not cloud_sync:
+            if backup:
+                # Keep browser-held creds (no_update) and exit demo.
+                return False, backup, no_update
+            return True, _load_demo_json(), no_update
+
+        # Cloud sync ON → durable per-user blob (Azure). Restores keyfile too.
         if user_data.is_enabled():
             blob = user_data.restore_for_user(uid)
             portfolio = blob.get("portfolio")
             creds = blob.get("tr_creds")
             if portfolio:
                 return False, portfolio, creds
-            # No portfolio yet, but we may still have creds to enable reconnect.
+            # No portfolio in the cloud yet — fall back to any browser backup.
+            if backup:
+                return False, backup, creds
+            # Still nothing, but we may have creds to enable reconnect.
             return True, _load_demo_json(), creds
 
-        # 2) Fallback: local server cache (no blob configured).
+        # Cloud sync requested but blob storage isn't configured (e.g. local dev):
+        # fall back to the local server cache, then the browser backup.
         try:
             from components.tr_api import get_cached_portfolio
             cached = get_cached_portfolio(user_id=uid)
             if cached and cached.get("success"):
-                return False, json.dumps(cached), None
+                return False, json.dumps(cached), no_update
         except Exception:
             pass
+        if backup:
+            return False, backup, no_update
         # No cached data yet — keep demo mode so the banner stays visible
-        return True, _load_demo_json(), None
+        return True, _load_demo_json(), no_update
 
     # ── Demo mode toggle (manual button) ──
     @app.callback(
@@ -680,10 +783,12 @@ def register_callbacks(app):
          Output("portfolio-data-store", "data", allow_duplicate=True)],
         Input("demo-toggle-btn", "n_clicks"),
         [State("demo-mode", "data"),
-         State("current-user-store", "data")],
+         State("current-user-store", "data"),
+         State("cloud-sync-enabled", "data"),
+         State("local-portfolio-backup", "data")],
         prevent_initial_call=True,
     )
-    def toggle_demo_mode(n_clicks, demo_mode, current_user):
+    def toggle_demo_mode(n_clicks, demo_mode, current_user, cloud_sync, local_backup):
         if not n_clicks:
             raise PreventUpdate
         new_mode = not demo_mode
@@ -691,7 +796,11 @@ def register_callbacks(app):
             return True, _load_demo_json()
         else:
             uid = clerk_auth.verified_user_id(current_user)
-            if uid:
+            # Back to real: prefer the browser-only backup so data stays local.
+            backup = _backup_for_uid(local_backup, uid)
+            if backup:
+                return False, backup
+            if uid and cloud_sync:
                 from components.tr_api import get_cached_portfolio
                 cached = get_cached_portfolio(user_id=uid)
                 if cached and cached.get("success"):
@@ -708,24 +817,19 @@ def register_callbacks(app):
          Output("sync-tr-data-btn", "style"),
          Output("demo-toggle-btn", "style")],
         [Input("demo-mode", "data"),
-         Input("current-user-store", "data")],
+         Input("current-user-store", "data"),
+         Input("local-portfolio-backup", "data")],
         State("lang-store", "data"),
         prevent_initial_call=False,
     )
-    def update_demo_banner(demo_mode, current_user, lang_data):
+    def update_demo_banner(demo_mode, current_user, local_backup, lang_data):
         lang = get_lang(lang_data)
         show_demo = demo_mode or not current_user
 
-        # Check if this logged-in user has ever synced real data
-        has_real_data = False
+        # The user "has real data" if their browser holds a real synced
+        # portfolio (the backup is browser-only and never holds demo data).
         uid = clerk_auth.verified_user_id(current_user)
-        if uid:
-            try:
-                from components.tr_api import get_cached_portfolio
-                cached = get_cached_portfolio(user_id=uid)
-                has_real_data = bool(cached and cached.get("success"))
-            except Exception:
-                pass
+        has_real_data = bool(_backup_for_uid(local_backup, uid))
 
         banner_style = {
             "display": "block" if show_demo else "none",
@@ -765,10 +869,11 @@ def register_callbacks(app):
         Input("sync-tr-data-btn", "n_clicks"),
         [State("tr-encrypted-creds", "data"),
          State("tr-connect-modal", "is_open"),
-         State("current-user-store", "data")],
+         State("current-user-store", "data"),
+         State("cloud-sync-enabled", "data")],
         prevent_initial_call=True,
     )
-    def sync_data(n_clicks, encrypted_creds, modal_open, current_user):
+    def sync_data(n_clicks, encrypted_creds, modal_open, current_user, cloud_sync):
         if not n_clicks:
             raise PreventUpdate
 
@@ -792,8 +897,10 @@ def register_callbacks(app):
         data = fetch_all_data(user_id=uid)
         if data.get("success"):
             portfolio_json = json.dumps(data)
-            # Persist to the durable per-user encrypted blob (no-op if unconfigured).
-            user_data.snapshot_for_user(uid, portfolio_json=portfolio_json, tr_creds=encrypted_creds)
+            # Persist to the durable per-user encrypted blob only if the user opted
+            # into cloud sync; otherwise the data stays in the browser.
+            if cloud_sync:
+                user_data.snapshot_for_user(uid, portfolio_json=portfolio_json, tr_creds=encrypted_creds)
             return portfolio_json, html.I(className="bi bi-check-circle"), False, False, False
 
         return no_update, html.I(className="bi bi-x-circle"), False, modal_open, no_update

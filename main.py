@@ -169,8 +169,19 @@ app.layout = dbc.Container([
     dcc.Store(id="lang-store", storage_type="local"),
     html.Button(id="open-settings-link", style={"display": "none"}, n_clicks=0),
     dcc.Store(id="portfolio-data-store", storage_type="memory"),
+    # Browser-only backup of the last *real* synced portfolio. Held in memory and
+    # mirrored to encrypted localStorage by assets/secure_store.js, so the data
+    # survives reloads entirely client-side (encrypted at rest, per user) with no
+    # server round-trip when cloud sync is disabled.
+    dcc.Store(id="local-portfolio-backup", storage_type="memory"),
+    dcc.Store(id="vault-sync-dummy", storage_type="memory"),
+    dcc.Interval(id="vault-restore-interval", interval=350, max_intervals=1),
     dcc.Store(id="tr-encrypted-creds", storage_type="local"),
     dcc.Store(id="demo-mode", data=True, storage_type="local"),
+    # Opt-in cloud sync. OFF by default: with this off, no portfolio or credential
+    # data is written to our cloud storage account (Azure Blob) — it stays in the
+    # browser. Toggled from the settings modal; persisted in the browser.
+    dcc.Store(id="cloud-sync-enabled", data=False, storage_type="local"),
     dcc.Interval(id="load-cached-data-interval", interval=500, max_intervals=1),
     dcc.Interval(id="clerk-uid-poll", interval=1000),  # bridges Clerk session -> current-user-store
     settings_modal,
@@ -313,6 +324,24 @@ app.clientside_callback(
     Output("mobile-sidebar-dummy", "data"),
     [Input("mobile-menu-btn", "n_clicks"), Input("mobile-overlay", "n_clicks"), Input("url", "pathname")],
     prevent_initial_call=True,
+)
+
+# ── Encrypted browser-only storage (assets/secure_store.js) ─────────────
+# Persist the in-memory portfolio backup to encrypted localStorage whenever it
+# changes, and restore it on load. The portfolio never leaves the browser unless
+# the user opts into cloud sync.
+app.clientside_callback(
+    "window.dash_clientside.apexVault.persistBackup",
+    Output("vault-sync-dummy", "data"),
+    Input("local-portfolio-backup", "data"),
+    State("current-user-store", "data"),
+    prevent_initial_call=True,
+)
+app.clientside_callback(
+    "window.dash_clientside.apexVault.restoreBackup",
+    Output("local-portfolio-backup", "data", allow_duplicate=True),
+    [Input("vault-restore-interval", "n_intervals"), Input("current-user-store", "data")],
+    prevent_initial_call="initial_duplicate",
 )
 
 register_auth_callbacks(app)
