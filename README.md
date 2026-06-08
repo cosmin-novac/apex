@@ -5,6 +5,8 @@ Apex is a standalone Dash application for portfolio analysis, Trade Republic por
 <img width="1854" height="836" alt="image" src="https://github.com/user-attachments/assets/0bc48773-639e-4e5f-8998-8f8ef45bd83f" />
 
 
+Try it out here: https://apexportfolio.de/
+
 ## Features
 
 - Portfolio analysis with demo mode and optional Trade Republic connection
