@@ -359,7 +359,50 @@ def register_tr_callbacks(app):
         Input('tr-refresh-btn', 'n_clicks'),
         prevent_initial_call=True
     )
-    
+
+    # "Send Verification Code": immediately show a spinner and disable the button
+    # on click so it can't be clicked again while the OTP request is in flight.
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            if (!n_clicks) return window.dash_clientside.no_update;
+            return [
+                true,
+                [
+                    {namespace: 'dash_html_components', type: 'I',
+                     props: {className: 'bi bi-arrow-repeat spin me-2'}},
+                    'Sending code...'
+                ]
+            ];
+        }
+        """,
+        [Output('tr-start-auth-btn', 'disabled', allow_duplicate=True),
+         Output('tr-start-auth-btn', 'children', allow_duplicate=True)],
+        Input('tr-start-auth-btn', 'n_clicks'),
+        prevent_initial_call=True,
+    )
+
+    # Re-enable the button once the flow advances (code arrived → OTP view) or the
+    # server reports an error (feedback changes). Either resets it to its default.
+    app.clientside_callback(
+        """
+        function(step, feedback) {
+            return [
+                false,
+                [
+                    {namespace: 'dash_html_components', type: 'I',
+                     props: {className: 'bi bi-send me-2'}},
+                    'Send Verification Code'
+                ]
+            ];
+        }
+        """,
+        [Output('tr-start-auth-btn', 'disabled', allow_duplicate=True),
+         Output('tr-start-auth-btn', 'children', allow_duplicate=True)],
+        [Input('tr-auth-step', 'data'), Input('tr-auth-feedback', 'children')],
+        prevent_initial_call=True,
+    )
+
     # Check for saved credentials on load (check browser storage)
     @app.callback(
         Output('tr-saved-creds-section', 'style'),
