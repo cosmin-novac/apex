@@ -153,7 +153,7 @@ The `azure-pipelines.yml` is already configured:
 - **Trigger:** pushes to `main`
 - **Build stage:** installs Python 3.11, runs `pip install -r requirements.txt`, creates zip artifact
 - **Deploy stage:** deploys zip to Azure App Service `backtesting-ai` with gunicorn startup command
-- **Service connection ID:** `configured-in-azure-devops` (update if using a different Azure subscription)
+- **Service connection ID:** defined as a pipeline variable in Azure DevOps (not committed)
 
 ---
 

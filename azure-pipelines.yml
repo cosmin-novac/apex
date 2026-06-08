@@ -7,8 +7,9 @@ trigger:
 - main
 
 variables:
-  # Azure Resource Manager connection created during pipeline creation
-  azureServiceConnectionId: 'configured-in-azure-devops'
+  # Azure Resource Manager service connection. Define this as a pipeline variable
+  # in Azure DevOps (Pipelines > Edit > Variables) so the id is not committed.
+  # It is referenced at runtime as $(azureServiceConnectionId).
 
   # Web app name
   webAppName: 'backtesting-ai'
