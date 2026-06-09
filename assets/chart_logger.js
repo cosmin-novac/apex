@@ -176,11 +176,28 @@
     return plots && plots.length ? plots[0] : null;
   }
 
+  // Read the active UI language from the Dash local store ("en" or "de").
+  // German is the default. German money uses "1.234,56 €"; English "€1,234.56".
+  function apexLang() {
+    try {
+      var raw = window.localStorage.getItem('lang-store');
+      if (!raw) return 'de';
+      var v = JSON.parse(raw);
+      if (v && typeof v === 'object') v = v.lang;
+      return v === 'en' ? 'en' : 'de';
+    } catch (e) {
+      return 'de';
+    }
+  }
+
   function formatCurrency(value) {
     var n = Number(value);
-    if (!isFiniteNumber(n)) return '€0.00';
+    if (!isFiniteNumber(n)) n = 0;
     try {
-      return '€' + n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      if (apexLang() === 'en') {
+        return '€' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
     } catch (e) {
       return '€' + n.toFixed(2);
     }
@@ -190,7 +207,10 @@
     var n = Number(value);
     if (!isFiniteNumber(n)) return '';
     try {
-      return n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+      if (apexLang() === 'en') {
+        return n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+      }
+      return n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
     } catch (e) {
       return n.toFixed(1) + '%';
     }

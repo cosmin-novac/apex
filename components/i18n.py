@@ -160,9 +160,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "bt.search_placeholder":    {"en": "Search asset… e.g. AAPL, BTC-USD, SPY",
                                  "de": "Asset suchen… z.B. AAPL, BTC-USD, SPY"},
     "bt.parameters":            {"en": "Parameters",               "de": "Parameter"},
-    "bt.cash":                  {"en": "Cash ($)",                 "de": "Kapital ($)"},
-    "bt.trade_size":            {"en": "Trade Size ($)",           "de": "Ordergröße ($)"},
-    "bt.fee":                   {"en": "Fee ($)",                  "de": "Gebühr ($)"},
+    "bt.cash":                  {"en": "Cash (€)",                 "de": "Kapital (€)"},
+    "bt.trade_size":            {"en": "Trade Size (€)",           "de": "Ordergröße (€)"},
+    "bt.fee":                   {"en": "Fee (€)",                  "de": "Gebühr (€)"},
     "bt.tax":                   {"en": "Tax (%)",                  "de": "Steuer (%)"},
     "bt.start_date":            {"en": "Start Date",               "de": "Startdatum"},
     "bt.tax_method":            {"en": "Tax Method",               "de": "Steuermethode"},
@@ -181,7 +181,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "bt.backtest_results":      {"en": "Backtest Results",         "de": "Backtest-Ergebnisse"},
     "bt.price":                 {"en": "Price",                    "de": "Preis"},
     "bt.date":                  {"en": "Date",                     "de": "Datum"},
-    "bt.portfolio_value_usd":   {"en": "Portfolio Value ($)",      "de": "Portfoliowert ($)"},
+    "bt.portfolio_value_usd":   {"en": "Portfolio Value (€)",      "de": "Portfoliowert (€)"},
 
     # ── Portfolio Simulator ─────────────────────────────────────────────
     "ps.title":                 {"en": "Investment Simulator",      "de": "Anlagesimulator"},
@@ -273,7 +273,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
 
     # ── The Real Cost ───────────────────────────────────────────────────
     "rc.title":                 {"en": "The Real Cost",             "de": "Die wahren Kosten"},
-    "rc.subtitle":              {"en": "Every dollar you spend today is a dollar that can't grow for tomorrow. See what your purchases truly cost in lost future wealth.",
+    "rc.subtitle":              {"en": "Every euro you spend today is a euro that can't grow for tomorrow. See what your purchases truly cost in lost future wealth.",
                                  "de": "Jeder Euro, den du heute ausgibst, kann morgen nicht für dich wachsen. Sieh, was deine Käufe wirklich an entgangenem Vermögen kosten."},
     "rc.question":              {"en": "What would you like to buy?",
                                  "de": "Was möchtest du kaufen?"},
@@ -297,8 +297,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "rc.lost_wealth":           {"en": "Lost Future Wealth",        "de": "Entgangenes Vermögen"},
     "rc.lost_wealth_sub":       {"en": "money you'll never have",   "de": "Geld, das du nie haben wirst"},
     "rc.multiplier":            {"en": "Cost Multiplier",           "de": "Kostenmultiplikator"},
-    "rc.multiplier_sub":        {"en": "every $1 spent = ${multiplier:.2f} lost",
-                                 "de": "jeder $1 ausgegeben = ${multiplier:.2f} verloren"},
+    "rc.multiplier_sub":        {"en": "every €1 spent = {multiplier} lost",
+                                 "de": "jeder 1 € ausgegeben = {multiplier} verloren"},
     "rc.insight":               {"en": "Instead of buying that {name} for {cost}, investing the money at {growth}% annual return would grow to {future_value} by the time you turn 80 - that's {lost} in lost wealth.",
                                  "de": "Anstatt {name} für {cost} zu kaufen, würde eine Investition des Geldes bei {growth}% jährlicher Rendite auf {future_value} wachsen, bis du 80 wirst - das sind {lost} an entgangenem Vermögen."},
     "rc.timeline":              {"en": "Growth Timeline",           "de": "Wachstumszeitachse"},
@@ -349,6 +349,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "tr.refresh":               {"en": "Refresh",                   "de": "Aktualisieren"},
     "tr.disconnect":            {"en": "Disconnect",                "de": "Trennen"},
     "tr.portfolio_value":       {"en": "Portfolio Value",           "de": "Portfoliowert"},
+    "tr.cash":                  {"en": "cash",                      "de": "Kapital"},
+    "tr.positions":             {"en": "positions",                 "de": "Positionen"},
+    "tr.could_not_load":        {"en": "Could not load portfolio",  "de": "Portfolio konnte nicht geladen werden"},
 
     # ── Rule Builder ────────────────────────────────────────────────────
     "rl.trading_rules":         {"en": "Trading Rules",             "de": "Handelsregeln"},

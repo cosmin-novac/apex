@@ -6,6 +6,63 @@ import re
 _scipy_find_peaks = None
 
 
+# ── Locale-aware number / currency formatting ────────────────────────────
+# Apex is German-first (Trade Republic users) but keeps an English UI mode.
+# German formatting uses "." for thousands and "," for decimals and writes the
+# Euro sign after the amount: "1.234,56 €". English keeps the familiar
+# "€1,234.56". Pass the active language ("de" or "en") to pick the style.
+
+def _to_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def fmt_num(value, lang="de", decimals=2):
+    """Format a bare number with locale separators (no currency symbol)."""
+    num = _to_float(value)
+    if num is None:
+        return str(value)
+    s = f"{num:,.{decimals}f}"  # always US-style first: 1,234.56
+    if lang == "de":
+        # Swap separators: 1,234.56 -> 1.234,56
+        s = s.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+    return s
+
+
+def fmt_eur(value, lang="de", decimals=2, signed=False):
+    """Format a value as Euros. de: '1.234,56 €'  en: '€1,234.56'."""
+    num = _to_float(value)
+    if num is None:
+        return str(value)
+    sign = "+" if signed and num >= 0 else ""
+    body = fmt_num(abs(num) if num < 0 else num, lang, decimals)
+    neg = "-" if num < 0 else ""
+    if lang == "de":
+        return f"{sign}{neg}{body} €"
+    return f"{sign}{neg}€{body}"
+
+
+def fmt_pct(value, lang="de", decimals=2, signed=False):
+    """Format a percentage. de: '12,34 %'  en: '12.34%'."""
+    num = _to_float(value)
+    if num is None:
+        return str(value)
+    sign = "+" if signed and num >= 0 else ""
+    body = fmt_num(num, lang, decimals)
+    return f"{sign}{body} %" if lang == "de" else f"{sign}{body}%"
+
+
+def plotly_separators(lang="de"):
+    """Plotly layout.separators string: de -> ',.'  en -> '.,'.
+
+    Plotly's format is '<decimal><thousands>', so German is ',.' (comma decimal,
+    dot thousands) and English is '.,'.
+    """
+    return ",." if lang == "de" else ".,"
+
+
 def _find_peaks(*args, **kwargs):
     global _scipy_find_peaks
     if _scipy_find_peaks is None:

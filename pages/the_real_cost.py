@@ -5,9 +5,9 @@ See what your purchases truly cost in terms of lost future wealth.
 
 from dash import html, dcc, Input, Output, State, ctx, no_update, ALL, callback_context
 import dash_bootstrap_components as dbc
-import locale
 
 from components.i18n import t, get_lang
+from core import utils as cu
 
 
 # ── Pre-defined purchase options ──────────────────────────────────────────────
@@ -22,11 +22,9 @@ PRESET_OPTIONS = [
 ]
 
 
-def _fmt(val: float) -> str:
-    """Format a number as $X,XXX."""
-    if val >= 1_000_000:
-        return f"${val:,.0f}"
-    return f"${val:,.0f}"
+def _fmt(val: float, lang: str = "de") -> str:
+    """Format a value as whole Euros (locale-aware)."""
+    return cu.fmt_eur(val, lang, decimals=0)
 
 
 def _make_preset_card(opt: dict, idx: int, lang: str = "en") -> dbc.Col:
@@ -39,7 +37,7 @@ def _make_preset_card(opt: dict, idx: int, lang: str = "en") -> dbc.Col:
                     style={"background": opt["color"] + "18", "color": opt["color"]},
                 ),
                 html.Div(t(opt["i18n"], lang), className="preset-label"),
-                html.Div(_fmt(opt["cost"]), className="preset-price"),
+                html.Div(_fmt(opt["cost"], lang), className="preset-price"),
             ],
             className="preset-card",
             id={"type": "preset-card", "index": idx},
@@ -56,7 +54,7 @@ def layout(lang="en"):
     html.Div([
         html.Div([
             html.Div([
-                html.I(className="bi bi-currency-dollar", 
+                html.I(className="bi bi-currency-euro",
                        style={"fontSize": "2.4rem", "color": "#6366f1"}),
             ], className="hero-icon-wrapper"),
             html.H2(t("rc.title", lang), className="real-cost-title"),
@@ -93,7 +91,7 @@ def layout(lang="en"):
                 type="text",
                 className="custom-input",
             ),
-            dbc.InputGroupText("$", className="custom-ig-text"),
+            dbc.InputGroupText("€", className="custom-ig-text"),
             dbc.Input(
                 id="custom-item-cost",
                 placeholder=t("rc.cost", lang),
@@ -247,7 +245,7 @@ def _build_results(name, cost, age, growth, years_left, future_value, lost, mult
                 dbc.Col([
                     html.Label(t("rc.cash_cost", lang), className="param-label"),
                     dbc.InputGroup([
-                        dbc.InputGroupText("$", className="param-addon"),
+                        dbc.InputGroupText("€", className="param-addon"),
                         dbc.Input(id="param-cost-display", type="number",
                                   value=cost, disabled=True, className="param-input"),
                     ], size="sm"),
@@ -286,7 +284,7 @@ def _build_results(name, cost, age, growth, years_left, future_value, lost, mult
                                    style={"fontSize": "1.5rem", "color": "#6366f1"}),
                         ], className="result-icon"),
                         html.Div(t("rc.true_cost", lang), className="result-card-label"),
-                        html.Div(_fmt(future_value), className="result-card-value text-primary-custom"),
+                        html.Div(_fmt(future_value, lang), className="result-card-value text-primary-custom"),
                         html.Div(t("rc.true_cost_sub", lang).format(years_left=years_left, growth=growth),
                                  className="result-card-sub"),
                     ], className="result-card"),
@@ -300,7 +298,7 @@ def _build_results(name, cost, age, growth, years_left, future_value, lost, mult
                                    style={"fontSize": "1.5rem", "color": "#ef4444"}),
                         ], className="result-icon"),
                         html.Div(t("rc.lost_wealth", lang), className="result-card-label"),
-                        html.Div(_fmt(lost), className="result-card-value text-danger-custom"),
+                        html.Div(_fmt(lost, lang), className="result-card-value text-danger-custom"),
                         html.Div(t("rc.lost_wealth_sub", lang),
                                  className="result-card-sub"),
                     ], className="result-card"),
@@ -314,8 +312,8 @@ def _build_results(name, cost, age, growth, years_left, future_value, lost, mult
                                    style={"fontSize": "1.5rem", "color": "#f59e0b"}),
                         ], className="result-icon"),
                         html.Div(t("rc.multiplier", lang), className="result-card-label"),
-                        html.Div(f"{multiplier:.1f}×", className="result-card-value text-warning-custom"),
-                        html.Div(t("rc.multiplier_sub", lang).format(multiplier=multiplier),
+                        html.Div(f"{cu.fmt_num(multiplier, lang, 1)}×", className="result-card-value text-warning-custom"),
+                        html.Div(t("rc.multiplier_sub", lang).format(multiplier=cu.fmt_eur(multiplier, lang)),
                                  className="result-card-sub"),
                     ], className="result-card"),
                     md=4, sm=12, className="mb-3",
@@ -330,8 +328,8 @@ def _build_results(name, cost, age, growth, years_left, future_value, lost, mult
                        style={"color": "#f59e0b", "fontSize": "1.2rem"}),
                 html.Span(
                     t("rc.insight", lang).format(
-                        name=name, cost=_fmt(cost), growth=growth,
-                        future_value=_fmt(future_value), lost=_fmt(lost),
+                        name=name, cost=_fmt(cost, lang), growth=growth,
+                        future_value=_fmt(future_value, lang), lost=_fmt(lost, lang),
                     ),
                     className="insight-text",
                 ),
@@ -369,7 +367,7 @@ def _build_timeline(cost, rate, years_left, start_age, lang="en"):
                 html.Div([
                     html.Div(t("rc.year_n", lang).format(yr=yr), className="timeline-year"),
                     html.Div(t("rc.age_n", lang).format(age=age_at), className="timeline-age"),
-                    html.Div(_fmt(val), className="timeline-val"),
+                    html.Div(_fmt(val, lang), className="timeline-val"),
                 ], className="timeline-info"),
             ], className="timeline-item",
                style={"left": f"{pct}%"}),

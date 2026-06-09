@@ -23,6 +23,8 @@ from components.tr_api import (
     has_session
 )
 from components import auth
+from components.i18n import t, get_lang
+from core import utils as cu
 
 
 def _tr_error_alert(message, color="warning"):
@@ -202,39 +204,39 @@ def create_tr_connector_card():
     ], className="tr-connector-content")
 
 
-def create_portfolio_summary(data):
+def create_portfolio_summary(data, lang="de"):
     """Create portfolio summary display."""
     if not data or not data.get("success"):
-        return html.Div("Could not load portfolio", className="text-muted text-center")
-    
+        return html.Div(t("tr.could_not_load", lang), className="text-muted text-center")
+
     portfolio = data.get("data", {})
     total_value = portfolio.get("totalValue", 0)
     total_profit = portfolio.get("totalProfit", 0)
     total_profit_pct = portfolio.get("totalProfitPercent", 0)
     cash = portfolio.get("cash", 0)
     positions = portfolio.get("positions", [])
-    
+
     profit_color = "text-success" if total_profit >= 0 else "text-danger"
     profit_icon = "bi-arrow-up-right" if total_profit >= 0 else "bi-arrow-down-right"
-    
+
     return html.Div([
         # Total Value
         html.Div([
-            html.Div("Portfolio Value", className="text-muted small"),
-            html.Div(f"€{total_value:,.2f}", className="fw-bold fs-4"),
+            html.Div(t("tr.portfolio_value", lang), className="text-muted small"),
+            html.Div(cu.fmt_eur(total_value, lang), className="fw-bold fs-4"),
         ], className="text-center mb-2"),
-        
+
         # Profit/Loss
         html.Div([
             html.I(className=f"bi {profit_icon} me-1"),
-            html.Span(f"€{abs(total_profit):,.2f}", className=f"fw-medium {profit_color}"),
-            html.Span(f" ({total_profit_pct:+.2f}%)", className=f"small {profit_color}"),
+            html.Span(cu.fmt_eur(total_profit, lang, signed=True), className=f"fw-medium {profit_color}"),
+            html.Span(f" ({cu.fmt_pct(total_profit_pct, lang, signed=True)})", className=f"small {profit_color}"),
         ], className="text-center mb-2"),
-        
+
         # Cash & Positions
         html.Div([
-            html.Span(f"💰 €{cash:,.2f} cash", className="small text-muted me-3"),
-            html.Span(f"📊 {len(positions)} positions", className="small text-muted"),
+            html.Span(f"💰 {cu.fmt_eur(cash, lang)} {t('tr.cash', lang)}", className="small text-muted me-3"),
+            html.Span(f"📊 {len(positions)} {t('tr.positions', lang)}", className="small text-muted"),
         ], className="text-center"),
     ], className="border rounded p-3 bg-light")
 
@@ -468,13 +470,15 @@ def register_tr_callbacks(app):
          Output('tr-portfolio-summary', 'children', allow_duplicate=True)],
         Input('tr-reconnect-link', 'n_clicks'),
         [State('tr-encrypted-creds', 'data'),
-         State('current-user-store', 'data')],
+         State('current-user-store', 'data'),
+         State('lang-store', 'data')],
         prevent_initial_call=True
     )
-    def handle_reconnect(n_clicks, encrypted_creds, current_user):
+    def handle_reconnect(n_clicks, encrypted_creds, current_user, lang_data):
         if not n_clicks:
             raise PreventUpdate
 
+        lang = get_lang(lang_data)
         uid = auth.current_uid()
         if not uid:
             raise PreventUpdate
@@ -507,7 +511,7 @@ def register_tr_callbacks(app):
                 "connection-status connected",
                 "Connected",
                 json.dumps(portfolio_data),
-                create_portfolio_summary(portfolio_data)
+                create_portfolio_summary(portfolio_data, lang)
             )
         else:
             error_msg = result.get("error", "Reconnect failed")
@@ -553,12 +557,14 @@ def register_tr_callbacks(app):
          State('tr-otp-input', 'value'),
          State('tr-auth-step', 'data'),
          State('tr-encrypted-creds', 'data'),
-         State('current-user-store', 'data')],
+         State('current-user-store', 'data'),
+         State('lang-store', 'data')],
         prevent_initial_call=True,
     )
     def handle_auth_flow(start_clicks, verify_clicks, back_clicks, disconnect_clicks, refresh_clicks,
-                         phone, pin, otp, current_step, existing_encrypted_creds, current_user):
+                         phone, pin, otp, current_step, existing_encrypted_creds, current_user, lang_data):
         triggered = ctx.triggered_id
+        lang = get_lang(lang_data)
         uid = auth.current_uid()
         
         # Default button state (reset to normal)
@@ -615,7 +621,7 @@ def register_tr_callbacks(app):
                 "connected", "", "",
                 "connection-status connected", "Connected",
                 json.dumps(portfolio_data),
-                create_portfolio_summary(portfolio_data),
+                create_portfolio_summary(portfolio_data, lang),
                 no_update,  # Keep existing creds
                 json.dumps(portfolio_data),
                 btn_disabled, btn_children,
@@ -731,7 +737,7 @@ def register_tr_callbacks(app):
                     "connected", "", "",
                     "connection-status connected", "Connected",
                     json.dumps(portfolio_data),
-                    create_portfolio_summary(portfolio_data),
+                    create_portfolio_summary(portfolio_data, lang),
                     encrypted_creds,  # Store encrypted creds in browser
                     json.dumps(portfolio_data),
                     btn_disabled, btn_children,

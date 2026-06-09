@@ -27,6 +27,7 @@ from components.tr_api import fetch_all_data, is_connected, reconnect, drop_conn
 from components.benchmark_data import get_benchmark_data, BENCHMARKS
 from components.i18n import t, get_lang
 from components import auth
+from core import utils as cu
 
 # ── Hostname helpers ─────────────────────────────────────────────────
 # ── Demo account data ────────────────────────────────────────────────
@@ -407,8 +408,8 @@ def layout(lang="en"):
                         dbc.Col([
                             html.Div([
                                 html.Div(t("pa.portfolio_value", lang), className="text-muted small"),
-                                html.Div(id="portfolio-total-value", className="fs-2 fw-bold portfolio-hero-value sensitive sensitive-strong", 
-                                         children="€0.00"),
+                                html.Div(id="portfolio-total-value", className="fs-2 fw-bold portfolio-hero-value sensitive sensitive-strong",
+                                         children=cu.fmt_eur(0, lang)),
                                 html.Div(id="portfolio-total-change", className="fs-6 sensitive", children=""),
                             ], className="py-1"),
                         ], md=4, className="mb-2"),
@@ -865,45 +866,48 @@ def register_callbacks(app):
          Output("metric-cash", "children")],
         [Input("portfolio-data-store", "data"),
          Input("asset-class-filter", "value")],
+        State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_metrics(data_json, asset_class):
+    def update_metrics(data_json, asset_class, lang_data):
+        lang = get_lang(lang_data)
+        zero = cu.fmt_eur(0, lang)
         if not data_json:
-            return ("€0.00", "", "fs-5", "€0.00", "€0.00", "metric-value sensitive", "", "€0.00")
-        
+            return (zero, "", "fs-5", zero, zero, "metric-value sensitive", "", zero)
+
         try:
             data = json.loads(data_json) if isinstance(data_json, str) else data_json
             if not data.get("success") or not data.get("data"):
                 raise ValueError("No data")
-            
+
             portfolio = data["data"]
             total_value = portfolio.get("totalValue", 0)
             invested = portfolio.get("investedAmount", 0)
             profit = portfolio.get("totalProfit", 0)
             profit_pct = portfolio.get("totalProfitPercent", 0)
             cash = portfolio.get("cash", 0)
-            
-            # Format values
-            value_str = f"€{total_value:,.2f}"
-            invested_str = f"€{invested:,.2f}"
-            profit_str = f"{'+'if profit >= 0 else ''}€{profit:,.2f}"
-            profit_pct_str = f"{'+'if profit_pct >= 0 else ''}{profit_pct:.2f}%"
-            cash_str = f"€{cash:,.2f}"
-            
+
+            # Format values (locale-aware: de -> "1.234,56 €", en -> "€1,234.56")
+            value_str = cu.fmt_eur(total_value, lang)
+            invested_str = cu.fmt_eur(invested, lang)
+            profit_str = cu.fmt_eur(profit, lang, signed=True)
+            profit_pct_str = cu.fmt_pct(profit_pct, lang, signed=True)
+            cash_str = cu.fmt_eur(cash, lang)
+
             # Change styling
             change_class = "fs-5 text-success sensitive" if profit >= 0 else "fs-5 text-danger sensitive"
             profit_class = "metric-value text-success sensitive" if profit >= 0 else "metric-value text-danger sensitive"
             change_str = html.Span([
                 html.I(className=f"bi bi-{'arrow-up' if profit >= 0 else 'arrow-down'}-right me-1"),
-                f"{'+'if profit >= 0 else ''}€{abs(profit):,.2f} ({profit_pct:+.2f}%)"
+                f"{cu.fmt_eur(profit, lang, signed=True)} ({cu.fmt_pct(profit_pct, lang, signed=True)})"
             ])
-            
-            return (value_str, change_str, change_class, invested_str, profit_str, 
+
+            return (value_str, change_str, change_class, invested_str, profit_str,
                     profit_class, profit_pct_str, cash_str)
-            
+
         except Exception as e:
             _log.warning("Error updating metrics: %s", e)
-            return ("€0.00", "", "fs-5", "€0.00", "€0.00", "metric-value sensitive", "", "€0.00")
+            return (zero, "", "fs-5", zero, zero, "metric-value sensitive", "", zero)
     
     # Donut chart for holdings breakdown
     @app.callback(
@@ -966,7 +970,7 @@ def register_callbacks(app):
             labels = [p.get("name", "Unknown")[:25] for p in positions]
             values = [p.get("value", 0) for p in positions]
             total = sum(values)
-            center_value = f"€{total:,.2f}"
+            center_value = cu.fmt_eur(total, lang)
 
             fig.add_trace(go.Pie(
                 values=values, labels=labels, hole=0.7,
@@ -1106,9 +1110,11 @@ def register_callbacks(app):
          Output("metric-total-abs", "children")],
         [Input("portfolio-data-store", "data"),
          Input("selected-range", "data")],
+        State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_return_metrics(data_json, selected_range):
+    def update_return_metrics(data_json, selected_range, lang_data):
+        lang = get_lang(lang_data)
         default = ("--", "metric-value sensitive", "",
                    "--", "metric-value sensitive", "",
                    "--", "metric-value sensitive", "",
@@ -1203,12 +1209,10 @@ def register_callbacks(app):
             m3_return, m3_abs = calc_return_on_investment(90)
             
             def fmt(val):
-                sign = "+" if val >= 0 else ""
-                return f"{sign}{val:.1f}%"
-            
+                return cu.fmt_pct(val, lang, decimals=1, signed=True)
+
             def fmt_abs(val):
-                sign = "+" if val >= 0 else ""
-                return f"{sign}€{abs(val):,.0f}"
+                return cu.fmt_eur(val, lang, decimals=0, signed=True)
             
             def cls(val):
                 return "metric-value text-success sensitive" if val >= 0 else "metric-value text-danger sensitive"
@@ -1266,12 +1270,10 @@ def register_callbacks(app):
             profit_pct = float(portfolio.get("totalProfitPercent", 0))
 
             def fmt_eur(val):
-                sign = "+" if val > 0 else "" if val == 0 else "-"
-                return f"{sign}€{abs(val):,.2f}" if val != 0 else "€0.00"
+                return cu.fmt_eur(val, lang, signed=val != 0)
 
             def fmt_pct(val):
-                sign = "+" if val > 0 else "" if val == 0 else "-"
-                return f"{sign}{abs(val):.2f}%" if val != 0 else "0.00%"
+                return cu.fmt_pct(val, lang, signed=val != 0)
 
             def parse_amount(value):
                 if value is None:
@@ -1330,15 +1332,15 @@ def register_callbacks(app):
             rendite_rows = html.Div([
                 html.Div([
                     html.Div(t("pa.portfolio_value", lang), className="text-muted small"),
-                    html.Div(f"€{total_value:,.2f}", className="fw-semibold sensitive"),
+                    html.Div(cu.fmt_eur(total_value, lang), className="fw-semibold sensitive"),
                 ], className="d-flex justify-content-between mb-2"),
                 html.Div([
                     html.Div(t("pa.invested", lang), className="text-muted small"),
-                    html.Div(f"€{invested:,.2f}", className="fw-semibold sensitive"),
+                    html.Div(cu.fmt_eur(invested, lang), className="fw-semibold sensitive"),
                 ], className="d-flex justify-content-between mb-2"),
                 html.Div([
                     html.Div(t("pa.cash", lang), className="text-muted small"),
-                    html.Div(f"€{cash:,.2f}", className="fw-semibold sensitive"),
+                    html.Div(cu.fmt_eur(cash, lang), className="fw-semibold sensitive"),
                 ], className="d-flex justify-content-between mb-2"),
                 html.Hr(className="my-2"),
                 html.Div([
@@ -1359,11 +1361,11 @@ def register_callbacks(app):
                 ], className="d-flex justify-content-between mb-2"),
                 html.Div([
                     html.Div(t("pa.fees", lang), className="text-muted small"),
-                    html.Div(f"-€{fees:,.2f}" if fees else "€0.00", className="fw-semibold text-danger sensitive" if fees else "fw-semibold sensitive"),
+                    html.Div(cu.fmt_eur(-fees, lang) if fees else cu.fmt_eur(0, lang), className="fw-semibold text-danger sensitive" if fees else "fw-semibold sensitive"),
                 ], className="d-flex justify-content-between mb-2"),
                 html.Div([
                     html.Div(t("pa.taxes", lang), className="text-muted small"),
-                    html.Div(f"-€{taxes:,.2f}" if taxes else "€0.00", className="fw-semibold text-danger sensitive" if taxes else "fw-semibold sensitive"),
+                    html.Div(cu.fmt_eur(-taxes, lang) if taxes else cu.fmt_eur(0, lang), className="fw-semibold text-danger sensitive" if taxes else "fw-semibold sensitive"),
                 ], className="d-flex justify-content-between mb-2"),
                 html.Hr(className="my-2"),
                 html.Div([
@@ -1505,15 +1507,15 @@ def register_callbacks(app):
     # because the callback re-checks every render anyway).
     _LOGOS_DIR = Path(__file__).resolve().parent.parent / "assets" / "logos"
 
-    def _fmt_eur(v):
+    def _fmt_eur(v, lang="de"):
         if v is None or v == 0:
             return "–"
-        return f"€{v:,.2f}"
+        return cu.fmt_eur(v, lang)
 
-    def _fmt_pct(v, decimals=2):
+    def _fmt_pct(v, lang="de", decimals=2):
         if v is None:
             return "–"
-        return f"{v:,.{decimals}f}%"
+        return cu.fmt_pct(v, lang, decimals=decimals)
 
     def _build_securities_html(rows, sort_col="value", sort_asc=False, lang="en"):
         """Build an html.Table with inline <img> logos and clickable sort headers."""
@@ -1566,15 +1568,15 @@ def register_callbacks(app):
                 html.Td(html.Div([logo_el, html.Span(name, className="sec-name-text")],
                                   className="sec-name-cell")),
                 html.Td(r.get("type", ""), className="sec-type"),
-                html.Td(f"{r['qty']:.4f}" if r.get("qty") else "–", className="text-end"),
-                html.Td(_fmt_eur(r.get("avg_buy")), className="text-end"),
-                html.Td(_fmt_eur(r.get("value")), className="text-end sensitive"),
-                html.Td(_fmt_eur(profit), className="text-end", style={"color": pnl_color}),
-                html.Td(_fmt_pct(profit_pct), className="text-end", style={"color": pnl_color}),
-                html.Td(_fmt_eur(r.get("dividends")) if r.get("dividends") else "–",
+                html.Td(cu.fmt_num(r['qty'], lang, 4) if r.get("qty") else "–", className="text-end"),
+                html.Td(_fmt_eur(r.get("avg_buy"), lang), className="text-end"),
+                html.Td(_fmt_eur(r.get("value"), lang), className="text-end sensitive"),
+                html.Td(_fmt_eur(profit, lang), className="text-end", style={"color": pnl_color}),
+                html.Td(_fmt_pct(profit_pct, lang), className="text-end", style={"color": pnl_color}),
+                html.Td(_fmt_eur(r.get("dividends"), lang) if r.get("dividends") else "–",
                          className="text-end",
                          style={"color": "#10b981"} if r.get("dividends", 0) > 0 else {}),
-                html.Td(_fmt_pct(r.get("allocation"), 1), className="text-end"),
+                html.Td(_fmt_pct(r.get("allocation"), lang, 1), className="text-end"),
             ]
             body_rows.append(html.Tr(cells, className="sec-row"))
 
@@ -1922,7 +1924,6 @@ def register_callbacks(app):
                 # Absolute portfolio value over time
                 y_data = df['value']
                 y_title = t("pa.yaxis_value", lang)
-                y_prefix = "€"
                 fill_color = "rgba(99, 102, 241, 0.12)"
             elif chart_type == "tab-performance":
                 # Time-Weighted Return (TWR) - use cached if available, else calculate
@@ -1934,7 +1935,6 @@ def register_callbacks(app):
                 else:
                     y_data = _calculate_twr_series_df(df)
                 y_title = t("pa.yaxis_return", lang)
-                y_prefix = ""
                 fill_color = None  # We'll handle fill separately for positive/negative
             else:  # drawdown
                 # Drawdown from TWR equity curve (excludes deposit effects)
@@ -1947,7 +1947,6 @@ def register_callbacks(app):
                     dd_list = calculate_drawdown_series(df['value'].tolist(), twr_series=twr_for_dd)
                     y_data = pd.Series(dd_list, index=df.index)
                 y_title = t("pa.yaxis_drawdown", lang)
-                y_prefix = ""
                 fill_color = "rgba(239, 68, 68, 0.14)"
             
             # Portfolio line
@@ -2147,6 +2146,7 @@ def register_callbacks(app):
             
             fig.update_layout(
                 height=320,
+                separators=cu.plotly_separators(lang),
                 margin=dict(l=34, r=12, t=12, b=34),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -2177,8 +2177,8 @@ def register_callbacks(app):
                     showgrid=True, 
                     gridcolor="rgba(148, 163, 184, 0.14)",
                     title="",
-                    tickprefix=y_prefix if chart_type == "tab-value" else "",
-                    ticksuffix="%" if chart_type != "tab-value" else "",
+                    tickprefix=("€" if lang != "de" else "") if chart_type == "tab-value" else "",
+                    ticksuffix=(" €" if lang == "de" else "") if chart_type == "tab-value" else ("%" if chart_type != "tab-value" else ""),
                     zeroline=True if chart_type == "tab-performance" else False,
                     zerolinecolor="rgba(100, 116, 139, 0.35)",
                     zerolinewidth=1,
@@ -2274,8 +2274,8 @@ def register_callbacks(app):
             except Exception:
                 return "—"
             if unit == "currency":
-                return f"€{v:,.2f}"
-            return f"{v:+.2f}%"
+                return cu.fmt_eur(v, lang)
+            return cu.fmt_pct(v, lang, signed=True)
 
         if not hover_data or not hover_data.get("points"):
             label = {

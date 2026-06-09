@@ -7,6 +7,7 @@ from dash.exceptions import PreventUpdate
 import yfinance as yf
 import traceback
 from components.i18n import t, get_lang
+from core import utils as cu
 
 
 # ──────────────────────────────  SIMULATION  ──────────────────────────────
@@ -54,8 +55,9 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
 
 # ──────────────────────────────  CHART  ──────────────────────────────
 
-def _make_figure(df):
+def _make_figure(df, lang="de"):
     """Build the projection chart from a simulation DataFrame."""
+    eur_hover = "%{{y:,.0f}} €" if lang == "de" else "€%{{y:,.0f}}"
     fig = go.Figure()
     palette = {
         'Portfolio Value': '#6366f1',
@@ -75,16 +77,19 @@ def _make_figure(df):
             visible=True if col not in ('Ending Value', 'Cost Basis') else 'legendonly',
             line=dict(color=palette.get(col, '#888'), width=2),
             marker=dict(size=4),
-            hovertemplate=f"<b>{col}</b><br>Year %{{x}}<br>€%{{y:,.0f}}<extra></extra>",
+            hovertemplate=f"<b>{col}</b><br>Year %{{x}}<br>{eur_hover}<extra></extra>",
         ))
     fig.update_layout(
+        separators=cu.plotly_separators(lang),
         margin=dict(l=10, r=10, t=10, b=10),
         plot_bgcolor='white', paper_bgcolor='white',
         font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font_size=10),
         xaxis=dict(title="Year", showgrid=True, gridcolor='#f1f5f9', dtick=5),
         yaxis=dict(title="Amount (€)", showgrid=True, gridcolor='#f1f5f9',
-                   tickprefix='€', separatethousands=True),
+                   tickprefix=('€' if lang != 'de' else ''),
+                   ticksuffix=(' €' if lang == 'de' else ''),
+                   separatethousands=True),
         hovermode='x unified',
     )
     return fig
@@ -339,13 +344,15 @@ def register_callbacks(app):
          State('input-years-to-simulate', 'value'),
          State('input-sp500-start-year', 'value'),
          State('input-tax-rate', 'value'),
-         State('input-tax-method', 'value')],
+         State('input-tax-method', 'value'),
+         State('lang-store', 'data')],
         prevent_initial_call=True,
     )
     def run_simulation(n_clicks, n_clicks_top, current_value, growth_rate, wtype, withdrawal,
-                       time_frame, years, sp500_year, tax_rate, tax_method):
+                       time_frame, years, sp500_year, tax_rate, tax_method, lang_data):
         if not n_clicks and not n_clicks_top:
             raise PreventUpdate
+        lang = get_lang(lang_data)
 
         try:
             # Validate inputs
@@ -374,7 +381,7 @@ def register_callbacks(app):
                     None, (tax_rate or 0) / 100, tax_method, sp500_year,
                 )
 
-            fig = _make_figure(df)
+            fig = _make_figure(df, lang)
             cols = [{"name": c, "id": c} for c in df.columns]
             print(f"[Sim] Success: {len(df)} years simulated")
             return fig, df.to_dict('records'), cols, ""

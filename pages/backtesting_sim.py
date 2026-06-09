@@ -1058,10 +1058,11 @@ def register_callbacks(app):
 
         # Configure the secondary Y-axis
         fig.update_layout(
+            separators=plotly_separators(lang),
             title=dict(text=f"{display_name} — {t('bt.backtest_results', lang)}", font=dict(size=14)),
             yaxis_title=t("bt.price", lang),
             yaxis2=dict(
-                title="Portfolio Value ($)",
+                title=t("bt.portfolio_value_usd", lang),
                 overlaying='y',
                 side='right',
                 showgrid=False,
