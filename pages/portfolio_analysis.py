@@ -282,6 +282,8 @@ def layout(lang="en"):
             html.Span(t("pa.demo_banner", lang), className="ms-1"),
             html.A(t("pa.demo_login", lang), href="#", id="demo-login-link", className="text-white fw-bold text-decoration-underline ms-1"),
             html.Span(t("pa.demo_suffix", lang), id="demo-banner-suffix"),
+            html.Div(t("pa.local_only", lang), id="demo-banner-local-note",
+                     style={"fontSize": "0.78rem", "fontWeight": "600", "opacity": "0.95", "marginTop": "4px"}),
         ],
         id="demo-banner",
         style={
@@ -605,7 +607,7 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def mirror_real_portfolio(portfolio_data, demo_mode, current_user):
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
         if demo_mode or not uid or not _is_real_portfolio(portfolio_data):
             return no_update
         return _wrap_backup(uid, portfolio_data)
@@ -623,7 +625,7 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def hydrate_from_backup(local_backup, portfolio, demo_mode, current_user):
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
         backup = _backup_for_uid(local_backup, uid)
         if not backup:
             raise PreventUpdate
@@ -644,10 +646,10 @@ def register_callbacks(app):
     )
     def load_initial_data(n_intervals, current_user, demo_mode, pathname, local_backup):
         """Load initial portfolio data once on page load."""
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
 
-        # User explicitly chose demo → demo
-        if demo_mode:
+        # Logged out, or the user explicitly chose demo → demo
+        if not uid or demo_mode:
             return _load_demo_json()
 
         # Prefer the browser-only backup so data stays local.
@@ -685,11 +687,13 @@ def register_callbacks(app):
                 pass
         return is_open
 
-    # "Log in" link in demo banner — page-level click handler
-    # Only fires on actual clicks (prevent_initial_call=True), so
-    # demo-login-link is guaranteed to exist in the DOM.
+    # "Log in" link in demo banner — page-level click handler.
+    # Logged out -> open the local login modal. Logged in -> open the TR connect
+    # modal so the user can sync real data.
     @app.callback(
-        Output("tr-connect-modal", "is_open", allow_duplicate=True),
+        [Output("tr-connect-modal", "is_open", allow_duplicate=True),
+         Output("auth-modal", "is_open", allow_duplicate=True),
+         Output("auth-mode-store", "data", allow_duplicate=True)],
         Input("demo-login-link", "n_clicks"),
         State("current-user-store", "data"),
         prevent_initial_call=True,
@@ -697,8 +701,10 @@ def register_callbacks(app):
     def handle_demo_login_click(n_clicks, current_user):
         if not n_clicks:
             raise PreventUpdate
-        # Open the TR connect modal so the user can sync real data.
-        return True
+        if auth.current_uid(current_user):
+            return True, no_update, no_update
+        # Not logged in -> open the login modal in login mode.
+        return no_update, True, "login"
     
     # ── Auto-reset demo mode on login/logout ──
     # This is the SINGLE source of truth for demo-mode transitions
@@ -720,7 +726,11 @@ def register_callbacks(app):
         the local pytr cache from a previous sync. TR credentials already live in
         the browser, so they are left untouched (no_update).
         """
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
+        # Logged out → demo, and clear any browser-held TR credentials.
+        if not uid:
+            return True, _load_demo_json(), None
+
         backup = _backup_for_uid(local_backup, uid)
         if backup:
             return False, backup, no_update
@@ -753,7 +763,7 @@ def register_callbacks(app):
         if new_mode:
             return True, _load_demo_json()
         else:
-            uid = auth.current_uid()
+            uid = auth.current_uid(current_user)
             # Back to real: prefer the browser-only backup so data stays local.
             backup = _backup_for_uid(local_backup, uid)
             if backup:
@@ -785,7 +795,7 @@ def register_callbacks(app):
 
         # The user "has real data" if their browser holds a real synced
         # portfolio (the backup is browser-only and never holds demo data).
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
         has_real_data = bool(_backup_for_uid(local_backup, uid))
 
         banner_style = {
@@ -833,7 +843,7 @@ def register_callbacks(app):
         if not n_clicks:
             raise PreventUpdate
 
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
 
         from components.tr_api import fetch_all_data, reconnect, is_connected
 

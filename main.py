@@ -30,6 +30,7 @@ from pages.legal import layout as legal_layout
 from components.settings_modal import settings_button, settings_modal, api_key_store, register_settings_callbacks
 from components.rule_builder import register_rule_builder_callbacks
 from components.auth import user_store, register_auth_callbacks
+from components.auth_modal import auth_modal, auth_user_area, register_auth_modal_callbacks
 from components.i18n import t, get_lang
 from components.tr_api import ensure_playwright_browser
 
@@ -108,6 +109,7 @@ sidebar = html.Div([
                 ], id="lang-dropdown-menu", className="lang-dropdown-menu", style={"display": "none"}),
             ], className="position-relative"),
         ], className="sidebar-control-row"),
+        auth_user_area(),
         html.Div([
             dcc.Link("Impressum", href="/impressum", id="sidebar-link-impressum", className="sidebar-legal-link"),
             dcc.Link("Privacy Policy", href="/privacy", id="sidebar-link-privacy", className="sidebar-legal-link"),
@@ -131,16 +133,22 @@ app.layout = dbc.Container([
     html.Button(id="open-settings-link", style={"display": "none"}, n_clicks=0),
     dcc.Store(id="portfolio-data-store", storage_type="memory"),
     # Browser-only backup of the last *real* synced portfolio. Held in memory and
-    # mirrored to encrypted localStorage by assets/secure_store.js, so the data
-    # survives reloads entirely client-side (encrypted at rest) with no server
-    # round-trip — this is the only durable home for synced data.
+    # mirrored to the per-user encrypted vault in localStorage by
+    # assets/secure_store.js, keyed by the logged-in user's password-derived key,
+    # so the data survives reloads but is unreadable until that user logs in.
     dcc.Store(id="local-portfolio-backup", storage_type="memory"),
     dcc.Store(id="vault-sync-dummy", storage_type="memory"),
     dcc.Interval(id="vault-restore-interval", interval=350, max_intervals=1),
-    dcc.Store(id="tr-encrypted-creds", storage_type="local"),
+    # Session-scoped (not local): TR credentials live in the encrypted vault and
+    # are hydrated into this store only after the owner logs in, never shared
+    # across profiles on the same browser.
+    dcc.Store(id="tr-encrypted-creds", storage_type="memory"),
     dcc.Store(id="demo-mode", data=True, storage_type="local"),
     dcc.Interval(id="load-cached-data-interval", interval=500, max_intervals=1),
+    # Mirrors the local-auth session uid into current-user-store (components/auth.py).
+    dcc.Interval(id="auth-uid-poll", interval=1000),
     settings_modal,
+    auth_modal,
     dcc.Store(id="mobile-sidebar-dummy"),
     mobile_header,
     mobile_overlay,
@@ -282,24 +290,27 @@ app.clientside_callback(
     prevent_initial_call=True,
 )
 
-# ── Encrypted browser-only storage (assets/secure_store.js) ─────────────
-# Persist the in-memory portfolio backup to encrypted localStorage whenever it
-# changes, and restore it on load. The portfolio never leaves the browser.
+# ── Per-user encrypted vault (assets/secure_store.js) ───────────────────
+# Persist the portfolio backup + TR credentials into the logged-in user's
+# encrypted localStorage vault whenever either changes, and restore them after
+# login. Nothing is readable until the user logs in (no key, no decrypt).
 app.clientside_callback(
     "window.dash_clientside.apexVault.persistBackup",
     Output("vault-sync-dummy", "data"),
-    Input("local-portfolio-backup", "data"),
+    [Input("local-portfolio-backup", "data"), Input("tr-encrypted-creds", "data")],
     State("current-user-store", "data"),
     prevent_initial_call=True,
 )
 app.clientside_callback(
     "window.dash_clientside.apexVault.restoreBackup",
-    Output("local-portfolio-backup", "data", allow_duplicate=True),
+    [Output("local-portfolio-backup", "data", allow_duplicate=True),
+     Output("tr-encrypted-creds", "data", allow_duplicate=True)],
     [Input("vault-restore-interval", "n_intervals"), Input("current-user-store", "data")],
     prevent_initial_call="initial_duplicate",
 )
 
 register_auth_callbacks(app)
+register_auth_modal_callbacks(app)
 register_settings_callbacks(app)
 register_rule_builder_callbacks(app)
 register_portfolio_analysis_callbacks(app)
@@ -322,4 +333,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8888))
     use_reloader_default = debug and os.name != "nt"
     use_reloader = os.environ.get("DASH_USE_RELOADER", "1" if use_reloader_default else "0") == "1"
-    app.run_server(debug=debug, port=port, use_reloader=use_reloader)
+    # threaded=True so the dev server can answer the TR sync-progress poll while a
+    # blocking portfolio sync is in flight (otherwise the single request thread is
+    # occupied by the sync and the progress bar never updates until it finishes).
+    app.run_server(debug=debug, port=port, use_reloader=use_reloader, threaded=True)

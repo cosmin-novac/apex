@@ -21,7 +21,7 @@ Git push (main)
   └─▶ Azure Pipelines
         ├─ Build Stage: pip install, zip artifact
         └─ Deploy Stage: AzureWebApp@1 → backtesting-ai
-              └─ Startup: gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 main:server
+              └─ Startup: gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 --threads 4 main:server
 ```
 
 The `server = app.server` line in `main.py` exposes the Flask/WSGI server that gunicorn binds to.
@@ -92,7 +92,7 @@ Or set them in the Azure Portal: **App Service → Configuration → Application
 az webapp config set \
   --resource-group rg-backtesting \
   --name backtesting-ai \
-  --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 main:server"
+  --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 --threads 4 main:server"
 ```
 
 ### 4. Connect Azure Pipelines
@@ -173,7 +173,7 @@ az webapp update --name backtesting-ai --resource-group rg-backtesting --set sit
 
 | Issue | Solution |
 |---|---|
-| App won't start | Check startup command in Configuration → General settings. Must be `gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 main:server` |
+| App won't start | Check startup command in Configuration → General settings. Must be `gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 --threads 4 main:server` |
 | `ModuleNotFoundError` | Set `SCM_DO_BUILD_DURING_DEPLOYMENT=true` and redeploy, or check `requirements.txt` |
 | Portfolio data does not persist across reloads | Expected if browser storage is cleared; data lives only in the browser (encrypted localStorage). Re-sync from Trade Republic |
 | Trade Republic sync cannot reconnect | Verify `TR_ENCRYPTION_KEY` is stable across deploys and `pytr==0.4.9` is installed. Note: the pytr web-session cookies live on the (ephemeral) App Service disk, so a restart may require a fresh login |

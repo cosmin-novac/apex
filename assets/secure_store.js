@@ -1,29 +1,26 @@
 /**
  * secure_store.js
  *
- * Encrypts Apex's browser-only data at rest in localStorage.
+ * Encrypts Apex's per-user data at rest in localStorage.
  *
- * Apex is a standalone single-user app: the synced portfolio lives only in this
- * browser. Rather than keeping that financial data as plaintext JSON in
- * localStorage, we encrypt it with AES-GCM using a key derived (PBKDF2) from the
- * local user id.
+ * The vault holds a single JSON blob per logged-in user:
+ *   { portfolio: <portfolio-backup>, tr_creds: <encrypted TR credentials> }
  *
- * Threat model / honesty note: the derivation input (the local user id) is also
- * present in the page, so this protects against casual inspection, not against an
- * attacker with full control of the browser. True end-to-end secrecy would
- * require a user-supplied passphrase.
+ * It is encrypted with AES-GCM under the key derived from the user's password
+ * (see local_auth.js, window.apexAuth.getKey()). When no user is logged in there
+ * is no key, so the vault cannot be read or written: a visitor who opens the
+ * window sees nothing until they log in.
  *
  * Exposes two Dash clientside callbacks under window.dash_clientside.apexVault:
- *   • persistBackup(backupData, currentUser) — encrypt + store
- *   • restoreBackup(nIntervals, currentUser) — decrypt + return
+ *   persistBackup(portfolioBackup, trCreds, currentUser) -> encrypt + store
+ *   restoreBackup(nIntervals, currentUser)               -> decrypt + [portfolio, trCreds]
  */
 (function () {
   "use strict";
 
   window.dash_clientside = window.dash_clientside || {};
 
-  var SALT = "apex.secure_store.v1";
-  var KEY_PREFIX = "apex.vault.portfolio.";
+  var KEY_PREFIX = "apex.vault.";
   var enc = new TextEncoder();
   var dec = new TextDecoder();
 
@@ -31,11 +28,11 @@
     return !!(window.crypto && window.crypto.subtle && window.localStorage);
   }
 
-  function uidOf(currentUser) {
-    if (!currentUser) return null;
-    if (typeof currentUser === "string") return currentUser;
-    if (currentUser.user_id) return currentUser.user_id;
-    return null;
+  function activeKey() {
+    return (window.apexAuth && window.apexAuth.getKey) ? window.apexAuth.getKey() : null;
+  }
+  function activeUid() {
+    return (window.apexAuth && window.apexAuth.currentUid) ? window.apexAuth.currentUid() : null;
   }
 
   function toB64(buf) {
@@ -44,7 +41,6 @@
     for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
     return btoa(bin);
   }
-
   function fromB64(str) {
     var bin = atob(str);
     var bytes = new Uint8Array(bin.length);
@@ -52,73 +48,71 @@
     return bytes;
   }
 
-  async function deriveKey(uid) {
-    var base = await window.crypto.subtle.importKey(
-      "raw", enc.encode(uid + "|" + SALT), { name: "PBKDF2" }, false, ["deriveKey"]
-    );
-    return window.crypto.subtle.deriveKey(
-      { name: "PBKDF2", salt: enc.encode(SALT), iterations: 150000, hash: "SHA-256" },
-      base,
-      { name: "AES-GCM", length: 256 },
-      false,
-      ["encrypt", "decrypt"]
-    );
-  }
-
-  async function vaultSet(uid, plaintext) {
-    if (!hasCrypto() || !uid || !plaintext) return false;
-    var key = await deriveKey(uid);
+  async function vaultSet(uid, key, obj) {
+    if (!hasCrypto() || !uid || !key) return false;
     var iv = window.crypto.getRandomValues(new Uint8Array(12));
     var ct = await window.crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: iv }, key, enc.encode(plaintext)
+      { name: "AES-GCM", iv: iv }, key, enc.encode(JSON.stringify(obj))
     );
-    var payload = JSON.stringify({ v: 1, iv: toB64(iv), ct: toB64(ct) });
+    var payload = JSON.stringify({ v: 2, iv: toB64(iv), ct: toB64(ct) });
     window.localStorage.setItem(KEY_PREFIX + uid, payload);
     return true;
   }
 
-  async function vaultGet(uid) {
-    if (!hasCrypto() || !uid) return null;
+  async function vaultGet(uid, key) {
+    if (!hasCrypto() || !uid || !key) return null;
     var raw = window.localStorage.getItem(KEY_PREFIX + uid);
     if (!raw) return null;
     var payload = JSON.parse(raw);
-    var key = await deriveKey(uid);
     var pt = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: fromB64(payload.iv) }, key, fromB64(payload.ct)
     );
-    return dec.decode(pt);
+    return JSON.parse(dec.decode(pt));
   }
 
   window.apexVault = { vaultSet: vaultSet, vaultGet: vaultGet };
 
   window.dash_clientside.apexVault = {
-    // Encrypt the browser-only portfolio backup whenever it changes.
-    persistBackup: async function (backupData, currentUser) {
+    // Encrypt the per-user blob whenever the portfolio backup or TR creds change.
+    persistBackup: async function (portfolioBackup, trCreds, currentUser) {
       var NU = window.dash_clientside.no_update;
       try {
-        var uid = uidOf(currentUser);
-        if (uid && backupData) {
-          await vaultSet(uid, typeof backupData === "string" ? backupData : JSON.stringify(backupData));
-        }
+        var uid = activeUid();
+        var key = activeKey();
+        if (!uid || !key) return NU; // locked: do not write
+        // Only persist when there is something to store.
+        if (portfolioBackup == null && trCreds == null) return NU;
+        var existing = (await vaultGet(uid, key)) || {};
+        var blob = {
+          portfolio: portfolioBackup != null ? portfolioBackup : existing.portfolio || null,
+          tr_creds: trCreds != null ? trCreds : existing.tr_creds || null,
+        };
+        await vaultSet(uid, key, blob);
       } catch (e) {
         console.warn("[apex vault] persist failed:", e);
       }
       return NU;
     },
 
-    // Restore + decrypt the backup on load / login. Output feeds back into the
-    // (in-memory) backup store; server callbacks then hydrate the view from it.
+    // Restore + decrypt the blob on login. Output feeds the in-memory portfolio
+    // backup and the (memory) TR credentials store; server callbacks hydrate from
+    // there. Returns [portfolio, trCreds].
     restoreBackup: async function (nIntervals, currentUser) {
       var NU = window.dash_clientside.no_update;
       try {
-        var uid = uidOf(currentUser);
-        if (!uid) return NU;
-        var data = await vaultGet(uid);
-        if (data) return data;
+        var uid = activeUid();
+        var key = activeKey();
+        if (!uid || !key) return [NU, NU];
+        var blob = await vaultGet(uid, key);
+        if (!blob) return [NU, NU];
+        return [
+          blob.portfolio != null ? blob.portfolio : NU,
+          blob.tr_creds != null ? blob.tr_creds : NU,
+        ];
       } catch (e) {
         console.warn("[apex vault] restore failed:", e);
       }
-      return NU;
-    }
+      return [NU, NU];
+    },
   };
 })();

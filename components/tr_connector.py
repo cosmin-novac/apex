@@ -409,7 +409,7 @@ def register_tr_callbacks(app):
         prevent_initial_call=True,
     )
     def update_sync_progress(_n, current_user):
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
         if not uid:
             raise PreventUpdate
         from components.tr_api import get_fetch_progress
@@ -437,7 +437,7 @@ def register_tr_callbacks(app):
         prevent_initial_call=False
     )
     def check_saved_credentials(_, encrypted_creds, current_user):
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
         if not uid:
             return {"display": "none"}
         # Show reconnect option if we have encrypted creds in browser and TR web-session cookies on server.
@@ -479,7 +479,7 @@ def register_tr_callbacks(app):
             raise PreventUpdate
 
         lang = get_lang(lang_data)
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
         if not uid:
             raise PreventUpdate
         result = reconnect(encrypted_creds, user_id=uid)
@@ -565,7 +565,7 @@ def register_tr_callbacks(app):
                          phone, pin, otp, current_step, existing_encrypted_creds, current_user, lang_data):
         triggered = ctx.triggered_id
         lang = get_lang(lang_data)
-        uid = auth.current_uid()
+        uid = auth.current_uid(current_user)
         
         # Default button state (reset to normal)
         btn_disabled = False

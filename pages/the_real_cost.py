@@ -59,6 +59,11 @@ def layout(lang="en"):
             ], className="hero-icon-wrapper"),
             html.H2(t("rc.title", lang), className="real-cost-title"),
             html.P(t("rc.subtitle", lang), className="real-cost-subtitle"),
+            html.P([
+                html.I(className="bi bi-info-circle me-1"),
+                t("rc.disclaimer", lang),
+            ], className="real-cost-disclaimer text-muted small mx-auto",
+               style={"maxWidth": "640px", "marginTop": "0.5rem"}),
         ], className="text-center"),
     ], className="real-cost-hero"),
 

@@ -1,13 +1,15 @@
 import pytest
 
 
-def test_current_uid_is_constant_local_user():
+def test_current_uid_reflects_client_store():
     from components import auth
 
-    # Single-user app: the uid is always the constant local id, regardless of any
-    # (now-unused) client-supplied value.
-    assert auth.current_uid() == auth.LOCAL_UID
-    assert auth.current_uid("anything") == auth.LOCAL_UID
+    # Local-auth model: the server reads the uid from the client store value.
+    # Logged out -> None; logged in -> the account's uid (string or {uid:...}).
+    assert auth.current_uid(None) is None
+    assert auth.current_uid("") is None
+    assert auth.current_uid("u123abc") == "u123abc"
+    assert auth.current_uid({"uid": "u123abc"}) == "u123abc"
 
 
 def test_tr_cache_namespaces_reject_malformed_uids():
