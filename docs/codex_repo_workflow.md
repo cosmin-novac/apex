@@ -57,7 +57,7 @@ $env:PYTHONDONTWRITEBYTECODE='1'
 For frontend JavaScript:
 
 ```powershell
-node --check assets\clerk_init.js
+node --check assets\secure_store.js
 ```
 
 Avoid `python -m compileall` during active local app runs unless the user has
@@ -71,20 +71,20 @@ stopped the app or the `__pycache__` lock is known to be gone.
   play.
 - Apex should use `pytr==0.4.9` or newer.
 - Reconnect state is web-session cookies, not `keyfile.pem`.
-- User blob storage should persist `tr_cookies`, not `tr_keyfile`.
+- Web-session cookies (`tr_cookies`) live in the local pytr cache on disk.
 - `TR_WAF_TOKEN_METHOD=playwright` is the default because it matches
   `app.traderepublic.com` most closely.
 - Do not persist `aws-waf-token`; it is volatile and stale WAF cookies can cause
   TR auth 405s.
 - Do not silently fall back between WAF methods or older auth flows.
 
-## Azure Blob Storage
+## Storage
 
-- Azure SDK HTTP request logs can be very noisy and may expose storage-account
-  structure. Keep Azure HTTP pipeline logging at warning level.
-- A 404 for a per-user blob can be normal on a user's first login.
-- A successful container create or existing-container check is not itself an
-  error.
+- Apex is a standalone single-user app: no sign-in and no cloud data store.
+- Synced portfolio + TR credentials live only in the browser (encrypted
+  localStorage via `assets/secure_store.js`); the local pytr disk cache holds the
+  web-session cookies for reconnect.
+- Do not reintroduce Clerk auth or Azure Blob Storage for user data.
 
 ## Git / Files
 

@@ -15,7 +15,7 @@ Try it out here: https://apexportfolio.de/
 - Long-term portfolio simulations
 - Exit strategy risk-band modelling
 - The Real Cost opportunity-cost calculator
-- Local browser registration/login with user-namespaced portfolio and broker data
+- Runs fully standalone (no sign-in, no cloud): portfolio and broker data stay in the local browser
 
 ## Setup
 

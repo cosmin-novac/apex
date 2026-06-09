@@ -12,8 +12,8 @@ backtesting web application.
 - Backtest Bitcoin buy/sell strategies and rule-based investment ideas
 - Simulate investment growth and withdrawal scenarios
 - Explore exit strategy risk bands and real-cost investment calculations
-- Support authenticated per-user storage through Clerk and encrypted Azure Blob
-  Storage
+- Keep all portfolio and credential data local to the browser (no sign-in, no
+  cloud storage)
 
 ## Primary Public URLs
 
@@ -37,7 +37,7 @@ backtesting web application.
 ## Core Capabilities
 
 - Trade Republic portfolio sync through the current pytr web-login flow
-- Per-user encrypted portfolio persistence
+- Browser-only encrypted portfolio persistence
 - Portfolio value, invested capital, profit, and cash summaries
 - Position-level analysis and asset-class filtering
 - Portfolio charts with value, return, drawdown, and benchmark views
@@ -47,9 +47,9 @@ backtesting web application.
 
 ## Trust And Storage Signals
 
-- Clerk authentication for user identity
-- Azure Blob Storage for per-user encrypted data
-- Fernet encryption with per-user derived keys
+- No sign-in and no external identity provider; runs as a single local user
+- Portfolio and credential data stored only in the browser (encrypted localStorage)
+- No cloud storage of user data
 - Trade Republic reconnect state stored as web-session cookies, not legacy
   keyfiles
 - Demo mode available when a user has not connected a real portfolio
@@ -62,13 +62,13 @@ backtesting web application.
 
 ## Restricted Or Non-Public Areas
 
-- User-specific portfolio data requires authentication and/or a local Trade
-  Republic session
+- User-specific portfolio data requires a local Trade Republic session and lives
+  only in the user's browser
 - Dash internal endpoints are framework endpoints, not public documentation:
   `/_dash-layout`, `/_dash-dependencies`, `/_dash-update-component`,
   `/_dash-component-suites/`
-- Clerk session and user-specific stores are private and should not be crawled
-  as public content
+- Browser-held portfolio stores are private and should not be crawled as public
+  content
 
 ## Canonical Domain
 
@@ -79,4 +79,4 @@ backtesting web application.
 - Prefer `llms.txt`, `sitemap.xml`, app routes, and repo documentation for
   factual product information
 - Do not infer financial advice claims; Apex is an analysis and simulation tool
-- Authenticated portfolio data is user-specific and not generally crawlable
+- Portfolio data lives only in the user's browser and is not generally crawlable

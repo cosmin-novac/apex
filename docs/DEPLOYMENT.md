@@ -32,13 +32,12 @@ The `server = app.server` line in `main.py` exposes the Flask/WSGI server that g
 
 Set these in **Azure Portal → App Service → Configuration → Application settings** (or in a local `.env` file for development).
 
+> Apex runs as a standalone, single-user app: there is no sign-in and no cloud
+> data store. Portfolio and credential data stay in the browser. Azure is used
+> only for **hosting**.
+
 | Variable | Required | Description |
 |---|---|---|
-| `CLERK_PUBLISHABLE_KEY` | **Yes** | Clerk frontend publishable key |
-| `CLERK_SECRET_KEY` | **Yes** | Clerk backend secret key |
-| `AZURE_STORAGE_CONNECTION_STRING` | For persistence | Azure Storage connection string for the encrypted per-user blob store |
-| `APEX_BLOB_CONTAINER` | No | Blob container name (default `apex-data`) |
-| `APEX_ENCRYPTION_KEY` | For persistence | Base64-encoded 32-byte master key for per-user encrypted blobs |
 | `TR_ENCRYPTION_KEY` | For TR sync | Random 32-character string used to encrypt Trade Republic credentials at rest |
 | `OPENAI_API_KEY` | For AI rules | OpenAI API key for AI-assisted backtesting rule generation |
 | `DASH_DEBUG` | No | Set to `0` in production (default `1` enables debug mode) |
@@ -79,11 +78,8 @@ az webapp config appsettings set \
   --resource-group rg-backtesting \
   --name backtesting-ai \
   --settings \
-    CLERK_PUBLISHABLE_KEY="pk_live_..." \
-    CLERK_SECRET_KEY="sk_live_..." \
-    AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=..." \
-    APEX_ENCRYPTION_KEY="$(python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())")" \
     TR_ENCRYPTION_KEY="$(openssl rand -hex 16)" \
+    OPENAI_API_KEY="sk-..." \
     DASH_DEBUG="0" \
     SCM_DO_BUILD_DURING_DEPLOYMENT="true"
 ```
@@ -179,9 +175,8 @@ az webapp update --name backtesting-ai --resource-group rg-backtesting --set sit
 |---|---|
 | App won't start | Check startup command in Configuration → General settings. Must be `gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 main:server` |
 | `ModuleNotFoundError` | Set `SCM_DO_BUILD_DURING_DEPLOYMENT=true` and redeploy, or check `requirements.txt` |
-| Clerk sign-in does not open | Verify `CLERK_PUBLISHABLE_KEY` and that its decoded Clerk frontend host resolves publicly |
-| User data does not persist | Verify `AZURE_STORAGE_CONNECTION_STRING`, `APEX_ENCRYPTION_KEY`, and that the blob container can be created |
-| Trade Republic sync cannot reconnect | Verify `TR_ENCRYPTION_KEY` is stable across deploys, `pytr==0.4.9` is installed, and the user's encrypted blob contains `tr_cookies` |
+| Portfolio data does not persist across reloads | Expected if browser storage is cleared; data lives only in the browser (encrypted localStorage). Re-sync from Trade Republic |
+| Trade Republic sync cannot reconnect | Verify `TR_ENCRYPTION_KEY` is stable across deploys and `pytr==0.4.9` is installed. Note: the pytr web-session cookies live on the (ephemeral) App Service disk, so a restart may require a fresh login |
 | Trade Republic first login fails with `libglib-2.0.so.0` or `BrowserType.launch` | App Service Linux is missing Playwright's Chromium runtime deps. Apex now attempts `playwright install --with-deps chromium` during startup when Playwright login is active. If your hosting policy blocks that, use a custom container or another host for the initial login bootstrap. |
 | 502 / timeout on startup | Increase timeout: `--timeout 900`. Gunicorn needs time to load all modules |
 | Static assets not loading | Ensure `assets/` folder is included in the deployment zip |

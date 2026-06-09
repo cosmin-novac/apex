@@ -57,41 +57,6 @@ settings_modal = dbc.Modal(
                 html.Hr(className="settings-divider"),
                 html.Div(
                     [
-                        html.Label("Cloud Sync", className="settings-label"),
-                        dbc.Switch(
-                            id="cloud-sync-toggle",
-                            label="Sync my data to the cloud",
-                            value=False,
-                            className="settings-switch",
-                            # Persist the switch itself so we don't need a
-                            # store->switch callback (which would create a cycle).
-                            persistence=True,
-                            persistence_type="local",
-                        ),
-                        html.P(
-                            [
-                                "Off by default. While off, your portfolio and Trade Republic "
-                                "credentials stay only in this browser and are never written to "
-                                "our cloud storage. Turn this on to securely back up your data "
-                                "(end-to-end encrypted) so it follows you across devices and "
-                                "survives clearing your browser. Turning it off again deletes "
-                                "the cloud copy. ",
-                                html.A(
-                                    "Learn what we store",
-                                    href="/privacy",
-                                    target="_blank",
-                                    className="settings-link",
-                                ),
-                                ".",
-                            ],
-                            className="settings-help",
-                        ),
-                    ],
-                    className="settings-section",
-                ),
-                html.Hr(className="settings-divider"),
-                html.Div(
-                    [
                         html.Label("Display Theme", className="settings-label"),
                         html.P("Choose your preferred color scheme", className="settings-help"),
                         dbc.RadioItems(
@@ -209,41 +174,3 @@ def register_settings_callbacks(app):
     )
     def clear_api_key_on_user_change(_current_user):
         return None
-
-    # ── Cloud Sync toggle ────────────────────────────────────────────────
-    # The switch persists its own value (persistence=local), and the store also
-    # persists (storage_type=local); both restore independently on load, so no
-    # store->switch callback is needed. This single callback mirrors the switch
-    # into the store (read everywhere as the flag) and acts on the change:
-    #  - enabling  → immediately back up the current real portfolio to the cloud
-    #  - disabling → delete the user's cloud copy (data then lives only locally)
-    # prevent_initial_call keeps the persistence-restore on load from firing it.
-    @app.callback(
-        Output("cloud-sync-enabled", "data"),
-        Input("cloud-sync-toggle", "value"),
-        [
-            State("portfolio-data-store", "data"),
-            State("tr-encrypted-creds", "data"),
-            State("demo-mode", "data"),
-            State("current-user-store", "data"),
-        ],
-        prevent_initial_call=True,
-    )
-    def apply_cloud_sync_toggle(value, portfolio, creds, demo_mode, current_user):
-        value = bool(value)
-        from components import clerk_auth, user_data
-
-        uid = clerk_auth.verified_user_id(current_user)
-        try:
-            if value:
-                # Opt-in: push the current real portfolio (not demo) to the cloud
-                # so it's available across devices right away.
-                if uid and portfolio and not demo_mode:
-                    user_data.snapshot_for_user(uid, portfolio_json=portfolio, tr_creds=creds)
-            else:
-                # Opt-out: remove any cloud copy so data exists only in the browser.
-                if uid:
-                    user_data.delete_user_data(uid)
-        except Exception as e:
-            log.warning("Cloud sync toggle side-effect failed: %s", e)
-        return value

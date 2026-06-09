@@ -119,57 +119,50 @@ Vertretungsberechtigt: Cosmin Novac
 E-Mail: info@fundation.one  
 Impressum: https://apexportfolio.de/impressum
 
-## Grundsatz: lokale Speicherung, Cloud-Synchronisierung nur optional
+## Grundsatz: ausschliesslich lokale Speicherung
 
-Apex ist so gestaltet, dass Ihre Portfolio- und Zugangsdaten standardmaessig **ausschliesslich in Ihrem Browser** verbleiben. Eine Speicherung in unserem Cloud-Speicher (Microsoft Azure Blob Storage) findet **nur dann** statt, wenn Sie die Funktion **"Cloud Sync" in den Einstellungen aktiv einschalten**. Diese Funktion ist **standardmaessig deaktiviert**.
+Apex ist so gestaltet, dass Ihre Portfolio- und Zugangsdaten **ausschliesslich in Ihrem Browser** verbleiben. Eine Anmeldung ist nicht erforderlich, und es findet **keine** Speicherung dieser Daten in einem Cloud-Speicher statt.
 
-- **Cloud Sync ausgeschaltet (Voreinstellung):** Ihre synchronisierten Portfolio-Daten und Ihre verschluesselten Trade-Republic-Zugangsdaten werden ausschliesslich lokal in Ihrem Browser (localStorage) gespeichert. Es erfolgt keine dauerhafte Speicherung dieser Daten in unserem Cloud-Speicher.  
-- **Cloud Sync eingeschaltet:** Ihre Daten werden zusaetzlich verschluesselt in Microsoft Azure Blob Storage gesichert, damit sie geraeteuebergreifend verfuegbar sind und das Loeschen des Browser-Speichers ueberstehen. Wenn Sie Cloud Sync wieder ausschalten, loeschen wir die in der Cloud gespeicherte Kopie Ihrer Daten.
+- Ihre synchronisierten Portfolio-Daten und Ihre verschluesselten Trade-Republic-Zugangsdaten werden ausschliesslich lokal in Ihrem Browser (verschluesseltes localStorage) gespeichert.
+- Es erfolgt keine geraeteuebergreifende Speicherung; loeschen Sie Ihren Browser-Speicher, sind diese Daten entfernt.
 
-Unabhaengig von dieser Einstellung werden personenbezogene Daten technisch bedingt voruebergehend auf unseren Servern verarbeitet, soweit dies fuer den Betrieb der Anwendung erforderlich ist (siehe "Hosting und Server-Logs" sowie "Trade-Republic-Synchronisierung").
+Unabhaengig davon werden personenbezogene Daten technisch bedingt voruebergehend auf unseren Servern verarbeitet, soweit dies fuer den Betrieb der Anwendung erforderlich ist (siehe "Hosting und Server-Logs" sowie "Trade-Republic-Synchronisierung").
 
 ## Welche Daten wir verarbeiten
 
 Je nach Nutzung von Apex koennen insbesondere folgende Daten verarbeitet werden:
 
-- technische Zugriffsdaten wie IP-Adresse, Zeitpunkt des Abrufs, Browser, Betriebssystem und angefragte URL,  
-- Konto- und Login-Daten (z. B. E-Mail-Adresse, Nutzerkennung, Sitzungsinformationen), soweit Sie sich anmelden,  
-- Portfolio-, Positions-, Cash- und Transaktionsdaten, wenn Sie eine Trade-Republic-Synchronisierung starten,  
-- lokal eingegebene Analyse-, Backtesting- und Simulationsparameter,  
+- technische Zugriffsdaten wie IP-Adresse, Zeitpunkt des Abrufs, Browser, Betriebssystem und angefragte URL,
+- Portfolio-, Positions-, Cash- und Transaktionsdaten, wenn Sie eine Trade-Republic-Synchronisierung starten,
+- lokal eingegebene Analyse-, Backtesting- und Simulationsparameter,
 - Kommunikationsdaten, wenn Sie uns kontaktieren.
 
 ## Zwecke und Rechtsgrundlagen
 
-Wir verarbeiten Daten, um Apex bereitzustellen, Logins zu ermoeglichen, Portfolio-Synchronisierung und Analysen auszufuehren, die Sicherheit der Anwendung zu gewaehrleisten und Anfragen zu beantworten.
+Wir verarbeiten Daten, um Apex bereitzustellen, Portfolio-Synchronisierung und Analysen auszufuehren, die Sicherheit der Anwendung zu gewaehrleisten und Anfragen zu beantworten.
 
-Rechtsgrundlagen sind insbesondere Vertragserfuellung und vorvertragliche Massnahmen nach Art. 6 Abs. 1 lit. b DSGVO, berechtigte Interessen nach Art. 6 Abs. 1 lit. f DSGVO sowie, soweit erforderlich, Ihre Einwilligung nach Art. 6 Abs. 1 lit. a DSGVO (z. B. bei Aktivierung der Cloud-Synchronisierung oder optionaler KI-Funktionen).
+Rechtsgrundlagen sind insbesondere Vertragserfuellung und vorvertragliche Massnahmen nach Art. 6 Abs. 1 lit. b DSGVO, berechtigte Interessen nach Art. 6 Abs. 1 lit. f DSGVO sowie, soweit erforderlich, Ihre Einwilligung nach Art. 6 Abs. 1 lit. a DSGVO (z. B. bei Nutzung optionaler KI-Funktionen).
 
 ## Eingesetzte Dienste und Cloud-Anbieter
 
 Zur Bereitstellung von Apex setzen wir die folgenden externen Dienste ein. Wir bemuehen uns um vollstaendige Transparenz; dies sind alle Dienste, an die im Rahmen der Nutzung Daten uebermittelt werden koennen:
 
-- **Microsoft Azure (Hosting)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Betrieb der Server- und Anwendungsinfrastruktur (App Service). Verarbeitet technische Zugriffs- und Server-Logdaten.  
-- **Microsoft Azure Blob Storage (optionaler Cloud-Speicher)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Verschluesselte Speicherung Ihrer Konto- und Portfolio-Daten **nur bei aktivierter Cloud-Synchronisierung**.  
-- **Clerk (Authentifizierung)** — Clerk, Inc., USA. Anmeldung, Sitzungsverwaltung und Schutz vor Missbrauch. Verarbeitet u. a. E-Mail-Adresse, Nutzerkennung und Sitzungsdaten. Das clerk-js-Skript wird von der Infrastruktur von Clerk geladen.  
-- **OpenAI (optionale KI-Funktionen)** — OpenAI, L.L.C., USA (bzw. OpenAI Ireland Ltd.). Verarbeitung Ihrer Eingaben **nur**, wenn Sie KI-Funktionen nutzen und einen OpenAI API-Key hinterlegen.  
-- **Yahoo Finance / yfinance (Marktdaten)** — Yahoo. Abruf von Benchmark-, Kurs- und Vergleichsdaten. Dabei koennen technische Anfragen an diesen Anbieter entstehen.  
-- **Google Fonts (Schriftarten)** — Google Ireland Limited. Zur einheitlichen Darstellung wird die Schriftart "Inter" von Google-Servern (fonts.googleapis.com, fonts.gstatic.com) geladen; dabei wird Ihre IP-Adresse an Google uebermittelt.  
-- **Content-Delivery-Networks (z. B. jsDelivr)** — zum Ausliefern von Stylesheets, Icons und Skripten. Dabei kann Ihre IP-Adresse an den jeweiligen CDN-Anbieter uebermittelt werden.  
+- **Microsoft Azure (Hosting)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Betrieb der Server- und Anwendungsinfrastruktur (App Service). Verarbeitet technische Zugriffs- und Server-Logdaten. Es werden **keine** Portfolio- oder Zugangsdaten in einem Cloud-Speicher abgelegt.
+- **OpenAI (optionale KI-Funktionen)** — OpenAI, L.L.C., USA (bzw. OpenAI Ireland Ltd.). Verarbeitung Ihrer Eingaben **nur**, wenn Sie KI-Funktionen nutzen und einen OpenAI API-Key hinterlegen.
+- **Yahoo Finance / yfinance (Marktdaten)** — Yahoo. Abruf von Benchmark-, Kurs- und Vergleichsdaten. Dabei koennen technische Anfragen an diesen Anbieter entstehen.
+- **Google Fonts (Schriftarten)** — Google Ireland Limited. Zur einheitlichen Darstellung wird die Schriftart "Inter" von Google-Servern (fonts.googleapis.com, fonts.gstatic.com) geladen; dabei wird Ihre IP-Adresse an Google uebermittelt.
+- **Content-Delivery-Networks (z. B. jsDelivr)** — zum Ausliefern von Stylesheets, Icons und Skripten. Dabei kann Ihre IP-Adresse an den jeweiligen CDN-Anbieter uebermittelt werden.
 - **Trade Republic** — Trade Republic Bank GmbH. Datenabruf ausschliesslich auf Ihre Veranlassung (siehe unten). Apex ist kein Angebot von Trade Republic und steht nicht mit Trade Republic in Verbindung.
 
 ## Hosting und Server-Logs
 
 Apex wird ueber Microsoft Azure bereitgestellt. Zur Bereitstellung der Website koennen technische Zugriffsdaten (z. B. IP-Adresse, Zeitpunkt, angefragte URL) in Server-Logs verarbeitet werden. Diese Verarbeitung dient dem sicheren und stabilen Betrieb (Art. 6 Abs. 1 lit. f DSGVO).
 
-## Authentifizierung (Clerk)
-
-Fuer die Anmeldung nutzt Apex Clerk. Clerk verarbeitet die fuer Login und Sitzungsverwaltung erforderlichen Daten, insbesondere E-Mail-Adresse, Nutzerkennung, Session-Informationen und technische Sicherheitsdaten. Die Verarbeitung dient der sicheren Authentifizierung und dem Schutz vor Missbrauch.
-
 ## Trade-Republic-Synchronisierung
 
 Wenn Sie die Trade-Republic-Synchronisierung aktivieren, verwendet Apex die von Ihnen eingegebenen Zugangsdaten bzw. eine bestehende Sitzung, um Portfolio-, Positions-, Cash-, Transaktions- und Preisdaten abzurufen und in Apex auszuwerten. Diese Synchronisierung erfolgt nur, wenn Sie sie ausloesen oder eine gespeicherte Sitzung zur erneuten Verbindung nutzen.
 
-Waehrend einer aktiven Synchronisierung verarbeitet unser Server voruebergehend die fuer die Verbindung erforderlichen Sitzungscookies und die abgerufenen Daten, um die Synchronisierung durchzufuehren. Diese serverseitige Verarbeitung ist technisch erforderlich und transient. Eine **dauerhafte** Speicherung Ihrer Portfolio- und Zugangsdaten in unserem Cloud-Speicher erfolgt nur, wenn Sie die Cloud-Synchronisierung aktiviert haben; andernfalls verbleiben diese Daten in Ihrem Browser.
+Waehrend einer aktiven Synchronisierung verarbeitet unser Server voruebergehend die fuer die Verbindung erforderlichen Sitzungscookies und die abgerufenen Daten, um die Synchronisierung durchzufuehren. Diese serverseitige Verarbeitung ist technisch erforderlich und transient. Eine dauerhafte Speicherung Ihrer Portfolio- und Zugangsdaten erfolgt ausschliesslich lokal in Ihrem Browser; es findet keine Ablage in einem Cloud-Speicher statt.
 
 ## Externe Marktdaten
 
@@ -179,21 +172,17 @@ Apex kann externe Marktdatenquellen wie Yahoo Finance bzw. yfinance nutzen, um B
 
 Wenn Sie KI-Funktionen nutzen und einen OpenAI API-Key hinterlegen, koennen Ihre Eingaben zur Verarbeitung an OpenAI uebermittelt werden. Dies geschieht nur fuer die jeweils genutzte KI-Funktion und auf Grundlage Ihrer Einwilligung.
 
-## Optionale Cloud-Synchronisierung (Azure Blob Storage)
-
-Wenn Sie Cloud Sync aktivieren, werden Ihre Portfolio-Daten und Ihre Trade-Republic-Zugangsdaten verschluesselt in Microsoft Azure Blob Storage gespeichert. Die Daten werden vor der Speicherung mit einem pro Nutzer abgeleiteten Schluessel verschluesselt (Fernet/AES). Zweck ist die geraeteuebergreifende Wiederherstellung Ihres Apex-Kontos. Rechtsgrundlage ist Ihre Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die Sie durch Ausschalten von Cloud Sync jederzeit widerrufen koennen; in diesem Fall loeschen wir die in der Cloud gespeicherte Kopie.
-
 ## Cookies und lokale Speicherung
 
-Apex nutzt Cookies, Browser-Speicher (localStorage/sessionStorage) und vergleichbare Technologien, soweit sie fuer Login, Spracheinstellungen, Theme, Sitzungen und App-Funktionalitaet erforderlich sind. Bei deaktivierter Cloud-Synchronisierung dient der Browser-Speicher als alleiniger Speicherort fuer Ihre synchronisierten Portfolio- und Zugangsdaten.
+Apex nutzt Browser-Speicher (localStorage/sessionStorage) und vergleichbare Technologien, soweit sie fuer Spracheinstellungen, Theme, Sitzungen und App-Funktionalitaet erforderlich sind. Der Browser-Speicher dient als alleiniger Speicherort fuer Ihre synchronisierten Portfolio- und Zugangsdaten.
 
 ## Datenuebermittlung in Drittlaender
 
-Einige der eingesetzten Dienste (insbesondere Clerk und OpenAI sowie ggf. Google) koennen Daten in den USA verarbeiten. Soweit ein Transfer in ein Drittland erfolgt, stuetzen wir diesen auf geeignete Garantien, insbesondere das EU-US Data Privacy Framework und/oder die Standardvertragsklauseln der EU-Kommission gemaess Art. 46 DSGVO.
+Einige der eingesetzten Dienste (insbesondere OpenAI sowie ggf. Google) koennen Daten in den USA verarbeiten. Soweit ein Transfer in ein Drittland erfolgt, stuetzen wir diesen auf geeignete Garantien, insbesondere das EU-US Data Privacy Framework und/oder die Standardvertragsklauseln der EU-Kommission gemaess Art. 46 DSGVO.
 
 ## Speicherdauer
 
-Wir speichern personenbezogene Daten nur so lange, wie dies fuer die jeweiligen Zwecke erforderlich ist oder gesetzliche Aufbewahrungspflichten bestehen. Konto- und Portfolio-Daten koennen geloescht werden, wenn das Konto entfernt, die Cloud-Synchronisierung deaktiviert oder die Speicherung nicht mehr erforderlich ist. Lokal in Ihrem Browser gespeicherte Daten koennen Sie jederzeit selbst loeschen, indem Sie den Browser-Speicher leeren.
+Wir speichern personenbezogene Daten nur so lange, wie dies fuer die jeweiligen Zwecke erforderlich ist oder gesetzliche Aufbewahrungspflichten bestehen. Lokal in Ihrem Browser gespeicherte Portfolio- und Zugangsdaten koennen Sie jederzeit selbst loeschen, indem Sie den Browser-Speicher leeren.
 
 ## Ihre Rechte
 
@@ -225,57 +214,50 @@ Represented by: Cosmin Novac
 Email: info@fundation.one  
 Legal notice: https://apexportfolio.de/impressum
 
-## Principle: local storage, cloud sync only as an option
+## Principle: local storage only
 
-Apex is designed so that, by default, your portfolio and credential data stays **only in your browser**. Storage in our cloud (Microsoft Azure Blob Storage) happens **only** if you actively turn on the **"Cloud Sync" setting**. This feature is **disabled by default**.
+Apex is designed so that your portfolio and credential data stays **only in your browser**. No sign-in is required, and this data is **never** stored in any cloud storage.
 
-- **Cloud Sync off (default):** Your synced portfolio data and your encrypted Trade Republic credentials are stored solely in your browser (localStorage). This data is not durably stored in our cloud.  
-- **Cloud Sync on:** Your data is additionally backed up, encrypted, to Microsoft Azure Blob Storage so it is available across devices and survives clearing your browser storage. If you turn Cloud Sync off again, we delete the copy stored in the cloud.
+- Your synced portfolio data and your encrypted Trade Republic credentials are stored solely in your browser (encrypted localStorage).
+- There is no cross-device storage; clearing your browser storage removes this data.
 
-Regardless of this setting, personal data is processed transiently on our servers where technically required to operate the application (see "Hosting and server logs" and "Trade Republic sync").
+Regardless of this, personal data is processed transiently on our servers where technically required to operate the application (see "Hosting and server logs" and "Trade Republic sync").
 
 ## Data we process
 
 Depending on how you use Apex, we may process:
 
-- technical access data such as IP address, request time, browser, operating system, and requested URL,  
-- account and login data (e.g. email address, user identifier, session information) if you sign in,  
-- portfolio, position, cash, and transaction data if you start a Trade Republic sync,  
-- analysis, backtesting, and simulation parameters entered in the app,  
+- technical access data such as IP address, request time, browser, operating system, and requested URL,
+- portfolio, position, cash, and transaction data if you start a Trade Republic sync,
+- analysis, backtesting, and simulation parameters entered in the app,
 - communication data if you contact us.
 
 ## Purposes and legal bases
 
-We process data to provide Apex, enable login, perform portfolio sync and analysis, secure the application, and respond to requests.
+We process data to provide Apex, perform portfolio sync and analysis, secure the application, and respond to requests.
 
-The legal bases include performance of a contract or pre-contractual measures under Art. 6(1)(b) GDPR, legitimate interests under Art. 6(1)(f) GDPR, and, where required, your consent under Art. 6(1)(a) GDPR (e.g. when enabling cloud sync or optional AI features).
+The legal bases include performance of a contract or pre-contractual measures under Art. 6(1)(b) GDPR, legitimate interests under Art. 6(1)(f) GDPR, and, where required, your consent under Art. 6(1)(a) GDPR (e.g. for optional AI features).
 
 ## Services and cloud providers we use
 
 To provide Apex, we use the following external services. In the interest of full transparency, these are all services to which data may be transmitted when you use Apex:
 
-- **Microsoft Azure (hosting)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Operates the server and application infrastructure (App Service). Processes technical access and server log data.  
-- **Microsoft Azure Blob Storage (optional cloud storage)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Encrypted storage of your account and portfolio data **only when cloud sync is enabled**.  
-- **Clerk (authentication)** — Clerk, Inc., USA. Login, session management, and abuse prevention. Processes email address, user identifier, and session data, among others. The clerk-js script is loaded from Clerk's infrastructure.  
-- **OpenAI (optional AI features)** — OpenAI, L.L.C., USA (or OpenAI Ireland Ltd.). Processes your inputs **only** if you use AI features and provide an OpenAI API key.  
-- **Yahoo Finance / yfinance (market data)** — Yahoo. Retrieval of benchmark, price, and comparison data. Technical requests may be sent to this provider.  
-- **Google Fonts (web fonts)** — Google Ireland Limited. The "Inter" font is loaded from Google servers (fonts.googleapis.com, fonts.gstatic.com) for consistent rendering; your IP address is transmitted to Google in the process.  
-- **Content delivery networks (e.g. jsDelivr)** — to serve stylesheets, icons, and scripts. Your IP address may be transmitted to the respective CDN provider.  
+- **Microsoft Azure (hosting)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Operates the server and application infrastructure (App Service). Processes technical access and server log data. **No** portfolio or credential data is placed in any cloud storage.
+- **OpenAI (optional AI features)** — OpenAI, L.L.C., USA (or OpenAI Ireland Ltd.). Processes your inputs **only** if you use AI features and provide an OpenAI API key.
+- **Yahoo Finance / yfinance (market data)** — Yahoo. Retrieval of benchmark, price, and comparison data. Technical requests may be sent to this provider.
+- **Google Fonts (web fonts)** — Google Ireland Limited. The "Inter" font is loaded from Google servers (fonts.googleapis.com, fonts.gstatic.com) for consistent rendering; your IP address is transmitted to Google in the process.
+- **Content delivery networks (e.g. jsDelivr)** — to serve stylesheets, icons, and scripts. Your IP address may be transmitted to the respective CDN provider.
 - **Trade Republic** — Trade Republic Bank GmbH. Data is retrieved only on your initiative (see below). Apex is not provided by, affiliated with, or endorsed by Trade Republic.
 
 ## Hosting and server logs
 
 Apex is provided via Microsoft Azure. Technical access data (e.g. IP address, time, requested URL) may be processed in server logs to provide the website. This serves secure and stable operation (Art. 6(1)(f) GDPR).
 
-## Authentication (Clerk)
-
-Apex uses Clerk for authentication. Clerk processes data required for login and session management, including email address, user identifier, session information, and technical security data. This processing enables secure authentication and misuse prevention.
-
 ## Trade Republic sync
 
 If you activate Trade Republic sync, Apex uses the credentials you enter or an existing session to retrieve and evaluate portfolio, position, cash, transaction, and price data. Sync only happens when you trigger it or when a saved session is used to reconnect.
 
-During an active sync, our server temporarily processes the session cookies required for the connection and the retrieved data in order to perform the sync. This server-side processing is technically necessary and transient. Your portfolio and credential data is **durably** stored in our cloud only if you have enabled cloud sync; otherwise this data remains in your browser.
+During an active sync, our server temporarily processes the session cookies required for the connection and the retrieved data in order to perform the sync. This server-side processing is technically necessary and transient. Your portfolio and credential data is stored durably only locally in your browser; it is never placed in any cloud storage.
 
 ## External market data
 
@@ -285,21 +267,17 @@ Apex may use external market data sources such as Yahoo Finance or yfinance to r
 
 If you use AI features and provide an OpenAI API key, your inputs may be sent to OpenAI for processing. This only happens for the AI feature you use and on the basis of your consent.
 
-## Optional cloud sync (Azure Blob Storage)
-
-If you enable cloud sync, your portfolio data and your Trade Republic credentials are stored encrypted in Microsoft Azure Blob Storage. The data is encrypted before storage with a per-user derived key (Fernet/AES). The purpose is cross-device restoration of your Apex account. The legal basis is your consent (Art. 6(1)(a) GDPR), which you can withdraw at any time by turning cloud sync off; in that case we delete the copy stored in the cloud.
-
 ## Cookies and local storage
 
-Apex uses cookies, browser storage (localStorage/sessionStorage), and similar technologies where required for login, language settings, theme, sessions, and app functionality. When cloud sync is disabled, browser storage is the sole storage location for your synced portfolio and credential data.
+Apex uses browser storage (localStorage/sessionStorage) and similar technologies where required for language settings, theme, sessions, and app functionality. Browser storage is the sole storage location for your synced portfolio and credential data.
 
 ## International data transfers
 
-Some of the services we use (in particular Clerk and OpenAI, and possibly Google) may process data in the USA. Where a transfer to a third country takes place, we base it on appropriate safeguards, in particular the EU-US Data Privacy Framework and/or the EU Commission's Standard Contractual Clauses under Art. 46 GDPR.
+Some of the services we use (in particular OpenAI, and possibly Google) may process data in the USA. Where a transfer to a third country takes place, we base it on appropriate safeguards, in particular the EU-US Data Privacy Framework and/or the EU Commission's Standard Contractual Clauses under Art. 46 GDPR.
 
 ## Retention
 
-We store personal data only as long as required for the relevant purposes or by legal retention obligations. Account and portfolio data may be deleted when the account is removed, cloud sync is disabled, or storage is no longer required. You can delete data stored locally in your browser at any time by clearing your browser storage.
+We store personal data only as long as required for the relevant purposes or by legal retention obligations. You can delete portfolio and credential data stored locally in your browser at any time by clearing your browser storage.
 
 ## Your rights
 

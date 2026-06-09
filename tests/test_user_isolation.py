@@ -1,26 +1,13 @@
 import pytest
 
 
-def test_verified_user_id_rejects_client_store_mismatch(monkeypatch):
-    from components import clerk_auth
+def test_current_uid_is_constant_local_user():
+    from components import auth
 
-    monkeypatch.setattr(clerk_auth, "current_user_id", lambda: "user_a")
-
-    assert clerk_auth.verified_user_id("user_a") == "user_a"
-    assert clerk_auth.verified_user_id("user_b") is None
-    assert clerk_auth.verified_user_id(None) == "user_a"
-
-
-def test_blob_namespaces_reject_malformed_uids():
-    from components import blob_storage
-
-    assert blob_storage._blob_name("user_abc-123") == "users/user_abc-123.enc"
-
-    with pytest.raises(ValueError):
-        blob_storage._blob_name("../user_abc")
-
-    with pytest.raises(ValueError):
-        blob_storage._blob_name("user/abc")
+    # Single-user app: the uid is always the constant local id, regardless of any
+    # (now-unused) client-supplied value.
+    assert auth.current_uid() == auth.LOCAL_UID
+    assert auth.current_uid("anything") == auth.LOCAL_UID
 
 
 def test_tr_cache_namespaces_reject_malformed_uids():

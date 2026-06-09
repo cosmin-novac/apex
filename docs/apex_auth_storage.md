@@ -1,71 +1,47 @@
-# Apex Authentication & Per-User Storage
+# Apex Identity & Storage
 
-> Added 2026-06: replaced the browser-localStorage password scheme with **Clerk**
-> for identity and **Fernet-encrypted Azure Blob Storage** for per-user data.
+> Updated 2026-06: removed **Clerk** (authentication) and **Azure Blob Storage**
+> (cloud sync). Apex now runs fully standalone — no sign-in, no cloud data store.
 
 ## Overview
 
-| Concern | Service | Module |
-|---------|---------|--------|
-| Identity / login | **Clerk** (prebuilt UI) | `components/clerk_auth.py`, `assets/clerk_init.js` |
-| Per-user data | **Azure Blob Storage** (encrypted) | `components/blob_storage.py`, `components/user_data.py` |
-| Encryption | Fernet + per-user HKDF | `components/encryption.py` |
+Apex is a single-user application. There is no login and no external identity
+provider; all per-user plumbing collapses onto one constant local id.
 
-There is no MongoDB and no Stripe (intentionally minimal). The legacy
-localStorage email/password auth has been removed.
+| Concern | Where |
+|---------|-------|
+| Identity | constant `LOCAL_UID` in `components/auth.py` (`current_uid()`) |
+| Synced portfolio | browser-only, encrypted localStorage (`assets/secure_store.js`) |
+| TR reconnect cookies | local pytr disk cache (`components/tr_api.py`) |
+| TR credential encryption | Fernet via `TR_ENCRYPTION_KEY` (`components/tr_api.py`) |
 
-## Authentication flow (Clerk)
+## Identity
 
-1. `main.py` injects the clerk-js loader into the page `<head>` using
-   `CLERK_PUBLISHABLE_KEY` (frontend-API host is derived by base64-decoding the
-   key). The key is public and safe to embed.
-2. `assets/clerk_init.js` calls `Clerk.load()`, mounts `<UserButton>` into the
-   sidebar (`#clerk-user-button`) when signed in, and opens Clerk's hosted
-   sign-in modal from the sidebar "Sign in" button or any
-   `.clerk-signin-trigger` element (e.g. the demo banner link).
-3. clerk-js sets a short-lived `__session` JWT cookie on our domain.
-4. A 1-second clientside poll (`clerk-uid-poll` → `components/auth.py`) mirrors
-   `Clerk.user.id` into the `current-user-store` so existing callbacks keep
-   working. **This store is UI-only.**
-5. **Server-side**, any data access derives the authoritative uid from
-   `clerk_auth.current_user_id()`, which verifies the `__session` cookie against
-   Clerk's JWKS (`PyJWT`, RS256). The client cannot impersonate another user by
-   tampering with the store.
+`components/auth.py` exposes `LOCAL_UID` and `current_uid()`, which always returns
+that constant. The `current-user-store` exists for backward compatibility and is
+seeded with the constant value. Every place that used to call
+`clerk_auth.verified_user_id(...)` now calls `auth.current_uid()`.
 
-## Per-user data (Azure Blob)
+## Data persistence
 
-- One blob per user: `users/{uid}.enc` in the `apex-data` container.
-- Contents (JSON, then Fernet-encrypted):
-  `{portfolio, tr_creds, tr_cookies, cached_at}`.
-- Per-user encryption: a Fernet key is derived from the master key
-  `APEX_ENCRYPTION_KEY` via HKDF-SHA256 with the uid as `info`, so one user's
-  derived key never exposes another's data.
-- **Durability**: pytr web-session cookies (`tr_cookies`) are stored in the
-  blob and restored to disk on login, so silent reconnect survives App Service
-  restarts (the local disk is ephemeral).
-
-### Lifecycle
-
-- **Login** (`pages/portfolio_analysis.py::on_auth_change`): `restore_for_user(uid)`
-  loads the blob, materialises web-session cookies, and hydrates
-  `portfolio-data-store` and `tr-encrypted-creds`.
-- **TR connect / refresh / reconnect** (`components/tr_connector.py`) and
-  **manual sync** (`portfolio_analysis.py::sync_data`): `snapshot_for_user(uid, …)`
-  writes the refreshed portfolio + creds + web-session cookies back to the blob.
-- **Logout**: connections are dropped server-side; the blob is left intact.
-
-If blob storage isn't configured (`AZURE_STORAGE_CONNECTION_STRING` unset, e.g.
-local dev), all blob calls no-op gracefully and the app falls back to the local
-pytr cache / demo data.
+- **Synced portfolio** is mirrored from the in-memory store into encrypted
+  localStorage by `assets/secure_store.js` (AES-GCM, key derived from the local
+  id). It is restored on load. This is the durable home for synced data — nothing
+  is written to any cloud storage.
+- **Trade Republic web-session cookies** are kept in the local pytr cache on disk
+  so silent reconnect works between runs. On an ephemeral host (e.g. Azure App
+  Service), a restart wipes this disk and a fresh login may be required.
 
 ## Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CLERK_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) | Yes | Clerk frontend key (public) |
-| `CLERK_SECRET_KEY` | For backend calls | Clerk secret key (server-only) |
-| `AZURE_STORAGE_CONNECTION_STRING` | For persistence | Apex storage account (apex-rg) |
-| `APEX_BLOB_CONTAINER` | No | Container name (default `apex-data`) |
-| `APEX_ENCRYPTION_KEY` | For persistence | base64 32-byte Fernet master key — **lose it = data unrecoverable** |
+| `TR_ENCRYPTION_KEY` | For TR sync | Encrypts Trade Republic credentials at rest |
+| `OPENAI_API_KEY` | For AI rules | OpenAI key for AI-assisted rule generation |
 
-Set these in Azure App Service → Configuration for production.
+No Clerk or Azure storage variables are used anymore.
+
+## Hosting
+
+Apex still deploys to Azure App Service (`gunicorn ... main:server`). Azure is the
+host only; it never stores user data.

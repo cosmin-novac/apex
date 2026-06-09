@@ -26,7 +26,7 @@ from components.tr_connector import create_tr_connector_card, register_tr_callba
 from components.tr_api import fetch_all_data, is_connected, reconnect, drop_connection
 from components.benchmark_data import get_benchmark_data, BENCHMARKS
 from components.i18n import t, get_lang
-from components import user_data, clerk_auth
+from components import auth
 
 # ── Hostname helpers ─────────────────────────────────────────────────
 # ── Demo account data ────────────────────────────────────────────────
@@ -279,7 +279,7 @@ def layout(lang="en"):
             html.I(className="bi bi-info-circle-fill me-2"),
             html.Strong(t("pa.demo_account", lang)),
             html.Span(t("pa.demo_banner", lang), className="ms-1"),
-            html.A(t("pa.demo_login", lang), href="#", id="demo-login-link", className="text-white fw-bold text-decoration-underline ms-1 clerk-signin-trigger"),
+            html.A(t("pa.demo_login", lang), href="#", id="demo-login-link", className="text-white fw-bold text-decoration-underline ms-1"),
             html.Span(t("pa.demo_suffix", lang), id="demo-banner-suffix"),
         ],
         id="demo-banner",
@@ -576,9 +576,9 @@ def register_callbacks(app):
     # Register TR connector callbacks
     register_tr_callbacks(app)
     
-    # ── Server-side cleanup on logout ────────────────────────────────
-    # The clientside auth callback clears browser stores. Server-side data
-    # access is guarded per request by the verified Clerk cookie.
+    # ── Clear page-derived table data when the user id resets ──
+    # Single-user app: current-user-store holds a constant id, so this is a
+    # defensive guard that only clears if the store is ever emptied.
     @app.callback(
         Output("securities-data", "data", allow_duplicate=True),
         Input("current-user-store", "data"),
@@ -586,7 +586,7 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def _on_user_change(current_user, portfolio_data):
-        """When user logs out, clear page-derived table data."""
+        """Clear page-derived table data if the user id is cleared."""
         if current_user is None:
             return []           # clear securities table
         return no_update
@@ -604,7 +604,7 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def mirror_real_portfolio(portfolio_data, demo_mode, current_user):
-        uid = clerk_auth.verified_user_id(current_user)
+        uid = auth.current_uid()
         if demo_mode or not uid or not _is_real_portfolio(portfolio_data):
             return no_update
         return _wrap_backup(uid, portfolio_data)
@@ -622,7 +622,7 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def hydrate_from_backup(local_backup, portfolio, demo_mode, current_user):
-        uid = clerk_auth.verified_user_id(current_user)
+        uid = auth.current_uid()
         backup = _backup_for_uid(local_backup, uid)
         if not backup:
             raise PreventUpdate
@@ -638,35 +638,30 @@ def register_callbacks(app):
         [State("current-user-store", "data"),
          State("demo-mode", "data"),
          State("url", "pathname"),
-         State("cloud-sync-enabled", "data"),
          State("local-portfolio-backup", "data")],
         prevent_initial_call='initial_duplicate'
     )
-    def load_initial_data(n_intervals, current_user, demo_mode, pathname, cloud_sync, local_backup):
+    def load_initial_data(n_intervals, current_user, demo_mode, pathname, local_backup):
         """Load initial portfolio data once on page load."""
-        uid = clerk_auth.verified_user_id(current_user)
-        # Not logged in → always demo
-        if not uid:
-            return _load_demo_json()
+        uid = auth.current_uid()
 
-        # Logged in but user explicitly chose demo → demo
+        # User explicitly chose demo → demo
         if demo_mode:
             return _load_demo_json()
 
-        # Logged in, not in demo. Prefer the browser-only backup so data stays
-        # local. Only consult the server cache when the user opted into cloud sync.
+        # Prefer the browser-only backup so data stays local.
         backup = _backup_for_uid(local_backup, uid)
         if backup:
             return backup
 
-        if cloud_sync:
-            try:
-                from components.tr_api import get_cached_portfolio
-                cached = get_cached_portfolio(user_id=uid)
-                if cached and cached.get("success"):
-                    return json.dumps(cached)
-            except Exception as e:
-                _log.warning("Error loading server cache: %s", e)
+        # Fall back to the local pytr cache from a previous sync.
+        try:
+            from components.tr_api import get_cached_portfolio
+            cached = get_cached_portfolio(user_id=uid)
+            if cached and cached.get("success"):
+                return json.dumps(cached)
+        except Exception as e:
+            _log.warning("Error loading local cache: %s", e)
 
         # No cached data yet → show demo until they sync
         return _load_demo_json()
@@ -701,11 +696,7 @@ def register_callbacks(app):
     def handle_demo_login_click(n_clicks, current_user):
         if not n_clicks:
             raise PreventUpdate
-        # Not logged in → Clerk's sign-in modal is opened client-side
-        # (the link carries the .clerk-signin-trigger class). Nothing to do here.
-        if not clerk_auth.verified_user_id(current_user):
-            raise PreventUpdate
-        # Logged in → open TR connect modal
+        # Open the TR connect modal so the user can sync real data.
         return True
     
     # ── Auto-reset demo mode on login/logout ──
@@ -718,53 +709,21 @@ def register_callbacks(app):
         Input("current-user-store", "data"),
         [State("demo-mode", "data"),
          State("url", "pathname"),
-         State("cloud-sync-enabled", "data"),
          State("local-portfolio-backup", "data")],
         prevent_initial_call=True,
     )
-    def on_auth_change(current_user, demo_mode, pathname, cloud_sync, local_backup):
-        """When a user logs in, hydrate their portfolio and exit demo; on logout,
-        enter demo and clear browser credentials.
+    def on_auth_change(current_user, demo_mode, pathname, local_backup):
+        """Hydrate the portfolio from local storage and exit demo when data exists.
 
-        Hydration source depends on the user's cloud-sync choice:
-        - Cloud sync ON → restore from the durable encrypted blob (Azure),
-          which also materialises the TR web-session keyfile for reconnect.
-        - Cloud sync OFF (default) → restore from the browser-only backup; no
-          cloud storage is read. TR credentials already live in the browser.
+        The browser-only backup is the durable home for synced data; fall back to
+        the local pytr cache from a previous sync. TR credentials already live in
+        the browser, so they are left untouched (no_update).
         """
-        if not current_user:
-            # Logged out → demo, and clear browser-held TR credentials.
-            return True, _load_demo_json(), None
-
-        # Use the server-verified Clerk uid for any data access.
-        uid = clerk_auth.verified_user_id(current_user)
-        if not uid:
-            return True, _load_demo_json(), None
-
+        uid = auth.current_uid()
         backup = _backup_for_uid(local_backup, uid)
+        if backup:
+            return False, backup, no_update
 
-        # Cloud sync OFF → browser is the only home for the user's data.
-        if not cloud_sync:
-            if backup:
-                # Keep browser-held creds (no_update) and exit demo.
-                return False, backup, no_update
-            return True, _load_demo_json(), no_update
-
-        # Cloud sync ON → durable per-user blob (Azure). Restores keyfile too.
-        if user_data.is_enabled():
-            blob = user_data.restore_for_user(uid)
-            portfolio = blob.get("portfolio")
-            creds = blob.get("tr_creds")
-            if portfolio:
-                return False, portfolio, creds
-            # No portfolio in the cloud yet — fall back to any browser backup.
-            if backup:
-                return False, backup, creds
-            # Still nothing, but we may have creds to enable reconnect.
-            return True, _load_demo_json(), creds
-
-        # Cloud sync requested but blob storage isn't configured (e.g. local dev):
-        # fall back to the local server cache, then the browser backup.
         try:
             from components.tr_api import get_cached_portfolio
             cached = get_cached_portfolio(user_id=uid)
@@ -772,8 +731,7 @@ def register_callbacks(app):
                 return False, json.dumps(cached), no_update
         except Exception:
             pass
-        if backup:
-            return False, backup, no_update
+
         # No cached data yet — keep demo mode so the banner stays visible
         return True, _load_demo_json(), no_update
 
@@ -784,27 +742,25 @@ def register_callbacks(app):
         Input("demo-toggle-btn", "n_clicks"),
         [State("demo-mode", "data"),
          State("current-user-store", "data"),
-         State("cloud-sync-enabled", "data"),
          State("local-portfolio-backup", "data")],
         prevent_initial_call=True,
     )
-    def toggle_demo_mode(n_clicks, demo_mode, current_user, cloud_sync, local_backup):
+    def toggle_demo_mode(n_clicks, demo_mode, current_user, local_backup):
         if not n_clicks:
             raise PreventUpdate
         new_mode = not demo_mode
         if new_mode:
             return True, _load_demo_json()
         else:
-            uid = clerk_auth.verified_user_id(current_user)
+            uid = auth.current_uid()
             # Back to real: prefer the browser-only backup so data stays local.
             backup = _backup_for_uid(local_backup, uid)
             if backup:
                 return False, backup
-            if uid and cloud_sync:
-                from components.tr_api import get_cached_portfolio
-                cached = get_cached_portfolio(user_id=uid)
-                if cached and cached.get("success"):
-                    return False, json.dumps(cached)
+            from components.tr_api import get_cached_portfolio
+            cached = get_cached_portfolio(user_id=uid)
+            if cached and cached.get("success"):
+                return False, json.dumps(cached)
             return False, no_update
 
     # ── Demo banner visibility ──
@@ -828,7 +784,7 @@ def register_callbacks(app):
 
         # The user "has real data" if their browser holds a real synced
         # portfolio (the backup is browser-only and never holds demo data).
-        uid = clerk_auth.verified_user_id(current_user)
+        uid = auth.current_uid()
         has_real_data = bool(_backup_for_uid(local_backup, uid))
 
         banner_style = {
@@ -869,19 +825,14 @@ def register_callbacks(app):
         Input("sync-tr-data-btn", "n_clicks"),
         [State("tr-encrypted-creds", "data"),
          State("tr-connect-modal", "is_open"),
-         State("current-user-store", "data"),
-         State("cloud-sync-enabled", "data")],
+         State("current-user-store", "data")],
         prevent_initial_call=True,
     )
-    def sync_data(n_clicks, encrypted_creds, modal_open, current_user, cloud_sync):
+    def sync_data(n_clicks, encrypted_creds, modal_open, current_user):
         if not n_clicks:
             raise PreventUpdate
 
-        # The sync button is only shown to signed-in users with data; if we
-        # somehow get here signed out, do nothing (Clerk sign-in is client-side).
-        uid = clerk_auth.verified_user_id(current_user)
-        if not uid:
-            raise PreventUpdate
+        uid = auth.current_uid()
 
         from components.tr_api import fetch_all_data, reconnect, is_connected
 
@@ -893,14 +844,11 @@ def register_callbacks(app):
         if not is_connected(user_id=uid):
             return no_update, no_update, False, True, no_update
 
-        # Connected — fetch data
+        # Connected — fetch data. The result lands in the browser-only backup via
+        # the mirror callback; no cloud storage is involved.
         data = fetch_all_data(user_id=uid)
         if data.get("success"):
             portfolio_json = json.dumps(data)
-            # Persist to the durable per-user encrypted blob only if the user opted
-            # into cloud sync; otherwise the data stays in the browser.
-            if cloud_sync:
-                user_data.snapshot_for_user(uid, portfolio_json=portfolio_json, tr_creds=encrypted_creds)
             return portfolio_json, html.I(className="bi bi-check-circle"), False, False, False
 
         return no_update, html.I(className="bi bi-x-circle"), False, modal_open, no_update

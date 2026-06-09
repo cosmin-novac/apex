@@ -71,49 +71,6 @@ app = dash.Dash(
     update_title=None,
 )
 
-# ── Clerk prebuilt auth ─────────────────────────────────────────────────
-# Inject the clerk-js loader into the page <head>. clerk-js sets the __session
-# cookie that the server verifies (see components/clerk_auth.py) and renders the
-# sign-in modal + UserButton (mounted by assets/clerk_init.js). The publishable
-# key is public and safe to embed. If Clerk isn't configured the app still runs
-# (demo mode only, no sign-in).
-import components.clerk_auth as clerk_auth
-
-_clerk_fapi = clerk_auth.frontend_api_host()
-_clerk_script = ""
-if clerk_auth.PUBLISHABLE_KEY and _clerk_fapi:
-    _clerk_script = (
-        f'<script defer crossorigin="anonymous" '
-        f'data-clerk-publishable-key="{clerk_auth.PUBLISHABLE_KEY}" '
-        f'src="https://{_clerk_fapi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js" '
-        f'type="text/javascript"></script>'
-    )
-elif not clerk_auth.PUBLISHABLE_KEY:
-    log.warning("Clerk sign-in is disabled because CLERK_PUBLISHABLE_KEY is not configured")
-else:
-    log.warning(
-        "Clerk sign-in is disabled because the frontend API host could not be resolved; "
-        "set CLERK_FRONTEND_API to your Clerk account host"
-    )
-
-app.index_string = """<!DOCTYPE html>
-<html>
-    <head>
-        {%metas%}
-        <title>{%title%}</title>
-        {%favicon%}
-        {%css%}
-        __CLERK_SCRIPT__
-    </head>
-    <body>
-        {%app_entry%}
-        <footer>
-            {%config%}
-            {%scripts%}
-            {%renderer%}
-        </footer>
-    </body>
-</html>""".replace("__CLERK_SCRIPT__", _clerk_script)
 
 sidebar = html.Div([
     dcc.Link([
@@ -152,13 +109,6 @@ sidebar = html.Div([
             ], className="position-relative"),
         ], className="sidebar-control-row"),
         html.Div([
-            # Clerk mounts the <UserButton> here when signed in (avatar + menu).
-            html.Div(id="clerk-user-button", className="clerk-user-button-slot", style={"display": "none"}),
-            html.Div(id="current-user-label", className="sidebar-user-label"),
-            # Clerk's prebuilt sign-in modal opens on click (wired in clerk_init.js).
-            dbc.Button([html.I(className="bi bi-person me-1"), "Sign in"], id="open-login-btn", color="primary", outline=True, size="sm", className="w-100", style={"display": "none"}),
-        ], className="sidebar-user-area"),
-        html.Div([
             dcc.Link("Impressum", href="/impressum", id="sidebar-link-impressum", className="sidebar-legal-link"),
             dcc.Link("Privacy Policy", href="/privacy", id="sidebar-link-privacy", className="sidebar-legal-link"),
         ], className="sidebar-legal-links"),
@@ -182,19 +132,14 @@ app.layout = dbc.Container([
     dcc.Store(id="portfolio-data-store", storage_type="memory"),
     # Browser-only backup of the last *real* synced portfolio. Held in memory and
     # mirrored to encrypted localStorage by assets/secure_store.js, so the data
-    # survives reloads entirely client-side (encrypted at rest, per user) with no
-    # server round-trip when cloud sync is disabled.
+    # survives reloads entirely client-side (encrypted at rest) with no server
+    # round-trip — this is the only durable home for synced data.
     dcc.Store(id="local-portfolio-backup", storage_type="memory"),
     dcc.Store(id="vault-sync-dummy", storage_type="memory"),
     dcc.Interval(id="vault-restore-interval", interval=350, max_intervals=1),
     dcc.Store(id="tr-encrypted-creds", storage_type="local"),
     dcc.Store(id="demo-mode", data=True, storage_type="local"),
-    # Opt-in cloud sync. OFF by default: with this off, no portfolio or credential
-    # data is written to our cloud storage account (Azure Blob) — it stays in the
-    # browser. Toggled from the settings modal; persisted in the browser.
-    dcc.Store(id="cloud-sync-enabled", data=False, storage_type="local"),
     dcc.Interval(id="load-cached-data-interval", interval=500, max_intervals=1),
-    dcc.Interval(id="clerk-uid-poll", interval=1000),  # bridges Clerk session -> current-user-store
     settings_modal,
     dcc.Store(id="mobile-sidebar-dummy"),
     mobile_header,
@@ -339,8 +284,7 @@ app.clientside_callback(
 
 # ── Encrypted browser-only storage (assets/secure_store.js) ─────────────
 # Persist the in-memory portfolio backup to encrypted localStorage whenever it
-# changes, and restore it on load. The portfolio never leaves the browser unless
-# the user opts into cloud sync.
+# changes, and restore it on load. The portfolio never leaves the browser.
 app.clientside_callback(
     "window.dash_clientside.apexVault.persistBackup",
     Output("vault-sync-dummy", "data"),

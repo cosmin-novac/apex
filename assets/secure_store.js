@@ -3,16 +3,15 @@
  *
  * Encrypts Apex's browser-only data at rest in localStorage.
  *
- * When cloud sync is OFF (the default), the user's synced portfolio lives only
- * in this browser. Rather than keeping that financial data as plaintext JSON in
+ * Apex is a standalone single-user app: the synced portfolio lives only in this
+ * browser. Rather than keeping that financial data as plaintext JSON in
  * localStorage, we encrypt it with AES-GCM using a key derived (PBKDF2) from the
- * signed-in user's id, so each user's local data is encrypted under their own
- * key and one account cannot read another's blob on a shared browser.
+ * local user id.
  *
- * Threat model / honesty note: the derivation input (the Clerk user id) is also
- * present in the page, so this protects against casual inspection and cross-user
- * leakage on a shared device, not against an attacker with full control of the
- * browser. True end-to-end secrecy would require a user-supplied passphrase.
+ * Threat model / honesty note: the derivation input (the local user id) is also
+ * present in the page, so this protects against casual inspection, not against an
+ * attacker with full control of the browser. True end-to-end secrecy would
+ * require a user-supplied passphrase.
  *
  * Exposes two Dash clientside callbacks under window.dash_clientside.apexVault:
  *   • persistBackup(backupData, currentUser) — encrypt + store
