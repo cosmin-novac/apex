@@ -45,6 +45,7 @@ pathvalidate==3.3.1
 peewee==3.19.0
 pillow==12.1.0
 platformdirs==4.5.1
+playwright==1.60.0
 pluggy==1.6.0
 plotly==6.5.2
 protobuf==6.33.4

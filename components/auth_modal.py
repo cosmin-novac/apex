@@ -105,63 +105,55 @@ def register_auth_modal_callbacks(app):
         }.get(code, "auth.err_crypto")
         return t(key, lang)
 
-    # ── Open modal (Login button) / reset to login mode and clear error ──
+    # ── Modal driver: open / toggle mode / submit, in one clientside callback ─
+    # This is the SINGLE owner of the modal's interactive props. Dash 2.9.0 only
+    # applies a clientside callback's update to a prop it owns as a *base*
+    # (non-duplicate) output; updates routed through allow_duplicate from a
+    # clientside callback are silently dropped. Splitting open/toggle/submit into
+    # separate callbacks forced all but one writer of each prop onto
+    # allow_duplicate, so toggling did nothing and the modal would not close on a
+    # successful login. Consolidating here keeps every write on a base output.
+    # The demo-banner "Log in" link still opens the modal via a server callback
+    # (portfolio_analysis.py), where allow_duplicate works correctly.
     app.clientside_callback(
         """
-        function(n) {
-            if (!n) return [window.dash_clientside.no_update, window.dash_clientside.no_update,
-                            window.dash_clientside.no_update];
-            return [true, "login", ""];
+        async function(open_n, submit_n, toggle_n, mode, username, password, stay) {
+            var NU = window.dash_clientside.no_update;
+            var ctx = window.dash_clientside.callback_context;
+            if (!ctx.triggered.length) return [NU, NU, NU, NU, NU];
+            var trig = ctx.triggered[0].prop_id.split(".")[0];
+
+            if (trig === "open-login-btn") {
+                // Open in login mode, clearing any stale error.
+                return [true, "login", "", NU, NU];
+            }
+            if (trig === "auth-toggle-mode") {
+                // Flip login <-> register; keep the modal open, clear the error.
+                return [NU, mode === "register" ? "login" : "register", "", NU, NU];
+            }
+            if (trig === "auth-submit-btn") {
+                if (!window.apexAuth) return [true, NU, "crypto_unavailable", NU, NU];
+                var res = (mode === "register")
+                    ? await window.apexAuth.register(username, password, !!stay)
+                    : await window.apexAuth.login(username, password, !!stay);
+                if (res && res.ok) {
+                    // Success: close the modal and clear the error and both fields.
+                    return [false, NU, "", "", ""];
+                }
+                // Failure: stay open, show the error, keep username, clear password.
+                return [true, NU, (res && res.error) || "crypto_unavailable", NU, ""];
+            }
+            return [NU, NU, NU, NU, NU];
         }
         """,
         [Output("auth-modal", "is_open"),
-         Output("auth-mode-store", "data", allow_duplicate=True),
-         Output("auth-error-code", "data", allow_duplicate=True)],
-        Input("open-login-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
-
-    # ── Toggle login <-> register ────────────────────────────────────────
-    app.clientside_callback(
-        """
-        function(n, mode) {
-            if (!n) return [window.dash_clientside.no_update, window.dash_clientside.no_update];
-            return [mode === "register" ? "login" : "register", ""];
-        }
-        """,
-        # Base (non-duplicate) owner of these two props. Dash 2.9.0 silently drops
-        # updates from a clientside callback whose outputs are ALL allow_duplicate
-        # (no base owner), which is why toggling did nothing. The other writers
-        # (open-login, demo-login, submit) keep allow_duplicate=True.
-        [Output("auth-mode-store", "data"),
-         Output("auth-error-code", "data")],
-        Input("auth-toggle-mode", "n_clicks"),
-        State("auth-mode-store", "data"),
-        prevent_initial_call=True,
-    )
-
-    # ── Submit: call window.apexAuth.login/register (async) ──────────────
-    app.clientside_callback(
-        """
-        async function(n, mode, username, password, stay) {
-            var NU = window.dash_clientside.no_update;
-            if (!n) return [NU, NU, NU, NU];
-            if (!window.apexAuth) return [true, "crypto_unavailable", NU, NU];
-            var res = (mode === "register")
-                ? await window.apexAuth.register(username, password, !!stay)
-                : await window.apexAuth.login(username, password, !!stay);
-            if (res && res.ok) {
-                // Close the modal and clear the password field on success.
-                return [false, "", "", ""];
-            }
-            return [true, (res && res.error) || "crypto_unavailable", NU, ""];
-        }
-        """,
-        [Output("auth-modal", "is_open", allow_duplicate=True),
-         Output("auth-error-code", "data", allow_duplicate=True),
+         Output("auth-mode-store", "data"),
+         Output("auth-error-code", "data"),
          Output("auth-username", "value"),
          Output("auth-password", "value")],
-        Input("auth-submit-btn", "n_clicks"),
+        [Input("open-login-btn", "n_clicks"),
+         Input("auth-submit-btn", "n_clicks"),
+         Input("auth-toggle-mode", "n_clicks")],
         [State("auth-mode-store", "data"),
          State("auth-username", "value"),
          State("auth-password", "value"),
