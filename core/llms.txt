@@ -17,14 +17,14 @@ backtesting web application.
 
 ## Primary Public URLs
 
-- Home: https://apexportfolio.de/
-- Portfolio Analysis: https://apexportfolio.de/compare
-- Backtesting: https://apexportfolio.de/backtesting
-- Investment Simulator: https://apexportfolio.de/portfolio
-- Exit Strategy Riskbands: https://apexportfolio.de/riskbands
-- The Real Cost: https://apexportfolio.de/realcost
-- LLM reference: https://apexportfolio.de/llms.txt
-- XML sitemap: https://apexportfolio.de/sitemap.xml
+- Home: __BASE_URL__/
+- Portfolio Analysis: __BASE_URL__/compare
+- Backtesting: __BASE_URL__/backtesting
+- Investment Simulator: __BASE_URL__/portfolio
+- Exit Strategy Riskbands: __BASE_URL__/riskbands
+- The Real Cost: __BASE_URL__/realcost
+- LLM reference: __BASE_URL__/llms.txt
+- XML sitemap: __BASE_URL__/sitemap.xml
 
 ## Intended Audience
 
@@ -72,7 +72,7 @@ backtesting web application.
 
 ## Canonical Domain
 
-- https://apexportfolio.de
+- __BASE_URL__
 
 ## Notes For Agents
 

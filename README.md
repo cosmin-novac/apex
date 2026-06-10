@@ -91,9 +91,15 @@ except where noted for the feature you want to use.
 | `DASH_USE_RELOADER`    | no                  | `1` enables the auto-reloader.                                                                                                                         |
 | `APEX_LOG_LEVEL`       | no                  | Log level, e.g.`INFO` or `DEBUG`.                                                                                                                    |
 | `APEX_ASSET_CACHE_DIR` | no                  | Override the on-disk price cache directory used for backtesting. Defaults to `~/.apex/asset_cache`.                                                    |
+| `APEX_CANONICAL_DOMAIN`| self-hosting        | Canonical base URL injected into `robots.txt`, `sitemap.xml`, and `llms.txt`. Defaults to `https://apexportfolio.de`; **set it to your own domain.** |
+| `APEX_SITEMAP_LASTMOD` | no                  | `<lastmod>` date advertised in the sitemap. Defaults to `2026-06-04`.                                                                                 |
 
 There are no Clerk, Azure storage, or database variables: Apex has no such
 dependencies.
+
+`robots.txt`, `sitemap.xml`, and `llms.txt` are generated at request time from
+[`core/seo.py`](core/seo.py) with the domain taken from `APEX_CANONICAL_DOMAIN`,
+so there are no static copies to keep in sync.
 
 ## How your data is stored
 
@@ -130,6 +136,19 @@ This repository also includes an Azure App Service pipeline
 not store any user data. You can ignore or remove these files if you deploy
 elsewhere.
 
+### Before you publish a fork
+
+This repository is the source for a specific live product. If you deploy it
+publicly, replace the site-specific content so your instance doesn't impersonate
+the original:
+
+- Set **`APEX_CANONICAL_DOMAIN`** to your own domain (drives all crawler URLs).
+- Replace the legal pages in [`pages/legal.py`](pages/legal.py). They contain the
+  German *Impressum* and Privacy Policy for **Fundation GmbH** — a real company
+  name, address, VAT ID, and contact email that are legally specific to the
+  operator of https://apexportfolio.de. Do not ship them as-is.
+- Repoint any remaining `fundation.one` / `apexportfolio.de` branding to yours.
+
 ## Project layout
 
 ```
@@ -151,6 +170,17 @@ new money or number display so output stays consistent across languages.
 ```bash
 pytest
 ```
+
+## License
+
+Apex is licensed under the **GNU Affero General Public License v3.0** — see
+[`LICENSE`](LICENSE). Under the AGPL's network clause (section 13), if you run a
+modified version as a network service you must offer its users the corresponding
+source code.
+
+Copyright © Fundation GmbH. The "Apex" / "Apex Portfolio" names and the
+Fundation GmbH legal identity are not covered by the code license; replace them
+in any fork.
 
 ## Disclaimer
 

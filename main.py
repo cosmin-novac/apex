@@ -33,6 +33,7 @@ from components.auth import user_store, register_auth_callbacks
 from components.auth_modal import auth_modal, auth_user_area, register_auth_modal_callbacks
 from components.i18n import t, get_lang
 from components.tr_api import ensure_playwright_browser
+from core.seo import register_seo_routes
 
 log = logging.getLogger(__name__)
 log.info("Starting Apex application")
@@ -326,6 +327,11 @@ server = app.server
 @server.route("/_favicon.ico")
 def _serve_favicon():
     return send_from_directory(os.path.dirname(__file__), "ape.ico", mimetype="image/x-icon")
+
+
+# robots.txt, sitemap.xml and llms.txt are generated from core/seo.py with the
+# canonical domain injected from APEX_CANONICAL_DOMAIN (no hardcoded host).
+register_seo_routes(server)
 
 
 if __name__ == "__main__":
