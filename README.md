@@ -122,13 +122,13 @@ Apex exposes a standard WSGI server object (`server` in `main.py`), so any WSGI
 host works. The bundled start command is:
 
 ```bash
-gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 --threads 4 main:server
+gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 1 --threads 8 main:server
 ```
 
-The high timeout is intentional because backtesting and sync can take time. The
-`--threads` are important too because a Trade Republic sync blocks its worker thread, so threads
-(or extra workers) are needed for the live progress poll to be answered while a
-sync is running.
+The high timeout is intentional because backtesting and sync can take time. Eight
+threads let progress polling and other requests continue during a sync. Keep one worker
+process because Trade Republic's pending OTP login and websocket session are in memory;
+multiple worker processes can split consecutive login requests across different state.
 
 This repository also includes an Azure App Service pipeline
 (`azure-pipelines.yml`) and a GitHub Actions workflow

@@ -163,18 +163,48 @@ def normalize_phone(phone_no: str) -> Optional[str]:
     return "+" + digits
 
 
-def friendly_tr_error(exc: Exception) -> str:
-    """Translate a raw pytr/requests exception into an actionable message.
+def _tr_http_error_diagnostics(
+    exc: Exception,
+) -> Tuple[Optional[int], List[str], Optional[str]]:
+    """Return non-sensitive HTTP diagnostics from a requests-style error."""
+    response = getattr(exc, "response", None)
+    if response is None:
+        return None, [], None
 
-    pytr surfaces transport-level failures verbatim – e.g. an empty HTTP body
-    becomes ``Expecting value: line 1 column 1 (char 0)`` from ``r.json()``,
-    which is meaningless to a user. Map the common cases to plain language.
-    """
+    status = getattr(response, "status_code", None)
+    error_codes: List[str] = []
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+
+    if isinstance(payload, dict):
+        errors = payload.get("errors")
+        if isinstance(errors, list):
+            for error in errors:
+                if not isinstance(error, dict):
+                    continue
+                code = error.get("errorCode") or error.get("code") or error.get("type")
+                if code:
+                    error_codes.append(str(code))
+
+    headers = getattr(response, "headers", {}) or {}
+    waf_action = headers.get("x-amzn-waf-action")
+    return status, error_codes, str(waf_action) if waf_action else None
+
+
+def friendly_tr_error(exc: Exception) -> str:
+    """Translate a raw pytr/requests exception into an actionable message."""
     msg = str(exc)
-    low = msg.lower()
+    status, error_codes, waf_action = _tr_http_error_diagnostics(exc)
+    low = " ".join([msg, *error_codes, waf_action or ""]).lower()
     response = getattr(exc, "response", None)
     request = getattr(response, "request", None)
     request_url = str(getattr(request, "url", "") or getattr(response, "url", ""))
+    is_login_start = bool(re.search(r"/api/v1/auth/web/login/?$", request_url))
+    is_login_completion = bool(
+        re.search(r"/api/v1/auth/web/login/[^/]+/\d{4}$", request_url)
+    )
 
     if (
         "browsertype.launch" in low
@@ -186,10 +216,13 @@ def friendly_tr_error(exc: Exception) -> str:
             "Trade Republic login could not start the browser runtime on this server. "
             "Install the Linux browser dependencies Playwright needs, then retry."
         )
-    if "waf" in low:
-        return "Trade Republic web login could not obtain a WAF token. Try again after the browser runtime is available."
     if "unexpected keyword argument" in low and "waf_token" in low:
         return "The installed pytr package is too old. Install pytr 0.4.9 or newer."
+    if "waf" in low:
+        return (
+            "Trade Republic web login could not pass the server security check. "
+            "Please wait a few minutes and try again."
+        )
     if (
         "bad_subscription_type" in low
         or ("unknown topic type" in low and "compactportfolio" in low)
@@ -199,21 +232,39 @@ def friendly_tr_error(exc: Exception) -> str:
             "Please update Apex and try the sync again."
         )
     if "405" in low or "method not allowed" in low or "not allowed" in low:
-        return "Trade Republic rejected the web-login request. The server may still be missing the working browser runtime this login flow needs."
+        return (
+            "Trade Republic rejected the web-login request. The server may still be "
+            "missing the working browser runtime this login flow needs."
+        )
     if "expecting value" in low or "json" in low:
-        return ("Trade Republic returned an empty response. The service may be "
-                "temporarily unavailable or is rate-limiting logins - please wait "
-                "a minute and try again.")
+        return (
+            "Trade Republic returned an empty response. The service may be "
+            "temporarily unavailable or is rate-limiting logins - please wait "
+            "a minute and try again."
+        )
     if "number_invalid" in low or "phonenumber" in low:
-        return "That phone number wasn't accepted. Use international format, e.g. +49 151 23456789."
-    if "too_many" in low or "rate" in low or "429" in low:
+        return (
+            "That phone number wasn't accepted. Use international format, "
+            "e.g. +49 151 23456789."
+        )
+    if "too_many" in low or "rate" in low or status == 429:
         return "Too many attempts. Please wait a few minutes before trying again."
+    if is_login_completion and status in {400, 401}:
+        return "The verification code was invalid or has expired. Please request a new code."
+    if is_login_start and status == 401:
+        return (
+            "Trade Republic rejected the login request from this server (HTTP 401). "
+            "Confirm the phone number and PIN once; if they work in Trade Republic's "
+            "web app, wait a few minutes and retry because the server request may have "
+            "been blocked."
+        )
     if "401" in low or "unauthorized" in low or "pin" in low:
         return "Login was rejected. Please double-check your phone number and PIN."
-    if "client_version_outdated" in low or "426" in low:
-        return "Trade Republic rejected the client version. Install pytr 0.4.9 or newer and restart the app."
-    if re.search(r"/api/v1/auth/web/login/[^/]+/\d{4}$", request_url) and getattr(response, "status_code", None) in {400, 401}:
-        return "The verification code was invalid or has expired. Please request a new code."
+    if "client_version_outdated" in low or status == 426:
+        return (
+            "Trade Republic rejected the client version. Install pytr 0.4.9 or newer "
+            "and restart the app."
+        )
     if "verification code" in low and ("invalid" in low or "expired" in low):
         return "The verification code was invalid or has expired. Please request a new code."
     return msg or "Connection to Trade Republic failed. Please try again."
@@ -2748,7 +2799,14 @@ class TRConnection:
                 "countdown": countdown,
             }
         except Exception as e:
-            log.error(f"TR login initiation failed: {e}")
+            status, error_codes, waf_action = _tr_http_error_diagnostics(e)
+            log.error(
+                "TR login initiation failed: %s (status=%s, error_codes=%s, waf_action=%s)",
+                e,
+                status,
+                error_codes or "none",
+                waf_action or "none",
+            )
             return {
                 "success": False,
                 "error": friendly_tr_error(e)

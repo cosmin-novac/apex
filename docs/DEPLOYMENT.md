@@ -21,7 +21,7 @@ Git push (main)
   └─▶ Azure Pipelines
         ├─ Build Stage: pip install, zip artifact
         └─ Deploy Stage: AzureWebApp@1 → backtesting-ai
-              └─ Startup: gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 --threads 4 main:server
+              └─ Startup: gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 1 --threads 8 main:server
 ```
 
 The `server = app.server` line in `main.py` exposes the Flask/WSGI server that gunicorn binds to.
@@ -92,7 +92,7 @@ Or set them in the Azure Portal: **App Service → Configuration → Application
 az webapp config set \
   --resource-group rg-backtesting \
   --name backtesting-ai \
-  --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 --threads 4 main:server"
+  --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 1 --threads 8 main:server"
 ```
 
 ### 4. Connect Azure Pipelines
@@ -157,14 +157,16 @@ The `azure-pipelines.yml` is already configured:
 
 | Setting | Default | Notes |
 |---|---|---|
-| Workers | 2 | Increase for more concurrent users: `--workers 4` |
+| Workers | 1 | Required for in-memory Trade Republic OTP/websocket continuity; use threads for request concurrency |
 | Timeout | 600s | High due to backtesting computations; reduce if not needed |
 | App Service Plan | B1 | Upgrade to B2/S1 for better performance |
 
-To scale horizontally:
+Upgrade the App Service plan vertically when more capacity is needed. Do not add
+Gunicorn processes or App Service instances until pending Trade Republic login
+state and active websocket sessions have been moved to a shared service.
+
 ```bash
 az appservice plan update --name asp-backtesting --resource-group rg-backtesting --sku S1
-az webapp update --name backtesting-ai --resource-group rg-backtesting --set siteConfig.numberOfWorkers=2
 ```
 
 ---
@@ -173,10 +175,11 @@ az webapp update --name backtesting-ai --resource-group rg-backtesting --set sit
 
 | Issue | Solution |
 |---|---|
-| App won't start | Check startup command in Configuration → General settings. Must be `gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 2 --threads 4 main:server` |
+| App won't start | Check startup command in Configuration → General settings. Must be `gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 1 --threads 8 main:server` |
 | `ModuleNotFoundError` | Set `SCM_DO_BUILD_DURING_DEPLOYMENT=true` and redeploy, or check `requirements.txt` |
 | Portfolio data does not persist across reloads | Expected if browser storage is cleared; data lives only in the browser (encrypted localStorage). Re-sync from Trade Republic |
 | Trade Republic sync cannot reconnect | Verify `TR_ENCRYPTION_KEY` is stable across deploys and `pytr==0.4.9` is installed. Note: the pytr web-session cookies live on the (ephemeral) App Service disk, so a restart may require a fresh login |
+| Trade Republic login starts locally but returns HTTP 401 on Azure | Check the sanitized `error_codes` and `waf_action` fields in the initiation log. Confirm the same phone/PIN in the official web app, wait before retrying after repeated attempts, and treat an Azure-only rejection as a server security/WAF restriction rather than automatically blaming the PIN |
 | Trade Republic first login fails with `libglib-2.0.so.0` or `BrowserType.launch` | App Service Linux is missing Playwright's Chromium runtime deps. Apex now attempts `playwright install --with-deps chromium` during startup when Playwright login is active. If your hosting policy blocks that, use a custom container or another host for the initial login bootstrap. |
 | 502 / timeout on startup | Increase timeout: `--timeout 900`. Gunicorn needs time to load all modules |
 | Static assets not loading | Ensure `assets/` folder is included in the deployment zip |

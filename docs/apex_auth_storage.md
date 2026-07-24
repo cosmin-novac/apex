@@ -68,5 +68,7 @@ No Clerk or Azure storage variables are used.
 ## Hosting
 
 Apex still deploys to Azure App Service (`gunicorn ... main:server`). Azure is the
-host only; it never stores user data. Use threaded workers (`--threads 4`) so the
-live sync-progress poll is answered while a Trade Republic sync is running.
+host only; it never stores user data. Production uses one Gunicorn process with
+eight threads. Trade Republic's pending OTP process and websocket session live in
+memory, so multiple worker processes can split initiation and verification across
+different state. Threads retain concurrent progress polling without that split.
