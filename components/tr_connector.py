@@ -20,7 +20,8 @@ from components.tr_api import (
     disconnect,
     drop_connection,
     is_connected,
-    has_session
+    has_session,
+    friendly_tr_error,
 )
 from components import auth
 from components.i18n import t, get_lang
@@ -36,7 +37,7 @@ def _fetch_portfolio_data(uid):
     try:
         result = fetch_all_data(user_id=uid)
     except Exception as e:
-        result = {"success": False, "error": str(e)}
+        result = {"success": False, "error": friendly_tr_error(e)}
     if not isinstance(result, dict):
         return {"success": False, "error": "Trade Republic returned an unexpected response."}
     if not result.get("success"):
@@ -244,105 +245,82 @@ def create_portfolio_summary(data, lang="de"):
 def register_tr_callbacks(app):
     """Register all Trade Republic connector callbacks."""
     
-    # Clientside callback for immediate syncing state when verify is clicked
+    # Use Dash outputs for immediate view transitions. Keeping React's component
+    # state in sync lets the server callback reliably restore the form on errors.
     app.clientside_callback(
         """
-        function(n_clicks) {
-            if (n_clicks > 0) {
-                // Get the OTP input value to validate
-                var otpInput = document.getElementById('tr-otp-input');
-                var otp = otpInput ? otpInput.value : '';
-                
-                // Only proceed if OTP is valid (4 digits)
-                if (otp && otp.length === 4) {
-                    // Update button to show connecting
-                    var btn = document.getElementById('tr-verify-otp-btn');
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.innerHTML = '<i class="bi bi-arrow-repeat spin me-2"></i>Verifying...';
-                    }
-                    
-                    // Hide OTP view and show syncing view
-                    var otpView = document.getElementById('tr-otp-view');
-                    var syncingView = document.getElementById('tr-syncing-view');
-                    if (otpView) otpView.style.display = 'none';
-                    if (syncingView) syncingView.style.display = 'block';
-                    
-                    // Update status text
-                    var statusText = document.getElementById('tr-status-text');
-                    var statusDiv = document.getElementById('tr-connection-status');
-                    if (statusText) statusText.textContent = 'Syncing data...';
-                    if (statusDiv) {
-                        statusDiv.className = 'connection-status syncing';
-                    }
-                }
+        function(n_clicks, otp) {
+            if (!n_clicks || !otp || otp.length !== 4) {
+                return Array(6).fill(window.dash_clientside.no_update);
             }
-            return window.dash_clientside.no_update;
+            return [
+                {"display": "none"},
+                {"display": "block"},
+                "connection-status syncing",
+                "Syncing data...",
+                true,
+                "Verifying..."
+            ];
         }
         """,
-        Output('tr-verify-otp-btn', 'data-loading'),  # Dummy output
+        [Output('tr-otp-view', 'style', allow_duplicate=True),
+         Output('tr-syncing-view', 'style', allow_duplicate=True),
+         Output('tr-connection-status', 'className', allow_duplicate=True),
+         Output('tr-status-text', 'children', allow_duplicate=True),
+         Output('tr-verify-otp-btn', 'disabled', allow_duplicate=True),
+         Output('tr-verify-otp-btn', 'children', allow_duplicate=True)],
         Input('tr-verify-otp-btn', 'n_clicks'),
-        prevent_initial_call=True
-    )
-    
-    # Clientside callback for immediate syncing state when reconnect is clicked
-    app.clientside_callback(
-        """
-        function(n_clicks) {
-            if (n_clicks > 0) {
-                // Hide initial view and show syncing view
-                var initialView = document.getElementById('tr-initial-view');
-                var syncingView = document.getElementById('tr-syncing-view');
-                if (initialView) initialView.style.display = 'none';
-                if (syncingView) syncingView.style.display = 'block';
-                
-                // Update status text
-                var statusText = document.getElementById('tr-status-text');
-                var statusDiv = document.getElementById('tr-connection-status');
-                if (statusText) statusText.textContent = 'Reconnecting...';
-                if (statusDiv) {
-                    statusDiv.className = 'connection-status syncing';
-                }
-            }
-            return window.dash_clientside.no_update;
-        }
-        """,
-        Output('tr-reconnect-link', 'data-loading'),  # Dummy output
-        Input('tr-reconnect-link', 'n_clicks'),
-        prevent_initial_call=True
-    )
-    
-    # Clientside callback for immediate syncing state when refresh is clicked
-    app.clientside_callback(
-        """
-        function(n_clicks) {
-            if (n_clicks > 0) {
-                // Hide connected view and show syncing view
-                var connectedView = document.getElementById('tr-connected-view');
-                var syncingView = document.getElementById('tr-syncing-view');
-                if (connectedView) connectedView.style.display = 'none';
-                if (syncingView) syncingView.style.display = 'block';
-                
-                // Update status text
-                var statusText = document.getElementById('tr-status-text');
-                var statusDiv = document.getElementById('tr-connection-status');
-                if (statusText) statusText.textContent = 'Refreshing data...';
-                if (statusDiv) {
-                    statusDiv.className = 'connection-status syncing';
-                }
-            }
-            return window.dash_clientside.no_update;
-        }
-        """,
-        Output('tr-refresh-btn', 'data-loading'),  # Dummy output
-        Input('tr-refresh-btn', 'n_clicks'),
+        State('tr-otp-input', 'value'),
         prevent_initial_call=True
     )
 
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            if (!n_clicks) {
+                return Array(4).fill(window.dash_clientside.no_update);
+            }
+            return [
+                {"display": "none"},
+                {"display": "block"},
+                "connection-status syncing",
+                "Reconnecting..."
+            ];
+        }
+        """,
+        [Output('tr-initial-view', 'style', allow_duplicate=True),
+         Output('tr-syncing-view', 'style', allow_duplicate=True),
+         Output('tr-connection-status', 'className', allow_duplicate=True),
+         Output('tr-status-text', 'children', allow_duplicate=True)],
+        Input('tr-reconnect-link', 'n_clicks'),
+        prevent_initial_call=True
+    )
+
+    app.clientside_callback(
+        """
+        function(n_clicks) {
+            if (!n_clicks) {
+                return Array(4).fill(window.dash_clientside.no_update);
+            }
+            return [
+                {"display": "none"},
+                {"display": "block"},
+                "connection-status syncing",
+                "Refreshing data..."
+            ];
+        }
+        """,
+        [Output('tr-connected-view', 'style', allow_duplicate=True),
+         Output('tr-syncing-view', 'style', allow_duplicate=True),
+         Output('tr-connection-status', 'className', allow_duplicate=True),
+         Output('tr-status-text', 'children', allow_duplicate=True)],
+        Input('tr-refresh-btn', 'n_clicks'),
+        prevent_initial_call=True
+    )
     # "Send Verification Code": immediately show a spinner and disable the button
     # on click so it can't be clicked again while the OTP request is in flight.
-    # Uses direct DOM updates (like the verify/refresh handlers) because returning
-    # components from a clientside callback is unreliable and gets dropped.
+    # This callback only mutates its own button while the request is in flight;
+    # returning component children here is unreliable and gets dropped.
     app.clientside_callback(
         """
         function(n_clicks) {

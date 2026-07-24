@@ -45,9 +45,16 @@ This document captures the technical findings about Trade Republic (TR) API inte
 
 The `pytr` library (`from pytr.api import TradeRepublicApi`) provides these methods:
 
+> **Current portfolio contract (July 2026):** Trade Republic retired the old
+> `compactPortfolio` topic. Apex first reads `securitiesAccountNumber` from
+> `/api/v2/auth/account`, then subscribes to `compactPortfolioByType` with
+> `secAccNo`. The response is normalized from `categories[].positions` into the
+> internal flat `positions` list. Keep this compatibility layer while PyPI is
+> pinned to `pytr==0.4.9`; the matching upstream pytr change is not yet released.
+
 | Method | Purpose | Returns | Status |
 |--------|---------|---------|--------|
-| `portfolio()` | Current positions | List of holdings with qty, avgBuyIn | ✅ Works |
+| `compactPortfolioByType` (account-scoped subscription) | Current positions grouped under `categories[].positions` | Holdings with ISIN, qty, avgBuyIn | ✅ Used by Apex |
 | `portfolio_history(timeframe)` | Aggregate portfolio value history | Total value per date | ✅ Works |
 | `performance_history(isin, timeframe, exchange)` | Per-instrument price history | Price data per date | ⚠️ Unreliable |
 | `timeline_transactions()` | Transaction history | Buys, sells, dividends, etc. | ✅ Works |
@@ -55,7 +62,7 @@ The `pytr` library (`from pytr.api import TradeRepublicApi`) provides these meth
 
 ### 1.3 What the TR API Does NOT Provide
 
-- **instrumentType on positions**: The `portfolio()` response does NOT include asset type (stock/ETF/crypto/bond)
+- **Guaranteed instrumentType on positions**: the compact response may omit asset type, so Apex enriches it from category metadata or `instrument_details()`
 - **Reliable per-position history**: `performance_history()` fails for many instruments (wrong exchange, delisted, etc.)
 - **Historical quantity tracking**: No way to know how many shares you held at a past date
 

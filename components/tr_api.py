@@ -190,6 +190,14 @@ def friendly_tr_error(exc: Exception) -> str:
         return "Trade Republic web login could not obtain a WAF token. Try again after the browser runtime is available."
     if "unexpected keyword argument" in low and "waf_token" in low:
         return "The installed pytr package is too old. Install pytr 0.4.9 or newer."
+    if (
+        "bad_subscription_type" in low
+        or ("unknown topic type" in low and "compactportfolio" in low)
+    ):
+        return (
+            "Trade Republic rejected the portfolio data request because its interface changed. "
+            "Please update Apex and try the sync again."
+        )
     if "405" in low or "method not allowed" in low or "not allowed" in low:
         return "Trade Republic rejected the web-login request. The server may still be missing the working browser runtime this login flow needs."
     if "expecting value" in low or "json" in low:
@@ -314,6 +322,7 @@ class TRConnection:
         self._thread: Optional[threading.Thread] = None
         self._loop_ready = threading.Event()
         self._op_lock = threading.Lock()
+        self._securities_account_number: Optional[str] = None
 
         # ── Per-user cache directory ────────────────────────────────────
         self._user_cache_dir = TR_CREDENTIALS_DIR / self.user_id
@@ -385,6 +394,141 @@ class TRConnection:
         if not self.api:
             raise RuntimeError("Trade Republic API is not initialized")
         return await asyncio.wait_for(self.api.recv(), timeout=timeout)
+
+    async def _get_securities_account_number(self) -> str:
+        """Return the account id required by the current portfolio topic."""
+        if self._securities_account_number:
+            return self._securities_account_number
+        if not self.api:
+            raise RuntimeError("Trade Republic API is not initialized")
+
+        settings = await asyncio.to_thread(self.api.settings)
+        if not isinstance(settings, dict):
+            raise RuntimeError("Trade Republic returned invalid account settings.")
+
+        account_number = settings.get("securitiesAccountNumber")
+        if not account_number:
+            raise RuntimeError(
+                "Trade Republic did not return a securities account number for this account."
+            )
+
+        self._securities_account_number = str(account_number)
+        return self._securities_account_number
+
+    @staticmethod
+    def _normalize_compact_portfolio(response: Any) -> Dict[str, Any]:
+        """Normalize old and current TR portfolio payloads to ``positions``."""
+        if not isinstance(response, dict):
+            raise RuntimeError("Trade Republic returned invalid portfolio data.")
+
+        normalized = dict(response)
+        raw_positions = response.get("positions")
+        categories = response.get("categories")
+        categorized_positions = isinstance(categories, list)
+
+        if not isinstance(raw_positions, list):
+            if not categorized_positions:
+                raise RuntimeError(
+                    "Trade Republic returned portfolio data in an unsupported format."
+                )
+            raw_positions = []
+            for category in categories:
+                if not isinstance(category, dict):
+                    continue
+                category_type = str(category.get("categoryType") or "")
+                for raw_position in category.get("positions") or []:
+                    if not isinstance(raw_position, dict):
+                        continue
+                    position = dict(raw_position)
+                    position.setdefault("portfolioCategory", category_type)
+                    raw_positions.append(position)
+
+        category_types = {
+            "stock": "stock",
+            "stocks": "stock",
+            "etf": "fund",
+            "etfs": "fund",
+            "fund": "fund",
+            "funds": "fund",
+            "mutualfund": "fund",
+            "mutualfunds": "fund",
+            "crypto": "crypto",
+            "cryptos": "crypto",
+            "bond": "bond",
+            "bonds": "bond",
+            "derivative": "derivative",
+            "derivatives": "derivative",
+            "privatefund": "privateFund",
+            "privatefunds": "privateFund",
+            "privatemarket": "privateFund",
+            "privatemarkets": "privateFund",
+        }
+        positions: List[Dict[str, Any]] = []
+        position_values: List[float] = []
+
+        for raw_position in raw_positions:
+            if not isinstance(raw_position, dict):
+                continue
+            position = dict(raw_position)
+            instrument_id = position.get("instrumentId") or position.get("isin")
+            if not instrument_id:
+                log.warning("Skipping TR portfolio position without an ISIN")
+                continue
+            position["instrumentId"] = str(instrument_id)
+
+            category_key = re.sub(
+                r"[^a-z]", "", str(position.get("portfolioCategory") or "").lower()
+            )
+            if not position.get("instrumentType") and category_key in category_types:
+                position["instrumentType"] = category_types[category_key]
+
+            raw_value = position.get("netValue")
+            if raw_value is None:
+                raw_value = position.get("value")
+                if isinstance(raw_value, dict):
+                    raw_value = raw_value.get("amount", raw_value.get("value"))
+                if raw_value is not None:
+                    position["netValue"] = raw_value
+            if raw_value is not None:
+                try:
+                    position_values.append(float(raw_value))
+                except (TypeError, ValueError):
+                    pass
+
+            positions.append(position)
+
+        normalized["positions"] = positions
+        if normalized.get("netValue") is None:
+            normalized["netValue"] = sum(position_values) if position_values else 0.0
+        return normalized
+
+    async def _fetch_compact_portfolio_response(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Fetch the account-scoped portfolio used by the current web API."""
+        if not self.api:
+            raise RuntimeError("Trade Republic API is not initialized")
+
+        account_number = await self._get_securities_account_number()
+        payload = {
+            "type": "compactPortfolioByType",
+            "secAccNo": account_number,
+        }
+        requested_sub_id = await self.api.subscribe(payload)
+        response_sub_id = None
+        try:
+            response_sub_id, sub_params, response = await self._recv_response()
+        finally:
+            try:
+                await self.api.unsubscribe(response_sub_id or requested_sub_id)
+            except Exception:
+                log.debug("Portfolio subscription was already closed", exc_info=True)
+
+        if response_sub_id != requested_sub_id:
+            log.warning(
+                "Expected portfolio subscription %s, received %s",
+                requested_sub_id,
+                response_sub_id,
+            )
+        return sub_params, self._normalize_compact_portfolio(response)
 
     def _new_api(self, waf_token: Optional[str] = None) -> TradeRepublicApi:
         if not _modern_web_login_supported():
@@ -2548,6 +2692,8 @@ class TRConnection:
         """
         phone, _ = decrypt_credentials(encrypted)
         if phone:
+            if phone != self.phone_no:
+                self._securities_account_number = None
             self.phone_no = phone
             return True
         return False
@@ -2558,6 +2704,7 @@ class TRConnection:
             self._cookies_path.unlink()
         self.phone_no = None
         self.pin = None
+        self._securities_account_number = None
         self.is_connected = False
         self.api = None
     
@@ -2583,6 +2730,7 @@ class TRConnection:
 
             self.phone_no = normalized
             self.pin = pin
+            self._securities_account_number = None
 
             self._user_cache_dir.mkdir(parents=True, exist_ok=True)
             if self._cookies_path.exists():
@@ -2651,11 +2799,8 @@ class TRConnection:
             if not self.api or not self.is_connected:
                 return {"success": False, "error": "Not connected"}
             
-            # Get compact portfolio (correct subscription type)
-            # WebSocket connects automatically on first subscribe
-            await self.api.compact_portfolio()
-            sub_id, sub_params, portfolio_response = await self._recv_response()
-            await self.api.unsubscribe(sub_id)
+            # Fetch the account-scoped portfolio and normalize its current schema.
+            sub_params, portfolio_response = await self._fetch_compact_portfolio_response()
             
             log.info(f"Portfolio response: {portfolio_response}")
             
@@ -2669,8 +2814,8 @@ class TRConnection:
             self.portfolio_data = portfolio_response
             self.cash_data = cash_response
             
-            # Parse compact portfolio format
-            # compactPortfolio returns: {netValue, positions: [{instrumentId, netSize, averageBuyIn, netValue}]}
+            # Parse the normalized portfolio format shared by the legacy and
+            # account-scoped Trade Republic responses.
             positions = portfolio_response.get('positions', [])
             net_value = portfolio_response.get('netValue', 0)
             
@@ -2718,7 +2863,7 @@ class TRConnection:
             traceback.print_exc()
             return {
                 "success": False,
-                "error": str(e)
+                "error": friendly_tr_error(e)
             }
     
     async def _fetch_all_data(self) -> Dict[str, Any]:
@@ -2730,22 +2875,11 @@ class TRConnection:
             self._write_progress(3, "Connecting", "Fetching portfolio…")
             log.info("Fetching compact portfolio...")
 
-            # Get compact portfolio - handle async responses properly
-            await self.api.compact_portfolio()
-            sub_id, sub_params, portfolio_response = await self._recv_response()
-            await self.api.unsubscribe(sub_id)
-            
-            # Check if we got the right response type
-            if sub_params.get('type') != 'compactPortfolio':
-                log.warning(f"Expected compactPortfolio, got {sub_params.get('type')}")
-                # The response might be in the wrong order - check if it has positions
-                if isinstance(portfolio_response, dict) and 'positions' in portfolio_response:
-                    pass  # We got positions, use this
-                else:
-                    # Try to receive again
-                    await self.api.compact_portfolio()
-                    sub_id, sub_params, portfolio_response = await self._recv_response()
-                    await self.api.unsubscribe(sub_id)
+            # Fetch the current account-scoped topic and normalize it to the
+            # stable internal shape consumed by the remainder of this method.
+            sub_params, portfolio_response = await self._fetch_compact_portfolio_response()
+            if sub_params.get("type") != "compactPortfolioByType":
+                log.warning("Unexpected portfolio topic: %s", sub_params.get("type"))
             
             log.info(f"Got portfolio with {len(portfolio_response.get('positions', []))} positions")
             
@@ -2803,10 +2937,10 @@ class TRConnection:
                     # Old cache format - just name string
                     cached_info = {"name": cached_info}
                 
-                name = cached_info.get("name") or isin
-                instrument_type = cached_info.get("typeId", "")
-                image_id = cached_info.get("imageId", "")
-                exchange_id = cached_info.get("exchangeId", "")
+                name = cached_info.get("name") or p.get("name") or isin
+                instrument_type = cached_info.get("typeId") or p.get("instrumentType") or ""
+                image_id = cached_info.get("imageId") or p.get("imageId") or ""
+                exchange_id = cached_info.get("exchangeId") or p.get("exchangeId") or ""
                 
                 # Fetch instrument details if:
                 # 1. No name cached (name == isin), OR
@@ -2995,7 +3129,7 @@ class TRConnection:
             traceback.print_exc()
             return {
                 "success": False,
-                "error": str(e)
+                "error": friendly_tr_error(e)
             }
         finally:
             # Clear progress so the UI poll knows the fetch has ended.

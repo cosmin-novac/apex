@@ -70,6 +70,10 @@ stopped the app or the `__pycache__` lock is known to be gone.
 - `CLIENT_VERSION_OUTDATED` means the old client path or old pytr version is in
   play.
 - Apex should use `pytr==0.4.9` or newer.
+- The installed 0.4.9 helper still sends the retired `compactPortfolio` topic.
+  Keep Apex's account-scoped compatibility request: read
+  `securitiesAccountNumber`, subscribe to `compactPortfolioByType` with
+  `secAccNo`, and normalize `categories[].positions`.
 - Reconnect state is web-session cookies, not `keyfile.pem`.
 - Web-session cookies (`tr_cookies`) live in the local pytr cache on disk.
 - `TR_WAF_TOKEN_METHOD=playwright` is the default because it matches
