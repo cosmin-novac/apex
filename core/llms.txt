@@ -12,6 +12,10 @@ backtesting web application.
 - Backtest Bitcoin buy/sell strategies and rule-based investment ideas
 - Simulate investment growth and withdrawal scenarios
 - Explore exit strategy risk bands and real-cost investment calculations
+- Run rank studies on the S&P 500 (Mega-cap Lab): own the largest N companies,
+  own a rank corridor such as 400-500, or buy the companies climbing into it,
+  each compared with the S&P 500 total return index, 2000-2025, using
+  point-in-time market caps and point-in-time index membership
 - Keep all portfolio and credential data local to the browser (no sign-in, no
   cloud storage)
 
@@ -23,6 +27,7 @@ backtesting web application.
 - Investment Simulator: __BASE_URL__/portfolio
 - Exit Strategy Riskbands: __BASE_URL__/riskbands
 - The Real Cost: __BASE_URL__/realcost
+- Mega-cap Lab: __BASE_URL__/megacap
 - LLM reference: __BASE_URL__/llms.txt
 - XML sitemap: __BASE_URL__/sitemap.xml
 

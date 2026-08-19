@@ -471,27 +471,15 @@ def layout(lang="en"):
                                 "responsive": True,
                             },
                             clear_on_unhover=True,
-                            style={"height": "330px"},
+                            style={"height": "430px"},
+                            className="sensitive",
                         ),
                         type="circle",
                         color="#6366f1"
                     ),
                 ], className="py-2"),
             ], className="card-modern h-100"),
-        ], md=8, className="mb-3"),
-        
-        # Hover details
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-crosshair me-2"),
-                    t("pa.chart_details", lang)
-                ], className="card-header-modern"),
-                dbc.CardBody([
-                    html.Div(id="chart-hover-details", className="chart-hover-details sensitive"),
-                ], className="py-2"),
-            ], className="card-modern h-100"),
-        ], md=4, className="mb-3"),
+        ], md=12, className="mb-3"),
     ]),
 
     # Performance Comparison Table
@@ -1924,6 +1912,51 @@ def register_callbacks(app):
 
             def _make_hover_meta(name, unit, n):
                 return [[name, unit] for _ in range(n)]
+
+            def _money_hover(name, lang_):
+                """Hover row for a currency series, in the user's number format."""
+                money = "%{y:,.0f} €" if lang_ == "de" else "€%{y:,.0f}"
+                return "<b>" + name + "</b>  " + money + "<extra></extra>"
+
+            def _collect_end_labels(figure):
+                """(name, colour, last value) for every visible named line."""
+                entries = []
+                for tr in figure.data:
+                    name = getattr(tr, "name", None)
+                    if not name or getattr(tr, "showlegend", None) is False:
+                        continue
+                    if getattr(tr, "visible", True) == "legendonly":
+                        continue
+                    ys = [v for v in (tr.y or []) if v is not None]
+                    if not ys:
+                        continue
+                    line = getattr(tr, "line", None)
+                    entries.append((name, getattr(line, "color", None) or "#64748b", ys[-1]))
+                return entries
+
+            def _add_end_labels(figure, entries):
+                """Label each line at its right end instead of using a legend.
+
+                Entries are (text, colour, y). Labels are pushed apart so that
+                close-together series stay readable."""
+                if not entries:
+                    return
+                entries = sorted(entries, key=lambda e: e[2], reverse=True)
+                ys = [e[2] for e in entries]
+                span = (max(ys) - min(ys)) or 1.0
+                min_gap = span * 0.085
+                placed = []
+                for text, color, y in entries:
+                    pos = y
+                    if placed and placed[-1] - pos < min_gap:
+                        pos = placed[-1] - min_gap
+                    placed.append(pos)
+                    figure.add_annotation(
+                        xref="paper", x=1.005, y=pos, yref="y",
+                        text=text, showarrow=False, xanchor="left", yanchor="middle",
+                        font=dict(size=11, color=color, family="Inter, sans-serif"),
+                        align="left",
+                    )
             
             # Get actual portfolio data
             portfolio = data.get("data", {})
@@ -1982,12 +2015,19 @@ def register_callbacks(app):
                     y=_series_to_number_list(y_data),
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#6366f1', width=2.5, shape='spline', smoothing=0.35),
+                    line=dict(color='#4338ca', width=2.6),
                     fill='tonexty',
-                    fillcolor=fill_color,
+                    fillcolor="rgba(67, 56, 202, 0.08)",
                     customdata=_make_hover_meta(t("pa.portfolio", lang), "currency", len(x_dates)),
-                    hoverinfo='none',
+                    hovertemplate=_money_hover(t("pa.portfolio", lang), lang),
                 ))
+                _last_port = _series_to_number_list(y_data)[-1]
+                if _last_port is not None:
+                    fig.add_trace(go.Scatter(
+                        x=[x_dates[-1]], y=[_last_port], mode="markers",
+                        marker=dict(color="#4338ca", size=7, line=dict(color="#fff", width=2)),
+                        showlegend=False, hoverinfo="skip",
+                    ))
                 
                 # Add invested/added capital line (shows money added over time)
                 if 'invested' in df.columns:
@@ -1997,10 +2037,9 @@ def register_callbacks(app):
                         y=_series_to_number_list(df['invested']),
                         mode='lines',
                         name=t("pa.added_capital", lang),
-                        visible='legendonly',
-                        line=dict(color='#f59e0b', width=2, shape='spline', smoothing=0.35),
+                        line=dict(color='#f59e0b', width=1.8, dash='dash'),
                         customdata=_make_hover_meta(t("pa.added_capital", lang), "currency", len(x_dates)),
-                        hoverinfo='none',
+                        hovertemplate=_money_hover(t("pa.added_capital", lang), lang),
                     ))
             elif chart_type == "tab-performance":
                 # Performance chart with green above 0% and red below 0% (Parqet style)
@@ -2043,9 +2082,11 @@ def register_callbacks(app):
                     y=y_values,
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#10b981', width=2.5, shape='spline', smoothing=0.35),
+                    # Same indigo as on the value tab so the portfolio keeps one
+                    # identity; the green/red fills still show above/below zero.
+                    line=dict(color='#4338ca', width=2.6),
                     customdata=_make_hover_meta(t("pa.portfolio", lang), "percent", len(x_dates)),
-                    hoverinfo='none',
+                    hovertemplate="<b>" + t("pa.portfolio", lang) + "</b>  %{y:,.2f}%<extra></extra>",
                 ))
             else:
                 # Drawdown chart
@@ -2055,21 +2096,23 @@ def register_callbacks(app):
                     y=_series_to_number_list(y_data),
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#ef4444', width=2.5, shape='spline', smoothing=0.35),
+                    line=dict(color='#ef4444', width=2.5),
                     fill='tozeroy' if fill_color else None,
                     fillcolor=fill_color,
                     customdata=_make_hover_meta(t("pa.portfolio", lang), "percent", len(x_dates)),
-                    hoverinfo='none',
+                    hovertemplate="<b>" + t("pa.portfolio", lang) + "</b>  %{y:,.2f}%<extra></extra>",
                 ))
             
             if include_benchmarks and chart_type in ["tab-performance", "tab-value"]:
                 # Add benchmarks (value + performance)
+                # Muted, evenly spaced hues: five benchmarks stay apart
+                # without competing with the portfolio line.
                 benchmark_colors = {
-                    "^GSPC": "#10b981",
-                    "^GDAXI": "#f59e0b",
-                    "URTH": "#3b82f6",
-                    "^IXIC": "#8b5cf6",
-                    "^STOXX": "#06b6d4",
+                    "^GSPC": "#0f766e",
+                    "^GDAXI": "#b45309",
+                    "URTH": "#1d4ed8",
+                    "^IXIC": "#7e22ce",
+                    "^STOXX": "#be123c",
                 }
                 benchmark_names = {
                     "^GSPC": "S&P 500",
@@ -2105,23 +2148,23 @@ def register_callbacks(app):
                         if chart_type == "tab-performance":
                             # Use same TWR calculation as portfolio - starts at 0%
                             bench_y = _calculate_twr_series_df(sim_df)
-                            hovertemplate = f"<b>{benchmark_names.get(bench, bench)}</b><br>%{{x|%d %b %Y}}<br>%{{y:,.2f}}%<extra></extra>"
+                            hovertemplate = f"<b>{benchmark_names.get(bench, bench)}</b>  %{{y:,.2f}}%<extra></extra>"
                         else:
                             bench_y = sim_df['value']
-                            hovertemplate = f"<b>{benchmark_names.get(bench, bench)}</b><br>%{{x|%d %b %Y}}<br>€%{{y:,.2f}}<extra></extra>"
+                            hovertemplate = _money_hover(benchmark_names.get(bench, bench), lang)
 
                         fig.add_trace(go.Scatter(
                             x=sim_df['date'].dt.strftime('%Y-%m-%d').tolist(),
                             y=_series_to_number_list(bench_y),
                             mode='lines',
                             name=benchmark_names.get(bench, bench),
-                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6, dash='dot', shape='spline', smoothing=0.35),
+                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.4),
                             customdata=_make_hover_meta(
                                 benchmark_names.get(bench, bench),
                                 "percent" if chart_type == "tab-performance" else "currency",
                                 len(sim_df),
                             ),
-                            hoverinfo='none',
+                            hovertemplate=hovertemplate,
                         ))
                     else:
                         # Fallback: if simulation isn't available, use normalized index data.
@@ -2145,59 +2188,72 @@ def register_callbacks(app):
                             y=_series_to_number_list(bench_y),
                             mode='lines',
                             name=benchmark_names.get(bench, bench),
-                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6, dash='dot', shape='spline', smoothing=0.35),
+                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.4),
                             customdata=_make_hover_meta(
                                 benchmark_names.get(bench, bench),
                                 "percent" if chart_type == "tab-performance" else "currency",
                                 len(bench_data),
                             ),
-                            hoverinfo='none',
+                            hovertemplate=(
+                                f"<b>{benchmark_names.get(bench, bench)}</b>  %{{y:,.2f}}%<extra></extra>"
+                                if chart_type == "tab-performance"
+                                else _money_hover(benchmark_names.get(bench, bench), lang)
+                            ),
                         ))
             
+            money_axis = chart_type == "tab-value"
             fig.update_layout(
-                height=320,
+                height=None,
                 separators=cu.plotly_separators(lang),
-                margin=dict(l=34, r=12, t=12, b=34),
+                margin=dict(l=8, r=118, t=16, b=28),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
                 font=dict(family="Inter, sans-serif", size=11, color="#64748b"),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="center",
-                    x=0.5,
-                    bgcolor="rgba(255,255,255,0)",
-                    font=dict(size=10),
-                ),
+                showlegend=False,
                 xaxis=dict(
-                    showgrid=True, 
-                    gridcolor="rgba(148, 163, 184, 0.14)",
-                    tickformat="%b %Y" if selected_range in ["max", "1y"] else "%d %b",
+                    showgrid=False,
+                    tickformat="%b %Y" if selected_range in ["max", "1y", "3y", "5y"] else "%d %b",
                     hoverformat="%d %b %Y",
-                    showline=False,
+                    showline=True,
+                    linecolor="rgba(148, 163, 184, 0.35)",
+                    ticks="outside",
+                    ticklen=4,
+                    tickcolor="rgba(148, 163, 184, 0.35)",
                     zeroline=False,
                     showspikes=True,
-                    spikecolor="rgba(99, 102, 241, 0.28)",
+                    spikecolor="rgba(67, 56, 202, 0.35)",
                     spikethickness=1,
                     spikedash="solid",
+                    spikemode="across",
                     spikesnap="cursor",
                 ),
                 yaxis=dict(
-                    showgrid=True, 
-                    gridcolor="rgba(148, 163, 184, 0.14)",
+                    showgrid=True,
+                    gridcolor="rgba(148, 163, 184, 0.16)",
+                    griddash="dot",
                     title="",
-                    tickprefix=("€" if lang != "de" else "") if chart_type == "tab-value" else "",
-                    ticksuffix=(" €" if lang == "de" else "") if chart_type == "tab-value" else ("%" if chart_type != "tab-value" else ""),
-                    zeroline=True if chart_type == "tab-performance" else False,
+                    side="left",
+                    nticks=6,
+                    tickprefix=("€" if lang != "de" else "") if money_axis else "",
+                    ticksuffix=(" €" if lang == "de" else "") if money_axis else "%",
+                    zeroline=chart_type == "tab-performance",
                     zerolinecolor="rgba(100, 116, 139, 0.35)",
                     zerolinewidth=1,
                     rangemode="tozero" if chart_type == "tab-performance" else "normal",
                 ),
-                hovermode="x",
-                hoverdistance=80,
-                spikedistance=80,
+                hovermode="x unified",
+                hoverlabel=dict(
+                    bgcolor="rgba(255,255,255,0.97)",
+                    bordercolor="rgba(148,163,184,0.45)",
+                    font=dict(family="Inter, sans-serif", size=12, color="#1e293b"),
+                    align="left",
+                    namelength=-1,
+                ),
+                # -1 keeps the unified tooltip visible anywhere over the plot
+                hoverdistance=-1,
+                spikedistance=-1,
             )
+            _add_end_labels(fig, _collect_end_labels(fig))
 
             # Cache successful figure builds so reloads are instant.
             if cache_key:
@@ -2261,77 +2317,6 @@ def register_callbacks(app):
             lang=lang,
         )
 
-    @app.callback(
-        Output("chart-hover-details", "children"),
-        [Input("main-portfolio-chart-v2", "hoverData"),
-         Input("chart-tabs", "active_tab")],
-        State("lang-store", "data"),
-        prevent_initial_call=False
-    )
-    def update_chart_hover_details(hover_data, active_tab, lang_data):
-        lang = get_lang(lang_data)
-
-        def _fmt_date(value):
-            try:
-                dt = pd.to_datetime(value)
-                return dt.strftime("%d %b %Y")
-            except Exception:
-                return value or ""
-
-        def _fmt_value(value, unit):
-            try:
-                v = float(value)
-            except Exception:
-                return "—"
-            if unit == "currency":
-                return cu.fmt_eur(v, lang)
-            return cu.fmt_pct(v, lang, signed=True)
-
-        if not hover_data or not hover_data.get("points"):
-            label = {
-                "tab-value": t("pa.value", lang),
-                "tab-drawdown": t("pa.drawdown", lang),
-                "tab-performance": t("pa.performance", lang),
-            }.get(active_tab, t("pa.value", lang))
-            return html.Div([
-                html.Div(label, className="chart-detail-kicker"),
-                html.Div(t("pa.chart_hover_empty", lang), className="chart-detail-empty"),
-            ])
-
-        points = hover_data.get("points", [])
-        date_text = _fmt_date(points[0].get("x"))
-        rows = []
-        seen = set()
-        def _sort_value(point):
-            try:
-                return float(point.get("y"))
-            except Exception:
-                return float("-inf")
-
-        for point in sorted(points, key=_sort_value, reverse=True):
-            meta = point.get("customdata") or []
-            if not isinstance(meta, (list, tuple)) or len(meta) < 2:
-                continue
-            name, unit = str(meta[0]), str(meta[1])
-            if not name or name in seen:
-                continue
-            seen.add(name)
-            rows.append(html.Div([
-                html.Span(name, className="chart-detail-name"),
-                html.Span(_fmt_value(point.get("y"), unit), className="chart-detail-value"),
-            ], className="chart-detail-row"))
-
-        if not rows:
-            return html.Div([
-                html.Div(date_text, className="chart-detail-date"),
-                html.Div(t("pa.chart_hover_empty", lang), className="chart-detail-empty"),
-            ])
-
-        return html.Div([
-            html.Div(date_text, className="chart-detail-date"),
-            html.Div(rows, className="chart-detail-list"),
-        ])
-
     # Privacy mode toggle (clientside so it reacts instantly)
     app.clientside_callback(
         """
@@ -2362,78 +2347,78 @@ def register_callbacks(app):
         Output("comparison-table-container", "children"),
         [Input("portfolio-data-store", "data"),
          Input("benchmark-selector", "value")],
-        State("url", "pathname"),
+        [State("url", "pathname"),
+         State("lang-store", "data")],
         prevent_initial_call=False
     )
-    def update_comparison_table(data_json, benchmarks, pathname):
+    def update_comparison_table(data_json, benchmarks, pathname, lang_data):
+        lang = get_lang(lang_data)
         if not pathname or pathname != "/compare":
             return html.Div()
         if not data_json:
-            return html.Div("No data available", className="text-muted text-center py-3")
-        
+            return html.Div(t("pa.chart_empty", lang), className="text-muted text-center py-3")
+
         try:
             data = json.loads(data_json) if isinstance(data_json, str) else data_json
             history = data.get("data", {}).get("history", [])
-            portfolio = data.get("data", {})
-            
             if not history:
-                return html.Div("No history data", className="text-muted text-center py-3")
-            
+                return html.Div(t("pa.chart_no_hist", lang), className="text-muted text-center py-3")
+
             df = pd.DataFrame(history)
             df['date'] = pd.to_datetime(df['date'])
             df = df.sort_values('date').reset_index(drop=True)
-            
+
             # ----- Use TWR so deposits/withdrawals don't inflate returns -----
-            from components.performance_calc import calculate_twr_series, rebase_twr_series
+            from components.performance_calc import calculate_twr_series
 
             values = df['value'].tolist()
             invested = df['invested'].tolist() if 'invested' in df.columns else values
-            twr_full = calculate_twr_series(values, invested)  # cumulative % from inception
-            df['twr'] = twr_full
+            df['twr'] = calculate_twr_series(values, invested)
+
+            first_date = df['date'].iloc[0].to_pydatetime()
+            last_date = df['date'].iloc[-1].to_pydatetime()
 
             def _twr_return_since(start_idx):
-                """TWR return from start_idx to end of series (rebase to 0% at start)."""
+                """TWR return from start_idx to the end of the series."""
                 if start_idx is None or start_idx >= len(df):
-                    return 0.0
+                    return None
                 start_factor = 1 + df['twr'].iloc[start_idx] / 100
                 end_factor = 1 + df['twr'].iloc[-1] / 100
                 if start_factor <= 0:
-                    return 0.0
+                    return None
                 return (end_factor / start_factor - 1) * 100
 
-            def _idx_for_days_ago(days_ago):
-                target_date = datetime.now() - timedelta(days=days_ago)
-                mask = df['date'] <= target_date
-                if mask.any():
-                    return df.loc[mask].index[-1]
-                return 0  # fallback to earliest
+            def _portfolio_return(days_ago):
+                """None when the portfolio history does not reach that far back,
+                so a two-year-old portfolio does not claim a ten-year number."""
+                target = last_date - timedelta(days=days_ago)
+                if target < first_date - timedelta(days=3):
+                    return None
+                mask = df['date'] <= target
+                idx = df.loc[mask].index[-1] if mask.any() else 0
+                return _twr_return_since(idx)
 
-            # Period returns via TWR (excludes effect of cash flows)
-            d1_return = _twr_return_since(_idx_for_days_ago(1))
-            w1_return = _twr_return_since(_idx_for_days_ago(7))
-            m1_return = _twr_return_since(_idx_for_days_ago(30))
-            m3_return = _twr_return_since(_idx_for_days_ago(90))
-            y1_return = _twr_return_since(_idx_for_days_ago(365))
+            ytd_mask = df['date'] >= datetime(last_date.year, 1, 1)
+            ytd_return = _twr_return_since(df.loc[ytd_mask].index[0]) if ytd_mask.any() else None
 
-            # YTD
-            ytd_mask = df['date'] >= datetime(datetime.now().year, 1, 1)
-            ytd_return = _twr_return_since(df.loc[ytd_mask].index[0]) if ytd_mask.any() else 0.0
-
-            # Total (from first data point) = final TWR value
-            total_return = df['twr'].iloc[-1]
-            
             rows = [{
-                "Asset": "Your Portfolio",
-                "1D": f"{d1_return:+.1f}%",
-                "1W": f"{w1_return:+.1f}%",
-                "1M": f"{m1_return:+.1f}%",
-                "3M": f"{m3_return:+.1f}%",
-                "YTD": f"{ytd_return:+.1f}%",
-                "1Y": f"{y1_return:+.1f}%",
-                "Total": f"{total_return:+.1f}%",
+                "asset": t("pa.your_portfolio", lang),
+                "is_portfolio": True,
+                "values": {
+                    "1D": _portfolio_return(1),
+                    "1W": _portfolio_return(7),
+                    "1M": _portfolio_return(30),
+                    "3M": _portfolio_return(90),
+                    "YTD": ytd_return,
+                    "1Y": _portfolio_return(365),
+                    "2Y": _portfolio_return(365 * 2),
+                    "3Y": _portfolio_return(365 * 3),
+                    "5Y": _portfolio_return(365 * 5),
+                    "10Y": _portfolio_return(365 * 10),
+                    "TOTAL": df['twr'].iloc[-1],
+                },
             }]
-            
-            # Add benchmarks
+
             benchmark_names = {
                 "^GSPC": "S&P 500",
                 "^GDAXI": "DAX",
@@ -2441,83 +2426,111 @@ def register_callbacks(app):
                 "^IXIC": "NASDAQ",
                 "^STOXX": "STOXX 600",
             }
-            end_date = datetime.now()
-            
+
+            # One fetch per benchmark, deep enough for the longest column.
+            fetch_start = (last_date - timedelta(days=365 * 11)).strftime("%Y-%m-%d")
+            fetch_end = last_date.strftime("%Y-%m-%d")
+
             for bench in (benchmarks or []):
-                bench_data = fetch_benchmark_data(bench, (end_date - timedelta(days=365*3)).strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
-                if bench_data is not None and len(bench_data) > 0:
-                    bdf = bench_data.copy()
-                    bdf['Date'] = pd.to_datetime(bdf['Date'])
-                    bdf = bdf.sort_values('Date')
-                    
-                    current_bench = bdf['Close'].iloc[-1]
-                    
-                    def bench_return(days_ago):
-                        target = end_date - timedelta(days=days_ago)
-                        past = bdf[bdf['Date'] <= target]
-                        if len(past) == 0:
-                            return 0
-                        past_val = past['Close'].iloc[-1]
-                        return (current_bench - past_val) / past_val * 100 if past_val > 0 else 0
-                    
-                    # YTD
-                    ytd_bench = bdf[bdf['Date'] >= datetime(end_date.year, 1, 1)]
-                    ytd_b = 0
-                    if len(ytd_bench) > 0:
-                        ytd_b = (current_bench - ytd_bench['Close'].iloc[0]) / ytd_bench['Close'].iloc[0] * 100
-                    
-                    first_bench = bdf['Close'].iloc[0]
-                    total_b = (current_bench - first_bench) / first_bench * 100 if first_bench > 0 else 0
-                    
-                    rows.append({
-                        "Asset": benchmark_names.get(bench, bench),
-                        "1D": f"{bench_return(1):+.1f}%",
-                        "1W": f"{bench_return(7):+.1f}%",
-                        "1M": f"{bench_return(30):+.1f}%",
-                        "3M": f"{bench_return(90):+.1f}%",
-                        "YTD": f"{ytd_b:+.1f}%",
-                        "1Y": f"{bench_return(365):+.1f}%",
-                        "Total": f"{total_b:+.1f}%",
-                    })
-            
-            table = dash_table.DataTable(
-                data=rows,
-                columns=[
-                    {"name": "Asset", "id": "Asset"},
-                    {"name": "1D", "id": "1D"},
-                    {"name": "1W", "id": "1W"},
-                    {"name": "1M", "id": "1M"},
-                    {"name": "3M", "id": "3M"},
-                    {"name": "YTD", "id": "YTD"},
-                    {"name": "1Y", "id": "1Y"},
-                    {"name": "Total", "id": "Total"},
-                ],
-                style_cell={"textAlign": "center", "padding": "8px 12px", "fontFamily": "Inter, sans-serif", "fontSize": "12px", "border": "none"},
-                style_header={"fontWeight": "600", "backgroundColor": "#f8fafc", "borderBottom": "1px solid #e5e7eb"},
-                style_data={"borderBottom": "1px solid #f3f4f6"},
-                style_data_conditional=[
-                    {"if": {"filter_query": "{1D} contains \"+\""}, "color": "#10b981"},
-                    {"if": {"filter_query": "{1D} contains \"-\""}, "color": "#ef4444"},
-                    {"if": {"filter_query": "{1W} contains \"+\""}, "color": "#10b981"},
-                    {"if": {"filter_query": "{1W} contains \"-\""}, "color": "#ef4444"},
-                    {"if": {"filter_query": "{1M} contains \"+\""}, "color": "#10b981"},
-                    {"if": {"filter_query": "{1M} contains \"-\""}, "color": "#ef4444"},
-                    {"if": {"filter_query": "{3M} contains \"+\""}, "color": "#10b981"},
-                    {"if": {"filter_query": "{3M} contains \"-\""}, "color": "#ef4444"},
-                    {"if": {"filter_query": "{YTD} contains \"+\""}, "color": "#10b981"},
-                    {"if": {"filter_query": "{YTD} contains \"-\""}, "color": "#ef4444"},
-                    {"if": {"filter_query": "{1Y} contains \"+\""}, "color": "#10b981"},
-                    {"if": {"filter_query": "{1Y} contains \"-\""}, "color": "#ef4444"},
-                    {"if": {"filter_query": "{Total} contains \"+\""}, "color": "#10b981"},
-                    {"if": {"filter_query": "{Total} contains \"-\""}, "color": "#ef4444"},
-                    {"if": {"filter_query": "{Asset} = \"Your Portfolio\""}, "backgroundColor": "#eef2ff", "fontWeight": "500"},
-                    {"if": {"column_id": "Asset"}, "textAlign": "left"},
-                ],
-                style_as_list_view=True,
-            )
-            
+                bench_data = fetch_benchmark_data(bench, fetch_start, fetch_end)
+                if bench_data is None or len(bench_data) == 0:
+                    continue
+                bdf = bench_data.copy()
+                bdf['Date'] = pd.to_datetime(bdf['Date'])
+                bdf = bdf.sort_values('Date')
+                current_bench = bdf['Close'].iloc[-1]
+                bench_first_date = bdf['Date'].iloc[0].to_pydatetime()
+
+                def bench_return(days_ago, _bdf=bdf, _cur=current_bench, _first=bench_first_date):
+                    target = last_date - timedelta(days=days_ago)
+                    if target < _first - timedelta(days=5):
+                        return None
+                    past = _bdf[_bdf['Date'] <= target]
+                    if len(past) == 0:
+                        return None
+                    past_val = past['Close'].iloc[-1]
+                    return (_cur - past_val) / past_val * 100 if past_val > 0 else None
+
+                ytd_bench = bdf[bdf['Date'] >= datetime(last_date.year, 1, 1)]
+                ytd_b = None
+                if len(ytd_bench) > 0:
+                    ytd_b = (current_bench - ytd_bench['Close'].iloc[0]) / ytd_bench['Close'].iloc[0] * 100
+
+                # "Total" is the same window as the portfolio's own history, so
+                # the two Total cells answer the same question.
+                since_inception = bdf[bdf['Date'] >= first_date]
+                total_b = None
+                if len(since_inception) > 0:
+                    base = since_inception['Close'].iloc[0]
+                    total_b = (current_bench - base) / base * 100 if base > 0 else None
+
+                rows.append({
+                    "asset": benchmark_names.get(bench, bench),
+                    "is_portfolio": False,
+                    "values": {
+                        "1D": bench_return(1),
+                        "1W": bench_return(7),
+                        "1M": bench_return(30),
+                        "3M": bench_return(90),
+                        "YTD": ytd_b,
+                        "1Y": bench_return(365),
+                        "2Y": bench_return(365 * 2),
+                        "3Y": bench_return(365 * 3),
+                        "5Y": bench_return(365 * 5),
+                        "10Y": bench_return(365 * 10),
+                        "TOTAL": total_b,
+                    },
+                })
+
+            periods = ["1D", "1W", "1M", "3M", "YTD", "1Y", "2Y", "3Y", "5Y", "10Y", "TOTAL"]
+            headers = {p_: (t("pa.total", lang).upper() if p_ == "TOTAL" else p_) for p_ in periods}
+
+            # Colour scale: hue by sign, intensity by size relative to the
+            # largest absolute move in the same column, so a column of small
+            # daily moves is still readable.
+            scale_by_period = {}
+            for p_ in periods:
+                magnitudes = [abs(r["values"][p_]) for r in rows if r["values"].get(p_) is not None]
+                scale_by_period[p_] = max(magnitudes) if magnitudes else 1.0
+
+            def cell(value, period):
+                if value is None:
+                    return html.Td("–", className="pcmp-na", title=t("pa.cmp_na", lang))
+                scale = scale_by_period.get(period) or 1.0
+                weight = min(1.0, abs(value) / scale) if scale > 0 else 0.0
+                if abs(value) < 0.05:
+                    color, bg = "#64748b", "transparent"
+                elif value > 0:
+                    color = "#047857"
+                    bg = f"rgba(5, 150, 105, {0.05 + 0.13 * weight:.3f})"
+                else:
+                    color = "#b91c1c"
+                    bg = f"rgba(220, 38, 38, {0.05 + 0.13 * weight:.3f})"
+                return html.Td(
+                    cu.fmt_pct(value, lang, 1, signed=True),
+                    className="pcmp-num",
+                    style={"color": color, "backgroundColor": bg},
+                )
+
+            table = html.Div([
+                html.Table([
+                    html.Thead(html.Tr(
+                        [html.Th(t("pa.cmp_asset", lang), className="pcmp-asset-head")]
+                        + [html.Th(headers[p_], className="pcmp-head") for p_ in periods]
+                    )),
+                    html.Tbody([
+                        html.Tr(
+                            [html.Td(r["asset"], className="pcmp-asset")]
+                            + [cell(r["values"].get(p_), p_) for p_ in periods],
+                            className="pcmp-row-portfolio" if r["is_portfolio"] else "",
+                        ) for r in rows
+                    ]),
+                ], className="pcmp-table"),
+                html.P(t("pa.cmp_hint", lang), className="pcmp-hint"),
+            ], className="pcmp-wrap")
+
             return table
-            
+
         except Exception as e:
             _log.warning("Error creating table: %s", e)
             return html.Div(f"Error: {str(e)}", className="text-danger text-center py-3")

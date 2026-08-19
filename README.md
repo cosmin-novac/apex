@@ -38,6 +38,10 @@ Hosted demo: https://apexportfolio.de/
 - Strategy backtesting with technical indicators and AI-assisted rule generation
 - Long-term investment and withdrawal simulation
 - "The Real Cost" opportunity-cost calculator
+- "Mega-cap Lab": point-in-time rank studies on the S&P 500 (2000-2025) —
+  hold the largest N companies, hold a rank corridor such as 400-500, or buy
+  the companies climbing into that corridor, each compared with the S&P 500
+  total return index
 - English and German UI with in-app language switching
 
 ## Requirements
@@ -116,6 +120,62 @@ so there are no static copies to keep in sync.
 - **Backtesting price cache:** public Yahoo Finance / yfinance market data cached
   on disk to speed up repeated runs.
 
+## The Mega-cap Lab dataset
+
+The Mega-cap Lab (`/megacap`) answers rank questions: what would have happened
+if you had only owned the N largest American companies and replaced each one
+that fell out, or if you had instead bought the small end of the index (ranks
+400 to 500) and ridden the companies that climbed out of it? Answering either
+one honestly needs two things no free price file has on its own: point-in-time
+market caps for companies that no longer exist, and point-in-time index
+membership. Apex ships a derived dataset and the script that builds it.
+
+**Shipped with the app** (a few MB, in `data/`):
+
+| File | Contents |
+|---|---|
+| `megacap_panel.csv.gz` | Month-end rows: `month`, `date`, `symbol`, `cik`, `name`, `close`, `adj_close`, `shares`, `mcap`, `in_index`, `src` for ~910 current and former S&P 500 companies, 2000-2025. `in_index` marks the months the ticker actually was an index member |
+| `megacap_benchmark.csv` | Month-end S&P 500 total return index (`^SP500TR`) |
+| `megacap_meta.json` | Build date, source description, coverage counts, every repair the build made, and the known gaps |
+
+**Rebuilding it** (only needed to extend or correct the data):
+
+```bash
+# 1. Put the raw inputs in data/raw/ (git-ignored, several GB):
+#    - price_YYYY.parquet          FINSABER V2 price_daily partitions
+#      https://huggingface.co/datasets/finsaber-team/FINSABER-V2-Data
+#    - filingk_YYYY.parquet,       FINSABER V2 10-K / 10-Q filing text
+#      filingq_YYYY.parquet        (2000-2011 is enough)
+#    - companyfacts.zip            SEC EDGAR XBRL bulk company facts
+#      https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip
+#    - sp500_history.csv           point-in-time index membership, downloaded
+#      automatically from https://github.com/fja05680/sp500
+python tools/extract_10k_share_anchors.py   # share counts from filing cover pages
+python tools/build_megacap_panel.py         # writes the three files above
+```
+
+How market caps are derived: shares outstanding come from SEC XBRL company
+facts (available from mid-2009) and, for the years before that, from the cover
+pages of 10-K and 10-Q filings, parsed from the filing text and validated
+against XBRL where the two overlap (~95% agree within 5%). Reported share
+counts are converted into the split terms of the price file using the split
+history, and price series of delisted companies are checked for stitching
+artefacts. `megacap_meta.json` lists every such repair and the remaining gaps.
+
+Why membership matters: the price file includes companies that were S&P 500
+members at some point between 2000 and 2025, for their whole price history. So
+ranking everything in the file in, say, 2005 also ranks companies that only
+joined the index in 2018, and a corridor near rank 500 would then pick small
+companies already known to grow into the index later. With point-in-time
+membership the same corridor returns 12.6% a year instead of 26.5%, which is
+the difference between a finding and an artefact. The page defaults to the
+members-only universe and warns when the other one is selected. Coverage is
+about 350 rankable members per month in 2000, 430 in 2010 and 495 from 2020 on,
+so corridors are applied proportionally to the members that can be ranked.
+
+`data/raw/` is excluded from git, the Azure deploy package and the Heroku slug,
+so only the ~4.5 MB of derived data ships.
+
 ## Running in production
 
 Apex exposes a standard WSGI server object (`server` in `main.py`), so any WSGI
@@ -153,10 +213,13 @@ the original:
 
 ```
 main.py             Dash app entry point (exposes `server` for gunicorn)
-pages/              Page modules (analysis, backtesting, simulator, real cost, ...)
+pages/              Page modules (analysis, backtesting, simulator, real cost,
+                    mega-cap lab, landing, legal)
 components/         Shared logic (Trade Republic API + connector, i18n, charts, ...)
 core/              Config and shared utilities (incl. number/currency formatting)
 indicators/         Technical indicators used by backtesting
+tools/              One-off scripts, incl. the Mega-cap Lab dataset build
+data/               Demo portfolio and the derived Mega-cap Lab dataset
 assets/             CSS, JavaScript, and images served by Dash
 docs/               Additional documentation
 ```

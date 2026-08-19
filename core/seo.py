@@ -26,6 +26,7 @@ SITEMAP_ROUTES = [
     ("/portfolio", "monthly", "0.8"),
     ("/riskbands", "monthly", "0.75"),
     ("/realcost", "monthly", "0.75"),
+    ("/megacap", "monthly", "0.8"),
     ("/impressum", "yearly", "0.4"),
     ("/privacy", "yearly", "0.4"),
     ("/llms.txt", "monthly", "0.5"),

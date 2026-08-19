@@ -18,3 +18,4 @@ notebook.md
 strategy_analysis.xlsx
 assets/btc_onchain.zip
 data/btc_data_preprocessed_with_onchain.csv
+data/raw/

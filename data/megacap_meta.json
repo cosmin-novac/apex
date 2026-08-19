@@ -1,0 +1,3583 @@
+{
+ "built_at": "2026-08-19",
+ "price_source": "FINSABER V2 (finsaber-team/FINSABER-V2-Data), daily S&P 500 members incl. delisted, 2000-2025",
+ "shares_source": "SEC EDGAR XBRL companyfacts (2009+), back-filled before first filing; manual seeds for a few pre-2009 names",
+ "first_month": "2000-01",
+ "last_month": "2025-12",
+ "symbols": 913,
+ "coverage": {
+  "xbrl": 906,
+  "with_10k_anchors": 719,
+  "manual": 7,
+  "no_share_data": [
+   [
+    "ABI",
+    "0000077551",
+    "no_xbrl"
+   ],
+   [
+    "ABX",
+    "0000756894",
+    "foreign_filer"
+   ],
+   [
+    "ACV",
+    "0001636289",
+    "no_xbrl"
+   ],
+   [
+    "AGC",
+    "0000005103",
+    "no_xbrl"
+   ],
+   [
+    "APC",
+    "0002080921",
+    "xbrl"
+   ],
+   [
+    "ASN",
+    "0000869356",
+    "no_xbrl"
+   ],
+   [
+    "AT",
+    "0000005907",
+    "no_xbrl"
+   ],
+   [
+    "BFO",
+    "0000793769",
+    "no_xbrl"
+   ],
+   [
+    "BUD",
+    "0001668717",
+    "foreign_filer"
+   ],
+   [
+    "CBH",
+    "0001701809",
+    "no_xbrl"
+   ],
+   [
+    "CCEP",
+    "0001650107",
+    "foreign_filer"
+   ],
+   [
+    "CCU",
+    "0000888746",
+    "foreign_filer"
+   ],
+   [
+    "CEN",
+    "0001576340",
+    "no_xbrl"
+   ],
+   [
+    "CHA",
+    "0002013649",
+    "foreign_filer"
+   ],
+   [
+    "CHIR",
+    "0000706539",
+    "no_xbrl"
+   ],
+   [
+    "CNG",
+    "0000023738",
+    "no_xbrl"
+   ],
+   [
+    "EC",
+    "0001444406",
+    "foreign_filer"
+   ],
+   [
+    "EFU",
+    "0000311259",
+    "no_xbrl"
+   ],
+   [
+    "FRC",
+    "0001132979",
+    "no_xbrl"
+   ],
+   [
+    "GP",
+    "0001584547",
+    "foreign_filer"
+   ],
+   [
+    "HCR",
+    "0000878736",
+    "no_xbrl"
+   ],
+   [
+    "HMA",
+    "0001850529",
+    "no_xbrl"
+   ],
+   [
+    "IGT",
+    "0001619762",
+    "foreign_filer"
+   ],
+   [
+    "JP",
+    "0000053347",
+    "no_xbrl"
+   ],
+   [
+    "LDG",
+    "0000742212",
+    "no_xbrl"
+   ],
+   [
+    "LU",
+    "0001816007",
+    "foreign_filer"
+   ],
+   [
+    "MEA",
+    "0000064394",
+    "no_xbrl"
+   ],
+   [
+    "MEDI",
+    "0000873591",
+    "no_xbrl"
+   ],
+   [
+    "MI",
+    "0001958713",
+    "foreign_filer"
+   ],
+   [
+    "NOW",
+    "0001373715",
+    "xbrl"
+   ],
+   [
+    "NSI",
+    "0000070538",
+    "no_xbrl"
+   ],
+   [
+    "NYX",
+    "0001679379",
+    "xbrl"
+   ],
+   [
+    "OWENQ",
+    "0001370946",
+    "xbrl"
+   ],
+   [
+    "PDG",
+    "0000819996",
+    "no_xbrl"
+   ],
+   [
+    "POM",
+    "0001877971",
+    "foreign_filer"
+   ],
+   [
+    "PSFT",
+    "0000875570",
+    "no_xbrl"
+   ],
+   [
+    "Q",
+    "0002058873",
+    "xbrl"
+   ],
+   [
+    "RAL",
+    "0002041385",
+    "xbrl"
+   ],
+   [
+    "RBK",
+    "0000035692",
+    "no_xbrl"
+   ],
+   [
+    "ROH",
+    "0000084729",
+    "no_xbrl"
+   ],
+   [
+    "SAF",
+    "0000086104",
+    "no_xbrl"
+   ],
+   [
+    "SBNY",
+    "0001288784",
+    "no_xbrl"
+   ],
+   [
+    "SE",
+    "0001703399",
+    "foreign_filer"
+   ],
+   [
+    "SEBL",
+    "0000837910",
+    "no_xbrl"
+   ],
+   [
+    "SII",
+    "0001512920",
+    "foreign_filer"
+   ],
+   [
+    "SMI",
+    "0000093102",
+    "no_xbrl"
+   ],
+   [
+    "SUB",
+    "0000101320",
+    "no_xbrl"
+   ],
+   [
+    "SUN",
+    "0001552275",
+    "no_xbrl"
+   ],
+   [
+    "TRW",
+    "0000100030",
+    "no_xbrl"
+   ],
+   [
+    "TSG",
+    "0001020265",
+    "no_xbrl"
+   ],
+   [
+    "TX",
+    "0001342874",
+    "foreign_filer"
+   ],
+   [
+    "UCL",
+    "0001775898",
+    "foreign_filer"
+   ],
+   [
+    "UK",
+    "0001821424",
+    "foreign_filer"
+   ],
+   [
+    "UN",
+    "0000110390",
+    "foreign_filer"
+   ],
+   [
+    "UPC",
+    "0001809616",
+    "foreign_filer"
+   ],
+   [
+    "UST",
+    "0000811669",
+    "no_xbrl"
+   ],
+   [
+    "VO",
+    "0000088188",
+    "no_xbrl"
+   ],
+   [
+    "WB",
+    "0001595761",
+    "foreign_filer"
+   ]
+  ]
+ },
+ "split_notes": [
+  {
+   "symbol": "AAL",
+   "date": "2014-04-16",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ABMD",
+   "date": "2000-10-12",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ACGL",
+   "date": "2002-07-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ACGL",
+   "date": "2006-02-27",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ADI",
+   "date": "2001-01-12",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "AET",
+   "date": "2005-04-14",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "AET",
+   "date": "2000-12-14",
+   "ratio": 0.5000023522176495,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "AGN",
+   "date": "2007-07-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "AIZ",
+   "date": "2005-08-08",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "AIZ",
+   "date": "2006-02-24",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "AIZ",
+   "date": "2006-04-26",
+   "ratio": 2.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ALXN",
+   "date": "2003-05-30",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ALXN",
+   "date": "2006-04-21",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ALXN",
+   "date": "2007-07-24",
+   "ratio": 7.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ALXN",
+   "date": "2008-10-16",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ALXN",
+   "date": "2011-07-29",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "AMCC",
+   "date": "2008-01-22",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "AMCR",
+   "date": "2026-02-02",
+   "ratio": 0.2,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ANDV",
+   "date": "2001-07-31",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ANDV",
+   "date": "2002-02-08",
+   "ratio": 4.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ANDV",
+   "date": "2002-05-01",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ANDV",
+   "date": "2007-07-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ANSS",
+   "date": "2004-10-25",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ANSS",
+   "date": "2006-04-21",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ANSS",
+   "date": "2007-07-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "AOS",
+   "date": "2009-07-21",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "AOS",
+   "date": "2011-06-30",
+   "ratio": 6.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "APCC",
+   "date": "2000-05-01",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "APOL",
+   "date": "2001-03-30",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "APOL",
+   "date": "2002-06-28",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ARC",
+   "date": "2008-02-13",
+   "ratio": 6.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ATO",
+   "date": "2005-01-26",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ATVI",
+   "date": "2004-05-27",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ATVI",
+   "date": "2008-09-30",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "AVP",
+   "date": "2004-07-16",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "AW",
+   "date": "2004-03-01",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "AXON",
+   "date": "2004-02-11",
+   "ratio": 3.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "AXON",
+   "date": "2004-04-30",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "AXON",
+   "date": "2004-11-30",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "AZO",
+   "date": "2001-12-04",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "BBT",
+   "date": "2005-10-26",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BCR",
+   "date": "2004-07-19",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "BF-B",
+   "date": "2011-10-31",
+   "ratio": 2.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "BG",
+   "date": "2025-08-01",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BGG",
+   "date": "2005-01-20",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "BIG",
+   "date": "2000-05-26",
+   "ratio": 20.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BJS",
+   "date": "2001-07-27",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BJS",
+   "date": "2005-11-30",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BKNG",
+   "date": "2026-04-20",
+   "ratio": 25.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "BKR",
+   "date": "2017-07-05",
+   "ratio": 0.6966018229202053,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "BLK",
+   "date": "2011-01-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BMET",
+   "date": "2000-07-27",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BMET",
+   "date": "2001-08-06",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BMS",
+   "date": "2004-03-01",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "BRCM",
+   "date": "2000-02-14",
+   "ratio": 0.5000007302216147,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "BRL",
+   "date": "2000-08-11",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BRL",
+   "date": "2003-04-11",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BRL",
+   "date": "2004-04-19",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BTUUQ",
+   "date": "2005-04-22",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BTUUQ",
+   "date": "2006-02-20",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BTUUQ",
+   "date": "2015-09-30",
+   "ratio": 0.06666666666666667,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BVSN",
+   "date": "2006-07-27",
+   "ratio": 2.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BVSN",
+   "date": "2007-04-30",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BVSN",
+   "date": "2008-02-08",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BVSN",
+   "date": "2010-06-30",
+   "ratio": 0.08333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "BVSN",
+   "date": "2000-03-14",
+   "ratio": 0.3333333333333332,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "C",
+   "date": "2009-09-30",
+   "ratio": 4.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CAM",
+   "date": "2006-02-20",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CAM",
+   "date": "2007-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CAT",
+   "date": "2006-02-08",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CBRE",
+   "date": "2007-02-15",
+   "ratio": 3.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CERN",
+   "date": "2006-03-02",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CERN",
+   "date": "2007-04-26",
+   "ratio": 0.125,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CERN",
+   "date": "2011-07-28",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CERN",
+   "date": "2013-07-19",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CF",
+   "date": "2010-03-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CG",
+   "date": "2020-02-07",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CHTR",
+   "date": "2016-06-30",
+   "ratio": 2.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CI",
+   "date": "2019-01-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CITGQ",
+   "date": "2008-10-27",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CLF",
+   "date": "2020-05-08",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CMA",
+   "date": "2000-07-28",
+   "ratio": 0.125,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CMA",
+   "date": "2001-10-30",
+   "ratio": 7.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CME",
+   "date": "2007-10-25",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CMG",
+   "date": "2006-07-25",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "CMVT",
+   "date": "2000-04-04",
+   "ratio": 0.5,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "COIN",
+   "date": "2021-06-30",
+   "ratio": 2.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "COMS",
+   "date": "2014-05-05",
+   "ratio": 0.019777753429165778,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "COMS",
+   "date": "2015-10-30",
+   "ratio": 0.025,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "COMS",
+   "date": "2021-01-22",
+   "ratio": 0.3333333333333333,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "COMS",
+   "date": "2023-02-10",
+   "ratio": 0.01,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "COMS",
+   "date": "2010-10-25",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "COMS",
+   "date": "2019-03-22",
+   "ratio": 3.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "COTY",
+   "date": "2016-11-04",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CPNLQ",
+   "date": "2000-07-26",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CRL",
+   "date": "2000-07-25",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CTRA",
+   "date": "2005-04-15",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CTRA",
+   "date": "2007-04-18",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CTRA",
+   "date": "2012-02-17",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CTRA",
+   "date": "2013-10-21",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CTRA",
+   "date": "2021-11-01",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CTX",
+   "date": "2004-05-14",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CTXS",
+   "date": "2009-06-30",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CVH",
+   "date": "2004-02-25",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CVH",
+   "date": "2005-10-25",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "CZR",
+   "date": "2013-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CZR",
+   "date": "2014-03-31",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CZR",
+   "date": "2014-09-30",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "CZR",
+   "date": "2020-07-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "DD",
+   "date": "2017-10-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DD",
+   "date": "2026-07-31",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DDR",
+   "date": "2018-07-25",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "DDS",
+   "date": "2002-06-04",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DDS",
+   "date": "2006-05-25",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DDS",
+   "date": "2021-05-01",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DECK",
+   "date": "2001-05-01",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DECK",
+   "date": "2001-07-26",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DELL",
+   "date": "2016-10-28",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DF",
+   "date": "2002-05-01",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "DF",
+   "date": "2013-10-25",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "DISH",
+   "date": "2001-02-27",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "DJ",
+   "date": "2003-10-31",
+   "ratio": 7.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "DNR",
+   "date": "2005-10-25",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "DNR",
+   "date": "2007-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "DNR",
+   "date": "2010-07-31",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "DVN",
+   "date": "2000-10-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DVN",
+   "date": "2003-04-29",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DXC",
+   "date": "2015-11-30",
+   "ratio": 1.7412,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "DXC",
+   "date": "2017-06-30",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "DXCM",
+   "date": "2009-02-19",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "EA",
+   "date": "2000-10-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "EA",
+   "date": "2004-01-27",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "EOG",
+   "date": "2007-12-31",
+   "ratio": 0.4,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "EP",
+   "date": "2018-09-30",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "EP",
+   "date": "2021-03-31",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "EQ",
+   "date": "2018-11-13",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "EQT",
+   "date": "2018-01-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ES",
+   "date": "2010-09-30",
+   "ratio": 30.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ESRX",
+   "date": "2003-03-18",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ESRX",
+   "date": "2010-06-30",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ESRX",
+   "date": "2001-06-25",
+   "ratio": 0.5003913057538835,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "ETFC",
+   "date": "2009-07-23",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ETFC",
+   "date": "2010-03-31",
+   "ratio": 0.1,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "ETN",
+   "date": "2011-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ETS",
+   "date": "2005-10-26",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "EVRG",
+   "date": "2018-06-04",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "EXE",
+   "date": "2020-04-27",
+   "ratio": 0.005,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "EXE",
+   "date": "2021-02-25",
+   "ratio": 10.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "FCX",
+   "date": "2007-04-26",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "FII",
+   "date": "2000-07-31",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "FIS",
+   "date": "2001-10-31",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "FIS",
+   "date": "2002-03-11",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "FIS",
+   "date": "2006-03-02",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "FIS",
+   "date": "2009-10-01",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "FLIR",
+   "date": "2005-02-18",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "FLIR",
+   "date": "2008-02-15",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "FTI",
+   "date": "2007-09-04",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "FTI",
+   "date": "2011-04-01",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "FTR",
+   "date": "2017-07-31",
+   "ratio": 0.06666666666666667,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "FWLT",
+   "date": "2005-04-27",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "FWLT",
+   "date": "2008-02-12",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "GAS",
+   "date": "2012-02-15",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "GDDY",
+   "date": "2016-06-30",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "GDDY",
+   "date": "2016-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "GGP",
+   "date": "2003-12-08",
+   "ratio": 0.33333271291682226,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "GGP",
+   "date": "2003-10-01",
+   "ratio": 2.999982037026628,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "GMCR",
+   "date": "2007-07-26",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "GMCR",
+   "date": "2009-06-27",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "GMCR",
+   "date": "2010-08-02",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "GNW",
+   "date": "2005-04-26",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "GNW",
+   "date": "2005-10-13",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "GOOGL",
+   "date": "2014-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "GTE",
+   "date": "2023-05-05",
+   "ratio": 0.1,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "GTE",
+   "date": "2009-06-30",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "H",
+   "date": "2011-06-30",
+   "ratio": 4.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HAR",
+   "date": "2000-10-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "HAR",
+   "date": "2004-02-03",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "HBAN",
+   "date": "2007-07-26",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "HBAN",
+   "date": "2009-06-30",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "HBAN",
+   "date": "2021-06-30",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "HBI",
+   "date": "2015-04-24",
+   "ratio": 4.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "HCBK",
+   "date": "2003-03-12",
+   "ratio": 20.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HCBK",
+   "date": "2005-10-26",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HCBK",
+   "date": "2006-03-02",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HCBK",
+   "date": "2006-04-26",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HES",
+   "date": "2006-07-25",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "HFC",
+   "date": "2009-06-30",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HFC",
+   "date": "2010-03-31",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HFC",
+   "date": "2011-07-29",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "HFC",
+   "date": "2011-10-28",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "HOLX",
+   "date": "2005-11-22",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HOLX",
+   "date": "2008-04-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HON",
+   "date": "2026-06-30",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "HRB",
+   "date": "2002-03-04",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "HSH",
+   "date": "2012-08-31",
+   "ratio": 0.2,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "HUBB",
+   "date": "2009-12-31",
+   "ratio": 8.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "HWM",
+   "date": "2016-11-07",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ILMN",
+   "date": "2001-03-15",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ILMN",
+   "date": "2001-04-24",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "IMNX",
+   "date": "2000-04-28",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "IP",
+   "date": "2025-02-14",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "IQV",
+   "date": "2016-10-26",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "IR",
+   "date": "2020-05-13",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "IRM",
+   "date": "2007-10-26",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ISRG",
+   "date": "2003-07-01",
+   "ratio": 0.5,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "ISRG",
+   "date": "2017-10-06",
+   "ratio": 3.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "ISRG",
+   "date": "2021-10-05",
+   "ratio": 3.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "ISRG",
+   "date": "2004-02-27",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "IT",
+   "date": "2004-02-27",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "IVZ",
+   "date": "2008-02-15",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "J",
+   "date": "2007-11-15",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "JBHT",
+   "date": "2007-02-14",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "JCI",
+   "date": "2004-07-29",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "JCI",
+   "date": "2004-11-30",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "JEF",
+   "date": "2008-12-31",
+   "ratio": 5.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "JNPR",
+   "date": "2000-07-27",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "JNPR",
+   "date": "2000-01-18",
+   "ratio": 0.3333330682284766,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "JNY",
+   "date": "2007-10-22",
+   "ratio": 7.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "JNY",
+   "date": "2007-12-31",
+   "ratio": 0.125,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "JPM",
+   "date": "2001-03-08",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "KATE",
+   "date": "2002-03-11",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "KEY",
+   "date": "2009-08-07",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "KKR",
+   "date": "2022-08-04",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "KLAC",
+   "date": "2026-08-03",
+   "ratio": 10.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "KMI",
+   "date": "2015-02-02",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "LDOS",
+   "date": "2009-01-31",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "LDOS",
+   "date": "2016-10-25",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "LIFE",
+   "date": "2019-08-07",
+   "ratio": 0.08333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "LIFE",
+   "date": "2020-03-19",
+   "ratio": 2.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "LIN",
+   "date": "2018-09-30",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "LKQ",
+   "date": "2006-01-17",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "LKQ",
+   "date": "2007-12-04",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "LKQ",
+   "date": "2012-09-19",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "LLTC",
+   "date": "2009-01-23",
+   "ratio": 0.1,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "LLTC",
+   "date": "2000-03-28",
+   "ratio": 0.49999944165841087,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "LO",
+   "date": "2010-02-19",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "LO",
+   "date": "2013-02-13",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "LRCX",
+   "date": "2012-08-14",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "LUMN",
+   "date": "2009-07-24",
+   "ratio": 3.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "LUMN",
+   "date": "2011-04-29",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "LUMN",
+   "date": "2017-11-02",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "LVLT",
+   "date": "2011-11-04",
+   "ratio": 0.125,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "LYV",
+   "date": "2010-02-11",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MAA",
+   "date": "2017-02-20",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MAC",
+   "date": "2003-07-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MAR",
+   "date": "2016-10-21",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MBI",
+   "date": "2002-03-15",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MBI",
+   "date": "2008-07-25",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MCO",
+   "date": "2002-07-31",
+   "ratio": 2.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MCO",
+   "date": "2007-12-31",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MDR",
+   "date": "2006-07-24",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MDR",
+   "date": "2007-10-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "MHK",
+   "date": "2000-04-21",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MHK",
+   "date": "2003-02-11",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MHK",
+   "date": "2003-04-23",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MHS",
+   "date": "2007-12-29",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "MLM",
+   "date": "2014-07-25",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MLM",
+   "date": "2015-02-14",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MLM",
+   "date": "2015-05-01",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MMC",
+   "date": "2002-07-30",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MNK",
+   "date": "2014-11-14",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MNK",
+   "date": "2022-08-10",
+   "ratio": 0.16666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MNST",
+   "date": "2002-05-01",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MNST",
+   "date": "2002-07-31",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MNST",
+   "date": "2003-03-17",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MNST",
+   "date": "2004-07-30",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MNST",
+   "date": "2004-11-01",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MNST",
+   "date": "2007-04-30",
+   "ratio": 4.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MPC",
+   "date": "2015-06-11",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "MPC",
+   "date": "2018-11-01",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MRK",
+   "date": "2010-01-29",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MRO",
+   "date": "2007-07-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "MSCI",
+   "date": "2008-06-23",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MSCI",
+   "date": "2008-09-22",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "MTCH",
+   "date": "2011-04-22",
+   "ratio": 7.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MTG",
+   "date": "2008-07-28",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "MWW",
+   "date": "2000-03-01",
+   "ratio": 0.5,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "MYL",
+   "date": "2003-01-30",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "MYL",
+   "date": "2004-05-31",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "NBL",
+   "date": "2005-07-21",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "NBL",
+   "date": "2005-10-21",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "NBL",
+   "date": "2013-07-08",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "NDAQ",
+   "date": "2006-03-01",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "NEM",
+   "date": "2019-04-18",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "NEM",
+   "date": "2024-02-15",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "NFB",
+   "date": "2005-03-02",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "NFX",
+   "date": "2005-07-15",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "NKE",
+   "date": "2011-11-30",
+   "ratio": 5.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "NKTR",
+   "date": "2004-04-22",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "NUE",
+   "date": "2001-04-24",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "NUE",
+   "date": "2001-07-27",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "NXTL",
+   "date": "2000-07-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ODP",
+   "date": "2020-07-29",
+   "ratio": 0.1,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "OMX",
+   "date": "2004-04-23",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PARA",
+   "date": "2006-03-02",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "PARA",
+   "date": "2007-12-31",
+   "ratio": 12.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PBCT",
+   "date": "2007-04-16",
+   "ratio": 0.47618767807385115,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "PBCT",
+   "date": "2005-05-16",
+   "ratio": 0.6666781471158987,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "PBCT",
+   "date": "2004-05-17",
+   "ratio": 0.6666699778655507,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "PCH",
+   "date": "2018-05-04",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PCP",
+   "date": "2000-11-01",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "PCP",
+   "date": "2006-02-03",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PDCO",
+   "date": "2000-07-11",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "PDCO",
+   "date": "2004-11-25",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "PETM",
+   "date": "2002-09-04",
+   "ratio": 7.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PETM",
+   "date": "2003-06-04",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PHM",
+   "date": "2009-12-31",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "PLD",
+   "date": "2009-07-24",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PLL",
+   "date": "2020-06-30",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PLL",
+   "date": "2021-09-16",
+   "ratio": 0.02,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PLTR",
+   "date": "2020-09-30",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PMCS",
+   "date": "2000-02-14",
+   "ratio": 0.5,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "PNW",
+   "date": "2008-12-31",
+   "ratio": 0.06666666666666667,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PNW",
+   "date": "2011-02-15",
+   "ratio": 15.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PODD",
+   "date": "2007-07-31",
+   "ratio": 2.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "PVN",
+   "date": "2001-03-16",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "QLGC",
+   "date": "2000-06-16",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "QLGC",
+   "date": "2000-08-02",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "QLGC",
+   "date": "2006-05-22",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "QRVO",
+   "date": "2015-01-26",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "RAD",
+   "date": "2007-06-28",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "RAD",
+   "date": "2019-04-16",
+   "ratio": 0.05,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "RAI",
+   "date": "2006-10-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "RAI",
+   "date": "2011-01-28",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "RAI",
+   "date": "2015-10-05",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "RAI",
+   "date": "2000-03-08",
+   "ratio": 0.6576264733728405,
+   "kind": "price_split_before_share_data"
+  },
+  {
+   "symbol": "RATL",
+   "date": "2002-07-31",
+   "ratio": 0.4,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "REGN",
+   "date": "2002-03-08",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "RHI",
+   "date": "2011-04-30",
+   "ratio": 15.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "RHT",
+   "date": "2000-07-03",
+   "ratio": 0.2,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "RHT",
+   "date": "2001-04-05",
+   "ratio": 5.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "RIG",
+   "date": "2008-06-30",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "RIG",
+   "date": "2009-10-27",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "RL",
+   "date": "2011-10-01",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "RRC",
+   "date": "2016-10-24",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "RRD",
+   "date": "2016-10-31",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "RSG",
+   "date": "2009-03-31",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "RX",
+   "date": "2003-04-23",
+   "ratio": 20.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SBL",
+   "date": "2000-04-18",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SBL",
+   "date": "2001-04-27",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SEE",
+   "date": "2001-04-27",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SEE",
+   "date": "2001-10-30",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SEE",
+   "date": "2007-04-24",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SFA",
+   "date": "2000-05-01",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SGID",
+   "date": "2006-10-02",
+   "ratio": 0.125,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SIAL",
+   "date": "2007-02-13",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "SJM",
+   "date": "2000-11-28",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SJM",
+   "date": "2002-07-12",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SNV",
+   "date": "2002-05-01",
+   "ratio": 0.05,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SNV",
+   "date": "2005-02-24",
+   "ratio": 15.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SNV",
+   "date": "2009-10-26",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SNV",
+   "date": "2014-07-31",
+   "ratio": 0.14285714285714285,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SOTR",
+   "date": "2001-02-15",
+   "ratio": 6.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SOTR",
+   "date": "2002-02-21",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SPGI",
+   "date": "2006-02-10",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "SPLS",
+   "date": "2005-05-03",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "SRCL",
+   "date": "2007-07-25",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "STJ",
+   "date": "2002-07-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "STJ",
+   "date": "2006-04-25",
+   "ratio": 0.25,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SVU",
+   "date": "2006-07-13",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SVU",
+   "date": "2017-10-13",
+   "ratio": 0.14285714285714285,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SW",
+   "date": "2024-08-06",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SWKS",
+   "date": "2002-07-29",
+   "ratio": 7.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "SWN",
+   "date": "2005-07-12",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "SWN",
+   "date": "2006-02-20",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "SWN",
+   "date": "2007-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "SWN",
+   "date": "2021-11-01",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SXCL",
+   "date": "2001-06-12",
+   "ratio": 10.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "SXCL",
+   "date": "2011-11-04",
+   "ratio": 0.1,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "TAP",
+   "date": "2005-02-25",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TAP",
+   "date": "2005-04-27",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TAP",
+   "date": "2011-06-25",
+   "ratio": 10.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TE",
+   "date": "2021-12-31",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "TEG",
+   "date": "2002-03-15",
+   "ratio": 20.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "TIE",
+   "date": "2004-10-22",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "TIE",
+   "date": "2006-04-20",
+   "ratio": 3.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "TIF",
+   "date": "2000-08-17",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "TKR",
+   "date": "2003-05-01",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TMUS",
+   "date": "2020-04-30",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TPR",
+   "date": "2002-07-05",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "TPR",
+   "date": "2003-10-02",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "TPR",
+   "date": "2005-04-05",
+   "ratio": 2.0,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "TRB",
+   "date": "2007-07-26",
+   "ratio": 0.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "TROW",
+   "date": "2007-12-31",
+   "ratio": 6.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TRV",
+   "date": "2004-04-26",
+   "ratio": 3.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TTD",
+   "date": "2017-03-31",
+   "ratio": 3.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "TWX",
+   "date": "2009-06-30",
+   "ratio": 0.3333333333333333,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "TXU",
+   "date": "2006-02-20",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "UAA",
+   "date": "2009-06-30",
+   "ratio": 4.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "UAA",
+   "date": "2017-03-31",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "UAL",
+   "date": "2010-12-31",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "UHS",
+   "date": "2011-06-30",
+   "ratio": 15.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "URI",
+   "date": "2008-07-16",
+   "ratio": 0.6666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "URI",
+   "date": "2012-07-13",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "USB",
+   "date": "2002-02-14",
+   "ratio": 2.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "V",
+   "date": "2009-01-26",
+   "ratio": 2.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "VAR",
+   "date": "2002-01-22",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "VAR",
+   "date": "2004-07-28",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "VIAV",
+   "date": "2005-04-28",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "VICI",
+   "date": "2018-02-28",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "VNO",
+   "date": "2000-10-19",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "VNO",
+   "date": "2001-02-15",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "VNO",
+   "date": "2007-12-31",
+   "ratio": 0.08333333333333333,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "VNO",
+   "date": "2010-03-31",
+   "ratio": 12.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "VZ",
+   "date": "2014-02-24",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "WAMUQ",
+   "date": "2001-07-31",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "WBD",
+   "date": "2014-08-07",
+   "ratio": 1.957,
+   "kind": "close_unadjusted_across_split"
+  },
+  {
+   "symbol": "WCG",
+   "date": "2009-02-16",
+   "ratio": 0.14285714285714285,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "WFC",
+   "date": "2023-07-21",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "WFC",
+   "date": "2023-10-20",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "WFM",
+   "date": "2001-05-09",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "WFM",
+   "date": "2006-02-10",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "WFM",
+   "date": "2013-08-02",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "WIN",
+   "date": "2015-04-30",
+   "ratio": 0.16666666666666666,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "WIN",
+   "date": "2017-05-04",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "WIN",
+   "date": "2018-08-06",
+   "ratio": 0.2,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "WMB",
+   "date": "2018-10-29",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "WNDXQ",
+   "date": "2001-04-12",
+   "ratio": 0.05,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "WNDXQ",
+   "date": "2003-04-09",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "WNDXQ",
+   "date": "2003-07-24",
+   "ratio": 15.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "WWY",
+   "date": "2001-04-27",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": true
+  },
+  {
+   "symbol": "WY",
+   "date": "2010-10-29",
+   "ratio": 2.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "WY",
+   "date": "2016-04-29",
+   "ratio": 1.5,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "XEC",
+   "date": "2005-07-26",
+   "ratio": 2.0,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "XTO",
+   "date": "2000-10-31",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "XTO",
+   "date": "2001-07-27",
+   "ratio": 1.5,
+   "kind": "share_jump_delisted",
+   "close_is_raw": false
+  },
+  {
+   "symbol": "ZBRA",
+   "date": "2000-10-30",
+   "ratio": 2.0,
+   "kind": "share_jump_not_in_yfinance"
+  },
+  {
+   "symbol": "ZBRA",
+   "date": "2001-03-06",
+   "ratio": 0.5,
+   "kind": "share_jump_not_in_yfinance"
+  }
+ ],
+ "known_gaps": [
+  "Not in the price file at all (their tickers were reused later, or the source never captured them): Lucent, WorldCom, AT&T Corp (the pre-2005 company), Dell Inc (pre-2013), EMC, Yahoo, Genentech, Wachovia, Merrill Lynch (mapped to Bank of America's CIK and dropped). Most of them were top-30 names in 2000-2002, so that period slightly overstates how well 'the giants' did.",
+  "Share counts before mid-2009 come from 10-K/10-Q cover pages parsed from the filing text (quarterly where available); before the first parsed filing the earliest count is carried back.",
+  "Delisted tickers in the price file mix differently adjusted feeds; splices were repaired for the large names (see notes) but small-cap histories may still contain artefacts. Results are meaningful for the top ~60 by market cap.",
+  "Berkshire Hathaway, BellSouth, Compaq, Pharmacia, Warner-Lambert, Sun Microsystems and Enron use hand-entered share counts (src = manual)."
+ ],
+ "notes": [
+  {
+   "symbol_gap_cuts": [
+    [
+     "ABS",
+     "2006-06-01",
+     "2018-08-28"
+    ],
+    [
+     "BGEN",
+     "2003-11-12",
+     "2010-03-24"
+    ],
+    [
+     "CGP",
+     "2001-01-29",
+     "2014-01-23"
+    ],
+    [
+     "CMX",
+     "2007-03-22",
+     "2010-11-10"
+    ],
+    [
+     "CNG",
+     "2000-01-28",
+     "2011-11-23"
+    ],
+    [
+     "CTX",
+     "2009-08-18",
+     "2012-04-03"
+    ],
+    [
+     "FPC",
+     "2000-11-30",
+     "2016-05-04"
+    ],
+    [
+     "FRX",
+     "2014-06-30",
+     "2021-01-15"
+    ],
+    [
+     "GDT",
+     "2006-04-21",
+     "2010-02-22"
+    ],
+    [
+     "HM",
+     "2001-12-14",
+     "2012-12-21"
+    ],
+    [
+     "HSH",
+     "2014-08-28",
+     "2016-09-20"
+    ],
+    [
+     "JAVA",
+     "2010-01-26",
+     "2021-10-05"
+    ],
+    [
+     "JOS",
+     "2000-05-10",
+     "2003-09-17"
+    ],
+    [
+     "KSE",
+     "2007-08-24",
+     "2009-11-05"
+    ],
+    [
+     "LDG",
+     "2008-10-30",
+     "2015-08-12"
+    ],
+    [
+     "MDR",
+     "2020-01-17",
+     "2020-09-14"
+    ],
+    [
+     "MER",
+     "2008-12-31",
+     "2018-08-28"
+    ],
+    [
+     "MYG",
+     "2006-03-31",
+     "2008-11-18"
+    ],
+    [
+     "NCC",
+     "2008-12-31",
+     "2012-05-03"
+    ],
+    [
+     "NCE",
+     "2000-08-18",
+     "2009-01-05"
+    ],
+    [
+     "NGH",
+     "2000-12-11",
+     "2004-12-15"
+    ],
+    [
+     "NOW",
+     "2011-01-04",
+     "2012-06-29"
+    ],
+    [
+     "NVLS",
+     "2012-06-04",
+     "2015-06-17"
+    ],
+    [
+     "OK",
+     "2001-04-02",
+     "2009-02-09"
+    ],
+    [
+     "ONE",
+     "2004-06-30",
+     "2010-06-17"
+    ],
+    [
+     "PDG",
+     "2006-03-08",
+     "2014-07-29"
+    ],
+    [
+     "PGL",
+     "2007-02-21",
+     "2009-01-30"
+    ],
+    [
+     "PVN",
+     "2005-09-30",
+     "2018-10-19"
+    ],
+    [
+     "PWJ",
+     "2000-11-03",
+     "2008-01-02"
+    ],
+    [
+     "Q",
+     "2011-03-31",
+     "2013-05-09"
+    ],
+    [
+     "RAL",
+     "2001-12-12",
+     "2010-02-22"
+    ],
+    [
+     "RX",
+     "2010-02-25",
+     "2011-08-30"
+    ],
+    [
+     "SGP",
+     "2009-11-20",
+     "2010-09-29"
+    ],
+    [
+     "SMS",
+     "2000-07-05",
+     "2008-03-17"
+    ],
+    [
+     "TOS",
+     "2001-09-10",
+     "2006-12-06"
+    ],
+    [
+     "TOY",
+     "2005-07-21",
+     "2014-07-14"
+    ],
+    [
+     "UCM",
+     "2000-10-20",
+     "2007-11-19"
+    ],
+    [
+     "UPR",
+     "2000-07-14",
+     "2006-08-21"
+    ],
+    [
+     "WIN",
+     "2019-06-28",
+     "2020-03-20"
+    ],
+    [
+     "WLL",
+     "2005-12-16",
+     "2008-12-17"
+    ],
+    [
+     "WWY",
+     "2008-10-06",
+     "2010-10-13"
+    ]
+   ]
+  },
+  {
+   "short_segments_dropped": [
+    "BXLT",
+    "CPGX",
+    "INFO",
+    "LLL",
+    "ONE",
+    "RLM",
+    "SNDK",
+    "SOLS",
+    "TEK"
+   ]
+  },
+  {
+   "same_cik_overlaps_dropped": [
+    [
+     "0000009389",
+     "BLL",
+     "BALL"
+    ],
+    [
+     "0000014272",
+     "CELG",
+     "BMY"
+    ],
+    [
+     "0000018926",
+     "CTL",
+     "LUMN"
+    ],
+    [
+     "0000031791",
+     "PKI",
+     "RVTY"
+    ],
+    [
+     "0000052988",
+     "JEC",
+     "J"
+    ],
+    [
+     "0000070858",
+     "MER",
+     "BAC"
+    ],
+    [
+     "0000101829",
+     "UTX",
+     "RTX"
+    ],
+    [
+     "0000202058",
+     "HRS",
+     "LHX"
+    ],
+    [
+     "0000320335",
+     "TMK",
+     "GL"
+    ],
+    [
+     "0000798354",
+     "FI",
+     "FISV"
+    ],
+    [
+     "0000813828",
+     "VIAC",
+     "PARA"
+    ],
+    [
+     "0000813828",
+     "CBS",
+     "PARA"
+    ],
+    [
+     "0000849399",
+     "NLOK",
+     "GEN"
+    ],
+    [
+     "0000849399",
+     "SYMC",
+     "GEN"
+    ],
+    [
+     "0000858470",
+     "COG",
+     "CTRA"
+    ],
+    [
+     "0000875045",
+     "BGEN",
+     "BIIB"
+    ],
+    [
+     "0001140536",
+     "WLTW",
+     "WTW"
+    ],
+    [
+     "0001140859",
+     "ABC",
+     "COR"
+    ],
+    [
+     "0001156039",
+     "ANTM",
+     "ELV"
+    ],
+    [
+     "0001175454",
+     "FLT",
+     "CPAY"
+    ],
+    [
+     "0001326801",
+     "FB",
+     "META"
+    ],
+    [
+     "0001437107",
+     "DISCA",
+     "WBD"
+    ],
+    [
+     "0001530721",
+     "KORS",
+     "CPRI"
+    ],
+    [
+     "0001666700",
+     "DWDP",
+     "DD"
+    ],
+    [
+     "0001701605",
+     "BHGE",
+     "BKR"
+    ]
+   ]
+  },
+  {
+   "price_splices_repaired": [
+    {
+     "symbol": "AET",
+     "date": "2003-09-10",
+     "factor": 4.0095,
+     "kind": "splice"
+    },
+    {
+     "symbol": "DHR",
+     "date": "2016-07-05",
+     "factor": 1.5555,
+     "kind": "known_tr_glitch"
+    },
+    {
+     "symbol": "ESRX",
+     "date": "2003-09-10",
+     "factor": 8.234,
+     "kind": "splice"
+    },
+    {
+     "symbol": "ETS",
+     "date": "2002-04-05",
+     "factor": 0.3237,
+     "kind": "splice"
+    },
+    {
+     "symbol": "ETS",
+     "date": "2002-02-04",
+     "factor": 0.3889,
+     "kind": "splice"
+    },
+    {
+     "symbol": "ETS",
+     "date": "2001-08-20",
+     "factor": 0.7042,
+     "kind": "splice"
+    },
+    {
+     "symbol": "ETS",
+     "date": "2001-08-06",
+     "factor": 0.6627,
+     "kind": "splice"
+    },
+    {
+     "symbol": "JCI",
+     "date": "2007-07-02",
+     "factor": 0.4655,
+     "kind": "known_tr_glitch"
+    },
+    {
+     "symbol": "LVLT",
+     "date": "2003-09-10",
+     "factor": 0.0617,
+     "kind": "splice"
+    },
+    {
+     "symbol": "LVLT",
+     "date": "2002-07-08",
+     "factor": 1.5087,
+     "kind": "splice"
+    },
+    {
+     "symbol": "LVLT",
+     "date": "2001-10-05",
+     "factor": 0.6492,
+     "kind": "splice"
+    },
+    {
+     "symbol": "NBL",
+     "date": "2020-10-06",
+     "factor": 0.4941,
+     "kind": "splice"
+    },
+    {
+     "symbol": "RAI",
+     "date": "2004-08-02",
+     "factor": 8.2611,
+     "kind": "splice"
+    },
+    {
+     "symbol": "TWX",
+     "date": "2003-10-16",
+     "factor": 0.3382,
+     "kind": "splice"
+    }
+   ]
+  }
+ ]
+}

@@ -34,6 +34,9 @@ CACHE_VALIDITY_HOURS = 24
 _benchmark_cache: Dict[str, pd.DataFrame] = {}
 _cache_loaded = False
 _fetch_lock = threading.Lock()
+# Symbols whose history we already tried to extend backwards in this process,
+# so a benchmark that simply has no older data is not refetched on every call.
+_history_extended: set = set()
 
 # In-memory memoization for DCA simulations (can be expensive on every callback).
 # Keyed by (symbols, history_sig, tx_sig)
@@ -235,6 +238,22 @@ def get_benchmark_data(symbol: str, start_date = None, end_date = None) -> Optio
             _benchmark_cache.pop(symbol, None)
         else:
             _benchmark_cache[symbol] = df.copy()
+            # The cache may have been filled by a shorter request (the prefetch
+            # only goes back six years). If an older start is asked for, extend
+            # it once per process instead of returning a truncated series.
+            if start_date is not None and symbol not in _history_extended:
+                cached_start = df.index.min()
+                if cached_start is not None and cached_start > start_date + timedelta(days=10):
+                    _history_extended.add(symbol)
+                    older = fetch_benchmark(symbol, start_date, end_date or datetime.now())
+                    older = _normalize_benchmark_df(older)
+                    if older is not None and len(older) and older.index.min() < cached_start:
+                        merged = pd.concat([older, df])
+                        merged = merged[~merged.index.duplicated(keep="last")].sort_index()
+                        _benchmark_cache[symbol] = merged
+                        df = merged
+                        _save_cache()
+                        log.debug("Extended %s history back to %s", symbol, df.index.min().date())
             if start_date:
                 df = df[df.index >= start_date]
             if end_date:

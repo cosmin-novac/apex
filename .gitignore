@@ -35,3 +35,6 @@ strategy_analysis.xlsx
 _shot_*.py
 landing_en.png
 landing_de.png
+
+# Raw research inputs (hundreds of MB): FINSABER price files, SEC companyfacts. Never committed or deployed.
+/data/raw/

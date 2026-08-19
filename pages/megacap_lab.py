@@ -1,0 +1,540 @@
+"""
+Mega-cap Lab (route "/megacap").
+
+Two questions, one engine:
+
+1. "Holding the S&P 500 is like a portfolio that sells its losers. What if you
+   only held the 30 largest US companies and replaced the ones that drop out?"
+2. "What if instead you fished where the future giants still are, say ranks 400
+   to 500 of the index, and rode the ones that climb out of that corridor?"
+
+Both are rank rules on point-in-time market caps, 2000-2025, compared with the
+S&P 500 total return index.
+
+Simulation code: core/megacap_lab.py. Data: data/megacap_panel.csv.gz.
+"""
+from __future__ import annotations
+
+import numpy as np
+import plotly.graph_objects as go
+from dash import html, dcc, Input, Output, State, no_update
+import dash_bootstrap_components as dbc
+
+from components.i18n import t
+from core import utils as cu
+from core import megacap_lab as ml
+
+STRATEGY_COLOR = "#1d4ed8"   # deep blue
+BENCH_COLOR = "#b45309"      # amber-brown
+MUTED = "#64748b"
+
+DEFAULTS = dict(mode="top", top_n=30, rank_lo=400, rank_hi=500, hold_after_graduation=[],
+                universe="index", rebalance="A", weighting="cap", start_year=2000, end_year=2025,
+                buffer=0, max_weight=0, initial=10_000)
+
+
+def _preset(**kw):
+    p_ = dict(DEFAULTS)
+    p_.update(kw)
+    p_.pop("initial", None)
+    return p_
+
+
+# The two anchor experiments first, then variations of each.
+PRESETS = {
+    "question": _preset(mode="top", top_n=30, rebalance="A", weighting="cap"),
+    "climbers": _preset(mode="climbers", rank_lo=400, rank_hi=500, weighting="equal",
+                        hold_after_graduation=["on"], rebalance="A"),
+    "band": _preset(mode="band", rank_lo=400, rank_hi=500, weighting="equal", rebalance="A"),
+    "band_mid": _preset(mode="band", rank_lo=200, rank_hi=300, weighting="equal", rebalance="A"),
+    "top10": _preset(mode="top", top_n=10, rebalance="A", weighting="cap"),
+    "since2010": _preset(mode="top", top_n=30, rebalance="A", weighting="cap", start_year=2010),
+}
+
+
+def _first_month():
+    return ml.available_range()[0]
+
+
+def _last_month():
+    return ml.available_range()[1]
+
+
+def _years():
+    try:
+        a, b = ml.available_range()
+    except Exception:
+        return [2000, 2025]
+    return list(range(int(a[:4]), int(b[:4]) + 1))
+
+
+def _run(mode, top_n, rank_lo, rank_hi, hold_after_graduation, universe, rebalance, weighting,
+         start_year, end_year, buffer, max_weight, initial):
+    first, last = ml.available_range()
+    start = max(f"{int(start_year)}-01", first)
+    end = min(f"{int(end_year)}-12", last)
+    if end <= start:
+        end = last
+    lo, hi = int(rank_lo or 400), int(rank_hi or 500)
+    if lo > hi:
+        lo, hi = hi, lo
+    return ml.simulate(
+        mode=mode or "top", top_n=int(top_n), rank_lo=lo, rank_hi=hi,
+        hold_after_graduation=bool(hold_after_graduation),
+        universe=universe or "index", rebalance=rebalance, weighting=weighting, start=start, end=end,
+        buffer=int(buffer or 0), max_weight=(float(max_weight) / 100 if max_weight else None),
+        initial=float(initial or 10_000),
+    )
+
+
+def strategy_label(params, lang):
+    """Short name of the running strategy, used in legends and KPI labels."""
+    if params["mode"] == "top":
+        return t("ml.legend_strategy", lang).format(n=params["top_n"])
+    key = "ml.legend_climbers" if params["mode"] == "climbers" else "ml.legend_band"
+    return t(key, lang).format(lo=params["rank_lo"], hi=params["rank_hi"])
+
+
+# ── formatting ───────────────────────────────────────────────────────────────
+def _usd(v, lang):
+    return ("$" + cu.fmt_num(v, lang, 0)) if lang != "de" else (cu.fmt_num(v, lang, 0) + " $")
+
+
+def _pct(v, lang, decimals=1, signed=False):
+    return cu.fmt_pct(v * 100, lang, decimals, signed)
+
+
+# ── figures ──────────────────────────────────────────────────────────────────
+def _base_layout(lang, **kw):
+    lay = dict(
+        separators=cu.plotly_separators(lang),
+        margin=dict(l=10, r=10, t=30, b=10),
+        plot_bgcolor="white", paper_bgcolor="white",
+        font=dict(family="Inter, sans-serif", size=12, color="#1e293b"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font_size=12),
+        hovermode="x unified",
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#eef2f7", zeroline=False),
+    )
+    lay.update(kw)
+    return lay
+
+
+def growth_figure(res, lang, log_scale=False):
+    months = res["months"]
+    x = [m + "-01" for m in months]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x, y=res["strategy"], name=strategy_label(res["params"], lang),
+                             line=dict(color=STRATEGY_COLOR, width=2.2), hovertemplate="%{y:,.0f} $<extra></extra>"))
+    fig.add_trace(go.Scatter(x=x, y=res["benchmark"], name=t("ml.legend_sp500", lang),
+                             line=dict(color=BENCH_COLOR, width=2.2), hovertemplate="%{y:,.0f} $<extra></extra>"))
+    fig.update_layout(**_base_layout(lang, height=380))
+    fig.update_yaxes(type="log" if log_scale else "linear", tickprefix="$" if lang != "de" else "",
+                     ticksuffix=" $" if lang == "de" else "", separatethousands=True)
+    fig.update_xaxes(dtick="M24", tickformat="%Y")
+    return fig
+
+
+def yearly_figure(res, lang):
+    yrs = res["years"]
+    labels = [y["year"] for y in yrs]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=labels, y=[y["strategy"] * 100 for y in yrs], name=strategy_label(res["params"], lang),
+                         marker_color=STRATEGY_COLOR, hovertemplate="%{y:.1f}%<extra></extra>"))
+    fig.add_trace(go.Bar(x=labels, y=[y["benchmark"] * 100 for y in yrs], name=t("ml.legend_sp500", lang),
+                         marker_color=BENCH_COLOR, hovertemplate="%{y:.1f}%<extra></extra>"))
+    fig.update_layout(**_base_layout(lang, height=300, barmode="group", bargap=0.25))
+    fig.update_yaxes(ticksuffix="%")
+    return fig
+
+
+def rolling_figure(res, lang):
+    roll = res.get("rolling10") or {}
+    fig = go.Figure()
+    if roll:
+        x = [m + "-01" for m in roll["months"]]
+        fig.add_trace(go.Scatter(x=x, y=[v * 100 for v in roll["strategy"]], name=strategy_label(res["params"], lang),
+                                 line=dict(color=STRATEGY_COLOR, width=2), hovertemplate="%{y:.1f}%<extra></extra>"))
+        fig.add_trace(go.Scatter(x=x, y=[v * 100 for v in roll["benchmark"]], name=t("ml.legend_sp500", lang),
+                                 line=dict(color=BENCH_COLOR, width=2), hovertemplate="%{y:.1f}%<extra></extra>"))
+        fig.update_xaxes(dtick="M24", tickformat="%Y")
+    else:
+        fig.add_annotation(text=t("ml.rolling_short", lang), showarrow=False, font=dict(color=MUTED))
+    fig.update_layout(**_base_layout(lang, height=300))
+    fig.update_yaxes(ticksuffix="%")
+    return fig
+
+
+def timeline_figure(res, lang):
+    labels, months, mat = ml.membership_matrix(res, max_names=70)
+    # Plain nested lists with None for "not held": Plotly 6 would serialise a
+    # numpy array as base64, which the plotly.js bundled with Dash 2.9 cannot
+    # read (the heatmap then renders empty).
+    z = [[round(v * 100, 2) if v > 0 else None for v in row] for row in mat]
+    fig = go.Figure(go.Heatmap(
+        z=z, x=[m + "-01" for m in months], y=labels,
+        colorscale=[[0, "#dbe4ff"], [1, "#1e3a8a"]], showscale=True,
+        colorbar=dict(title=t("ml.weight_pct", lang), thickness=10, len=0.5),
+        hovertemplate="%{y}<br>%{x|%b %Y}: %{z:.1f}%<extra></extra>", hoverongaps=False, xgap=1, ygap=1,
+    ))
+    fig.update_layout(**_base_layout(lang, height=max(320, 16 * len(labels) + 80), hovermode="closest",
+                                     margin=dict(l=10, r=10, t=10, b=10)))
+    fig.update_yaxes(autorange="reversed", tickfont=dict(size=10), showgrid=False)
+    fig.update_xaxes(tickformat="%Y", showgrid=False)
+    return fig
+
+
+# ── result blocks ────────────────────────────────────────────────────────────
+def _kpi(label, value, sub=None, accent=None):
+    return html.Div([
+        html.Div(label, className="ml-kpi-label"),
+        html.Div(value, className="ml-kpi-value", style={"color": accent} if accent else None),
+        html.Div(sub, className="ml-kpi-sub") if sub else None,
+    ], className="ml-kpi")
+
+
+def kpi_row(res, lang):
+    ms, mb = res["metrics"]["strategy"], res["metrics"]["benchmark"]
+    p = res["params"]
+    diff = ms["cagr"] - mb["cagr"]
+    verdict = t("ml.verdict_ahead", lang) if diff > 0.0005 else (t("ml.verdict_behind", lang) if diff < -0.0005 else t("ml.verdict_tie", lang))
+    strategy_kpi_label = (t("ml.kpi_cagr_strategy", lang).format(n=p["top_n"]) if p["mode"] == "top"
+                          else t("ml.kpi_cagr_corridor", lang).format(lo=p["rank_lo"], hi=p["rank_hi"]))
+    return html.Div([
+        html.Div([
+            _kpi(strategy_kpi_label, _pct(ms["cagr"], lang), t("ml.kpi_final", lang).format(v=_usd(ms["final"], lang)), STRATEGY_COLOR),
+            _kpi(t("ml.kpi_cagr_sp", lang), _pct(mb["cagr"], lang), t("ml.kpi_final", lang).format(v=_usd(mb["final"], lang)), BENCH_COLOR),
+            _kpi(t("ml.kpi_diff", lang), _pct(diff, lang, 2, signed=True), verdict),
+            _kpi(t("ml.kpi_maxdd", lang), f"{_pct(ms['max_dd'], lang)} / {_pct(mb['max_dd'], lang)}", t("ml.kpi_strategy_vs_sp", lang)),
+            _kpi(t("ml.kpi_vol", lang), f"{_pct(ms['vol'], lang)} / {_pct(mb['vol'], lang)}", t("ml.kpi_strategy_vs_sp", lang)),
+            _kpi(t("ml.kpi_turnover", lang), _pct(res["turnover_annual"] or 0, lang, 0), t("ml.kpi_names", lang).format(k=res["distinct_names"])),
+            _kpi(t("ml.kpi_positions", lang), cu.fmt_num(res.get("avg_positions", 0), lang, 0),
+                 t("ml.kpi_universe", lang).format(u=cu.fmt_num(res.get("universe_size", {}).get("avg", 0), lang, 0))),
+        ], className="ml-kpi-grid"),
+    ])
+
+
+def holdings_table(res, lang, limit=40):
+    last = res["events"][-1]
+    ordered = sorted(last["holdings"], key=lambda h: -h[2])
+    rows = []
+    for k, (sym, name, w, rank) in enumerate(ordered[:limit], 1):
+        rows.append(html.Tr([html.Td(str(k)), html.Td(name), html.Td(sym, className="text-muted"),
+                             html.Td(str(rank), className="text-end text-muted"),
+                             html.Td(_pct(w, lang), className="text-end")]))
+    rest = len(ordered) - len(rows)
+    return html.Div([
+        html.H4(t("ml.holdings_title", lang).format(m=last["month"]), className="ml-h4"),
+        html.Table([
+            html.Thead(html.Tr([html.Th("#"), html.Th(t("ml.col_company", lang)), html.Th(t("ml.col_ticker", lang)),
+                                html.Th(t("ml.col_rank", lang), className="text-end"),
+                                html.Th(t("ml.col_weight", lang), className="text-end")])),
+            html.Tbody(rows),
+        ], className="ml-table"),
+        html.P(t("ml.holdings_more", lang).format(k=rest), className="text-muted small mt-2") if rest > 0 else None,
+    ])
+
+
+def rebalance_log(res, lang):
+    items = []
+    for e in reversed(res["events"]):
+        if not e["added"] and not e["removed"]:
+            continue
+        if e is res["events"][0]:
+            continue
+        def _names(pairs, cap=14):
+            shown = ", ".join(f"{nm} ({s})" for s, nm in pairs[:cap])
+            if len(pairs) > cap:
+                shown += t("ml.log_more", lang).format(k=len(pairs) - cap)
+            return shown
+
+        added = _names(e["added"])
+        removed = _names(e["removed"])
+        items.append(html.Li([
+            html.Span(e["month"], className="ml-log-date"),
+            html.Span([html.Span("+ ", className="ml-log-plus"), added]) if added else None,
+            html.Span([html.Span(" − ", className="ml-log-minus"), removed]) if removed else None,
+        ]))
+    if not items:
+        items = [html.Li(t("ml.log_none", lang))]
+    return html.Div([
+        html.H4(t("ml.log_title", lang), className="ml-h4"),
+        html.P(t("ml.log_hint", lang), className="text-muted small"),
+        html.Ul(items, className="ml-log"),
+    ])
+
+
+def _findings(res, lang):
+    ms, mb = res["metrics"]["strategy"], res["metrics"]["benchmark"]
+    p = res["params"]
+    yrs = res["years"]
+    ahead = sum(1 for y in yrs if y["strategy"] > y["benchmark"])
+    best = max(yrs, key=lambda y: y["strategy"] - y["benchmark"])
+    worst = min(yrs, key=lambda y: y["strategy"] - y["benchmark"])
+    key = {"top": "ml.findings_text", "band": "ml.findings_band", "climbers": "ml.findings_climbers"}[p["mode"]]
+    return t(key, lang).format(
+        n=p["top_n"], lo=p["rank_lo"], hi=p["rank_hi"], start=p["start"], end=p["end"],
+        positions=cu.fmt_num(res.get("avg_positions", 0), lang, 0),
+        cs=_pct(ms["cagr"], lang), cb=_pct(mb["cagr"], lang),
+        fs=_usd(ms["final"], lang), fb=_usd(mb["final"], lang), init=_usd(p["initial"], lang),
+        ahead=ahead, total=len(yrs), best_y=best["year"], best_d=_pct(best["strategy"] - best["benchmark"], lang, 1, True),
+        worst_y=worst["year"], worst_d=_pct(worst["strategy"] - worst["benchmark"], lang, 1, True),
+        names=res["distinct_names"], turnover=_pct(res["turnover_annual"] or 0, lang, 0),
+    )
+
+
+def results_block(res, lang, log_scale=False):
+    warn = None
+    if res["params"].get("universe") == "all":
+        warn = html.Div([html.I(className="bi bi-exclamation-triangle me-2"), t("ml.warn_universe", lang)],
+                        className="ml-warning")
+    return [
+        warn,
+        kpi_row(res, lang),
+        html.P(_findings(res, lang), className="ml-findings"),
+        html.Div([
+            html.Div([html.H4(t("ml.growth_title", lang).format(v=_usd(res["params"]["initial"], lang)), className="ml-h4 mb-0"),
+                      dbc.Checklist(id="ml-log-scale", options=[{"label": t("ml.log_scale", lang), "value": "log"}],
+                                    value=["log"] if log_scale else [], switch=True, className="ml-switch")],
+                     className="d-flex justify-content-between align-items-center flex-wrap"),
+            dcc.Graph(id="ml-growth-fig", figure=growth_figure(res, lang, log_scale), config={"displayModeBar": False}),
+        ], className="ml-card"),
+        dbc.Row([
+            dbc.Col(html.Div([html.H4(t("ml.yearly_title", lang), className="ml-h4"),
+                              dcc.Graph(figure=yearly_figure(res, lang), config={"displayModeBar": False})], className="ml-card"), lg=6),
+            dbc.Col(html.Div([html.H4(t("ml.rolling_title", lang), className="ml-h4"),
+                              html.P(t("ml.rolling_hint", lang), className="text-muted small"),
+                              dcc.Graph(figure=rolling_figure(res, lang), config={"displayModeBar": False})], className="ml-card"), lg=6),
+        ], className="g-3"),
+        html.Div([
+            html.H4(t("ml.timeline_title", lang), className="ml-h4"),
+            html.P(t("ml.timeline_hint", lang), className="text-muted small"),
+            dcc.Graph(figure=timeline_figure(res, lang), config={"displayModeBar": False}),
+        ], className="ml-card"),
+        dbc.Row([
+            dbc.Col(html.Div(holdings_table(res, lang), className="ml-card"), lg=5),
+            dbc.Col(html.Div(rebalance_log(res, lang), className="ml-card"), lg=7),
+        ], className="g-3"),
+    ]
+
+
+# ── controls ─────────────────────────────────────────────────────────────────
+def _controls(lang):
+    years = _years()
+    return html.Div([
+        html.Div([
+            html.Label(t("ml.ctl_mode", lang), className="ml-label"),
+            dbc.RadioItems(id="ml-mode", value=DEFAULTS["mode"], className="ml-radio ml-mode-radio",
+                           options=[{"label": t("ml.mode_top", lang), "value": "top"},
+                                    {"label": t("ml.mode_band", lang), "value": "band"},
+                                    {"label": t("ml.mode_climbers", lang), "value": "climbers"}]),
+            html.P(id="ml-mode-hint", className="ml-hint"),
+        ], className="ml-ctl"),
+        html.Div([
+            html.Label(t("ml.ctl_top_n", lang), className="ml-label"),
+            dcc.Slider(id="ml-top-n", min=5, max=100, step=1, value=DEFAULTS["top_n"],
+                       marks={5: "5", 30: "30", 60: "60", 100: "100"},
+                       tooltip={"placement": "bottom", "always_visible": True}, className="ml-slider"),
+        ], className="ml-ctl", id="ml-topn-block"),
+        html.Div([
+            html.Label(t("ml.ctl_corridor", lang), className="ml-label"),
+            dcc.RangeSlider(id="ml-corridor", min=5, max=500, step=5, allowCross=False,
+                            value=[DEFAULTS["rank_lo"], DEFAULTS["rank_hi"]],
+                            marks={5: "5", 100: "100", 250: "250", 400: "400", 500: "500"},
+                            tooltip={"placement": "bottom", "always_visible": True}, className="ml-slider"),
+            html.P(t("ml.corridor_hint", lang), className="ml-hint"),
+            dbc.Checklist(id="ml-hold-graduates", switch=True, value=DEFAULTS["hold_after_graduation"],
+                          options=[{"label": t("ml.ctl_hold_graduates", lang), "value": "on"}],
+                          className="ml-switch mt-2"),
+        ], className="ml-ctl", id="ml-corridor-block"),
+        html.Div([
+            html.Label(t("ml.ctl_rebalance", lang), className="ml-label"),
+            dbc.RadioItems(id="ml-rebalance", value=DEFAULTS["rebalance"], className="ml-radio",
+                           options=[{"label": t("ml.reb_a", lang), "value": "A"},
+                                    {"label": t("ml.reb_q", lang), "value": "Q"},
+                                    {"label": t("ml.reb_m", lang), "value": "M"}]),
+        ], className="ml-ctl"),
+        html.Div([
+            html.Label(t("ml.ctl_weighting", lang), className="ml-label"),
+            dbc.RadioItems(id="ml-weighting", value=DEFAULTS["weighting"], className="ml-radio",
+                           options=[{"label": t("ml.w_cap", lang), "value": "cap"},
+                                    {"label": t("ml.w_equal", lang), "value": "equal"}]),
+        ], className="ml-ctl"),
+        html.Div([
+            html.Label(t("ml.ctl_universe", lang), className="ml-label"),
+            dbc.RadioItems(id="ml-universe", value=DEFAULTS["universe"], className="ml-radio",
+                           options=[{"label": t("ml.u_index", lang), "value": "index"},
+                                    {"label": t("ml.u_all", lang), "value": "all"}]),
+            html.P(t("ml.universe_hint", lang), className="ml-hint"),
+        ], className="ml-ctl"),
+        dbc.Row([
+            dbc.Col([html.Label(t("ml.ctl_start", lang), className="ml-label"),
+                     dcc.Dropdown(id="ml-start", options=[{"label": str(y), "value": y} for y in years], value=DEFAULTS["start_year"], clearable=False)], xs=6),
+            dbc.Col([html.Label(t("ml.ctl_end", lang), className="ml-label"),
+                     dcc.Dropdown(id="ml-end", options=[{"label": str(y), "value": y} for y in years], value=DEFAULTS["end_year"], clearable=False)], xs=6),
+        ], className="ml-ctl"),
+        html.Div([
+            html.Label(t("ml.ctl_buffer", lang), className="ml-label"),
+            dcc.Dropdown(id="ml-buffer", clearable=False, value=DEFAULTS["buffer"],
+                         options=[{"label": t("ml.buffer_0", lang), "value": 0},
+                                  {"label": t("ml.buffer_k", lang).format(k=5), "value": 5},
+                                  {"label": t("ml.buffer_k", lang).format(k=10), "value": 10},
+                                  {"label": t("ml.buffer_k", lang).format(k=20), "value": 20}]),
+        ], className="ml-ctl"),
+        html.Div([
+            html.Label(t("ml.ctl_max_weight", lang), className="ml-label"),
+            dcc.Dropdown(id="ml-max-weight", clearable=False, value=DEFAULTS["max_weight"],
+                         options=[{"label": t("ml.maxw_none", lang), "value": 0},
+                                  {"label": "5 %", "value": 5}, {"label": "10 %", "value": 10},
+                                  {"label": "15 %", "value": 15}, {"label": "25 %", "value": 25}]),
+        ], className="ml-ctl"),
+        html.Div([
+            html.Label(t("ml.ctl_initial", lang), className="ml-label"),
+            dbc.InputGroup([dbc.InputGroupText("$"), dbc.Input(id="ml-initial", type="number", min=100, step=100, value=DEFAULTS["initial"])], size="sm"),
+        ], className="ml-ctl"),
+        dbc.Button(t("ml.run", lang), id="ml-run", className="ml-run-btn", n_clicks=0),
+        html.Div([
+            html.Div(t("ml.presets", lang), className="ml-label mt-3"),
+            html.Div([
+                dbc.Button(t("ml.preset_question", lang), id="ml-preset-question", size="sm", outline=True, color="secondary", className="ml-preset"),
+                dbc.Button(t("ml.preset_climbers", lang), id="ml-preset-climbers", size="sm", outline=True, color="secondary", className="ml-preset"),
+                dbc.Button(t("ml.preset_band", lang), id="ml-preset-band", size="sm", outline=True, color="secondary", className="ml-preset"),
+                dbc.Button(t("ml.preset_band_mid", lang), id="ml-preset-band_mid", size="sm", outline=True, color="secondary", className="ml-preset"),
+                dbc.Button(t("ml.preset_top10", lang), id="ml-preset-top10", size="sm", outline=True, color="secondary", className="ml-preset"),
+                dbc.Button(t("ml.preset_since2010", lang), id="ml-preset-since2010", size="sm", outline=True, color="secondary", className="ml-preset"),
+            ], className="ml-preset-row"),
+        ]),
+    ], className="ml-controls")
+
+
+def _method_notes(lang):
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.H4(t("ml.method_title", lang), className="ml-h4"),
+                html.Ul([html.Li(t(f"ml.method_{k}", lang))
+                         for k in ("rule", "membership", "corridor", "prices", "mcap", "benchmark", "costs")],
+                        className="ml-notes"),
+            ], lg=6),
+            dbc.Col([
+                html.H4(t("ml.caveats_title", lang), className="ml-h4"),
+                html.Ul([html.Li(t(f"ml.caveat_{k}", lang))
+                         for k in ("coverage", "corridor", "missing", "shares", "delisted", "manual")],
+                        className="ml-notes"),
+            ], lg=6),
+        ], className="g-4"),
+        html.P(t("ml.sources", lang), className="text-muted small mb-0 mt-3"),
+    ], className="ml-card ml-notes-card")
+
+
+# ── default run (computed once at import) ────────────────────────────────────
+try:
+    _DEFAULT_RES = _run(**DEFAULTS)
+except Exception:  # data file missing: page still renders
+    _DEFAULT_RES = None
+
+
+def layout(lang="en"):
+    res = _DEFAULT_RES
+    body = results_block(res, lang) if res else html.Div(t("ml.no_data", lang), className="alert alert-warning")
+    return html.Div([
+        html.Div([
+            html.P(t("ml.kicker", lang), className="ml-kicker"),
+            html.H1(t("ml.title", lang), className="ml-title"),
+            html.P(t("ml.intro", lang), className="ml-intro"),
+            html.P(t("ml.intro2", lang), className="ml-intro"),
+        ], className="ml-header"),
+        dbc.Row([
+            dbc.Col(_controls(lang), lg=3, xl=3, md=4, className="mb-3 ml-controls-col"),
+            dbc.Col([
+                dcc.Loading(html.Div(body, id="ml-results"), type="default", color=STRATEGY_COLOR),
+            ], lg=9, xl=9, md=8),
+        ], className="g-3"),
+        _method_notes(lang),
+        dcc.Store(id="ml-lang-holder", data=lang),
+    ], className="ml-page")
+
+
+def register_callbacks(app):
+    _PRESET_IDS = [f"ml-preset-{k}" for k in PRESETS]
+
+    @app.callback(
+        Output("ml-results", "children"),
+        [Input("ml-run", "n_clicks")] + [Input(pid, "n_clicks") for pid in _PRESET_IDS],
+        State("ml-mode", "value"), State("ml-top-n", "value"), State("ml-corridor", "value"),
+        State("ml-hold-graduates", "value"), State("ml-universe", "value"),
+        State("ml-rebalance", "value"), State("ml-weighting", "value"),
+        State("ml-start", "value"), State("ml-end", "value"), State("ml-buffer", "value"),
+        State("ml-max-weight", "value"), State("ml-initial", "value"), State("ml-lang-holder", "data"),
+        prevent_initial_call=True,
+    )
+    def _run_cb(n_run, *args):
+        from dash import ctx
+        states = args[len(_PRESET_IDS):]
+        (mode, top_n, corridor, hold, universe, rebalance, weighting,
+         start, end, buffer, max_w, initial, lang) = states
+        lang = lang or "en"
+        corridor = corridor or [DEFAULTS["rank_lo"], DEFAULTS["rank_hi"]]
+        params = dict(mode=mode, top_n=top_n, rank_lo=corridor[0], rank_hi=corridor[1],
+                      hold_after_graduation=hold, universe=universe, rebalance=rebalance,
+                      weighting=weighting, start_year=start, end_year=end, buffer=buffer,
+                      max_weight=max_w, initial=initial)
+        trig = str(ctx.triggered_id or "")
+        if trig.startswith("ml-preset-"):
+            preset = PRESETS.get(trig.replace("ml-preset-", ""), {})
+            params.update({k: v for k, v in preset.items()})
+        try:
+            res = _run(**params)
+        except Exception as exc:  # e.g. period too short
+            return html.Div(t("ml.error", lang).format(err=str(exc)), className="alert alert-warning")
+        return results_block(res, lang)
+
+    # Presets also update the visible controls.
+    @app.callback(
+        Output("ml-mode", "value"), Output("ml-top-n", "value"), Output("ml-corridor", "value"),
+        Output("ml-hold-graduates", "value"), Output("ml-universe", "value"),
+        Output("ml-rebalance", "value"), Output("ml-weighting", "value"),
+        Output("ml-start", "value"), Output("ml-end", "value"), Output("ml-buffer", "value"),
+        Output("ml-max-weight", "value"),
+        [Input(pid, "n_clicks") for pid in _PRESET_IDS],
+        prevent_initial_call=True,
+    )
+    def _preset_cb(*_):
+        from dash import ctx
+        preset = PRESETS.get(str(ctx.triggered_id or "").replace("ml-preset-", ""))
+        if not preset:
+            return (no_update,) * 11
+        return (preset["mode"], preset["top_n"], [preset["rank_lo"], preset["rank_hi"]],
+                preset["hold_after_graduation"], preset["universe"], preset["rebalance"],
+                preset["weighting"], preset["start_year"], preset["end_year"], preset["buffer"],
+                preset["max_weight"])
+
+    # Show only the controls that belong to the selected strategy.
+    @app.callback(
+        Output("ml-topn-block", "style"), Output("ml-corridor-block", "style"), Output("ml-mode-hint", "children"),
+        Input("ml-mode", "value"), State("ml-lang-holder", "data"),
+    )
+    def _mode_visibility(mode, lang):
+        lang = lang or "en"
+        hidden = {"display": "none"}
+        hint = t(f"ml.hint_{mode or 'top'}", lang)
+        if mode == "top":
+            return {}, hidden, hint
+        return hidden, {}, hint
+
+    app.clientside_callback(
+        """
+        function(vals, fig) {
+            if (!fig || !fig.layout) { return window.dash_clientside.no_update; }
+            var log = vals && vals.indexOf('log') !== -1;
+            var f = JSON.parse(JSON.stringify(fig));
+            f.layout.yaxis = f.layout.yaxis || {};
+            f.layout.yaxis.type = log ? 'log' : 'linear';
+            return f;
+        }
+        """,
+        Output("ml-growth-fig", "figure"),
+        Input("ml-log-scale", "value"),
+        State("ml-growth-fig", "figure"),
+        prevent_initial_call=True,
+    )
