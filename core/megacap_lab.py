@@ -1,5 +1,5 @@
 """
-Mega-cap Lab: rank-based strategy simulation against the S&P 500 total return
+Rank Lab: rank-based strategy simulation against the S&P 500 total return
 index. Three ways to pick the portfolio:
 
 - ``top``:      own the N largest US companies, replace the ones that drop out.

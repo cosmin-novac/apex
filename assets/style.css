@@ -4041,20 +4041,93 @@ button.btn::-moz-focus-inner {
     background: #fff;
     border: 1px solid var(--ml-rule);
     border-radius: 6px;
-    padding: 22px 20px;
+    padding: 18px 18px 16px;
+    /* Sticky and self-scrolling: the Run button stays reachable however long
+       the page of results below gets. */
     position: sticky;
-    top: 16px;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
-.ml-ctl { margin-bottom: 20px; }
+.ml-ctl { margin-bottom: 16px; }
 .ml-label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 0.72rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     font-weight: 600;
     color: var(--ml-muted);
-    margin-bottom: 8px;
+    margin-bottom: 7px;
 }
+.ml-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 1px solid var(--ml-rule);
+    color: var(--ml-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+    letter-spacing: 0;
+    text-transform: none;
+    flex: none;
+}
+.ml-help:hover { background: var(--ml-ink); border-color: var(--ml-ink); color: #fff; }
+/* dbc renders tooltips into <body>, outside .ml-page, so the page-scoped
+   --ml-* tokens are not defined here: use the :root token with a literal
+   fallback, otherwise the background collapses and white text lands on the
+   white page. */
+.ml-tooltip .tooltip-inner {
+    max-width: 300px;
+    text-align: left;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    background-color: var(--ink-color, #161a1f);
+    color: #fff;
+    padding: 9px 11px;
+    border-radius: 5px;
+    box-shadow: 0 6px 18px -8px rgba(15, 23, 42, 0.55);
+}
+.ml-tooltip .tooltip-arrow::before,
+.ml-tooltip .arrow::before { border-right-color: var(--ink-color, #161a1f); }
+.ml-tooltip.show { opacity: 1; }
+.ml-more-toggle, .ml-notes-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: none;
+    border: none;
+    border-top: 1px solid var(--ml-rule);
+    padding: 12px 0 2px;
+    margin-top: 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ml-muted);
+    cursor: pointer;
+}
+.ml-more-toggle:hover, .ml-notes-toggle:hover { color: var(--ml-ink); }
+.ml-notes-toggle {
+    border-top: none;
+    padding: 0;
+    margin: 0;
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ml-ink);
+}
+.ml-more-caret { font-size: 0.9rem; }
 .ml-slider { margin-top: 4px; }
 .ml-radio .form-check { margin-bottom: 4px; }
 .ml-radio .form-check-label { line-height: 1.35; }
@@ -4063,6 +4136,7 @@ button.btn::-moz-focus-inner {
 .ml-controls .Select-control, .ml-controls .form-control { font-size: 0.9rem; }
 .ml-run-btn {
     width: 100%;
+    margin-top: 2px;
     background: var(--ml-ink);
     border: 1px solid var(--ml-ink);
     color: #fff;
@@ -4075,7 +4149,7 @@ button.btn::-moz-focus-inner {
     border-color: var(--ml-accent);
     color: #fff;
 }
-.ml-preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ml-preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
 .ml-controls .ml-preset {
     display: inline-flex;
     align-items: center;
@@ -4187,7 +4261,7 @@ button.btn::-moz-focus-inner {
 .ml-kpi { background: #fff; border: 1px solid var(--ml-rule); margin: -0.5px; }
 
 @media (max-width: 991px) {
-    .ml-controls { position: static; }
+    .ml-controls { position: static; max-height: none; overflow: visible; }
     .ml-header { padding: 28px 0 20px; }
 }
 

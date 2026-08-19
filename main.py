@@ -88,7 +88,7 @@ sidebar = html.Div([
         # Riskbands stays routed, but is hidden from the menu until the feature is ready.
         # dbc.NavLink([html.I(className="bi bi-shield-check me-2"), html.Span("Exit Strategy Riskbands", id="nav-text-riskbands")], href="/riskbands", id="riskbands-link", className="nav-link-modern"),
         dbc.NavLink([html.I(className="bi bi-currency-dollar me-2"), html.Span("The Real Cost", id="nav-text-realcost")], href="/realcost", id="realcost-link", className="nav-link-modern"),
-        dbc.NavLink([html.I(className="bi bi-trophy me-2"), html.Span("Mega-cap Lab", id="nav-text-megacap")], href="/megacap", id="megacap-link", className="nav-link-modern"),
+        dbc.NavLink([html.I(className="bi bi-trophy me-2"), html.Span("Rank Lab", id="nav-text-megacap")], href="/ranks", id="megacap-link", className="nav-link-modern"),
     ], vertical=True, pills=True, className="sidebar-nav"),
     html.Div([
         html.Div([
@@ -177,9 +177,11 @@ app.validation_layout = html.Div([
 
 @app.callback(Output("url", "pathname"), Input("url", "pathname"))
 def redirect_to_default(pathname):
-    routes = {"/", "/compare", "/backtesting", "/portfolio", "/riskbands", "/realcost", "/megacap", "/impressum", "/privacy"}
+    routes = {"/", "/compare", "/backtesting", "/portfolio", "/riskbands", "/realcost", "/ranks", "/impressum", "/privacy"}
     if pathname in (None, ""):
         return "/"
+    if pathname == "/megacap":  # the page was called Mega-cap Lab before
+        return "/ranks"
     if pathname not in routes:
         return "/"
     return dash.no_update
@@ -200,7 +202,7 @@ def render_page_content(pathname, lang_data):
         return riskbands_layout(lang)
     if pathname == "/realcost":
         return real_cost_layout(lang)
-    if pathname == "/megacap":
+    if pathname in ("/ranks", "/megacap"):
         return megacap_layout(lang)
     if pathname == "/impressum":
         return legal_layout("impressum", lang)
@@ -214,7 +216,7 @@ def render_page_content(pathname, lang_data):
     Input("url", "pathname"),
 )
 def set_active_link(pathname):
-    return pathname == "/backtesting", pathname == "/portfolio", pathname == "/compare", pathname == "/realcost", pathname == "/megacap"
+    return pathname == "/backtesting", pathname == "/portfolio", pathname == "/compare", pathname == "/realcost", pathname in ("/ranks", "/megacap")
 
 
 app.clientside_callback(

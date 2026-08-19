@@ -1,4 +1,4 @@
-"""Tests for the Mega-cap Lab simulation engine (core/megacap_lab.py)."""
+"""Tests for the Rank Lab simulation engine (core/megacap_lab.py)."""
 import math
 import os
 

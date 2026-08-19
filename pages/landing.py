@@ -3,7 +3,7 @@ Apex landing page (route "/").
 
 A quiet, editorial home screen: what the app is, what it can do, and where the
 data lives. The hero chart is not decoration; it is the S&P 500 total return
-series that ships with the Mega-cap Lab, drawn from the same data the app runs
+series that ships with the Rank Lab, drawn from the same data the app runs
 its simulations on.
 """
 
@@ -23,7 +23,7 @@ BENCH = "#b45309"
 # (number, title-key, desc-key, link-key, route)
 _CAPABILITIES = [
     ("01", "landing.c2_title", "landing.c2_desc", "landing.c2_cta", "/backtesting"),
-    ("02", "landing.c4_title", "landing.c4_desc", "landing.c4_cta", "/megacap"),
+    ("02", "landing.c4_title", "landing.c4_desc", "landing.c4_cta", "/ranks"),
     ("03", "landing.c3_title", "landing.c3_desc", "landing.c3_cta", "/portfolio"),
     ("04", "landing.c1_title", "landing.c1_desc", "landing.c1_cta", "/compare"),
     ("05", "landing.c5_title", "landing.c5_desc", "landing.c5_cta", "/realcost"),

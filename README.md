@@ -38,7 +38,7 @@ Hosted demo: https://apexportfolio.de/
 - Strategy backtesting with technical indicators and AI-assisted rule generation
 - Long-term investment and withdrawal simulation
 - "The Real Cost" opportunity-cost calculator
-- "Mega-cap Lab": point-in-time rank studies on the S&P 500 (2000-2025) —
+- "Rank Lab": point-in-time rank studies on the S&P 500 (2000-2025) —
   hold the largest N companies, hold a rank corridor such as 400-500, or buy
   the companies climbing into that corridor, each compared with the S&P 500
   total return index
@@ -120,9 +120,9 @@ so there are no static copies to keep in sync.
 - **Backtesting price cache:** public Yahoo Finance / yfinance market data cached
   on disk to speed up repeated runs.
 
-## The Mega-cap Lab dataset
+## The Rank Lab dataset
 
-The Mega-cap Lab (`/megacap`) answers rank questions: what would have happened
+The Rank Lab (`/ranks`) answers rank questions: what would have happened
 if you had only owned the N largest American companies and replaced each one
 that fell out, or if you had instead bought the small end of the index (ranks
 400 to 500) and ridden the companies that climbed out of it? Answering either
@@ -214,12 +214,12 @@ the original:
 ```
 main.py             Dash app entry point (exposes `server` for gunicorn)
 pages/              Page modules (analysis, backtesting, simulator, real cost,
-                    mega-cap lab, landing, legal)
+                    rank lab, landing, legal)
 components/         Shared logic (Trade Republic API + connector, i18n, charts, ...)
 core/              Config and shared utilities (incl. number/currency formatting)
 indicators/         Technical indicators used by backtesting
-tools/              One-off scripts, incl. the Mega-cap Lab dataset build
-data/               Demo portfolio and the derived Mega-cap Lab dataset
+tools/              One-off scripts, incl. the Rank Lab dataset build
+data/               Demo portfolio and the derived Rank Lab dataset
 assets/             CSS, JavaScript, and images served by Dash
 docs/               Additional documentation
 ```

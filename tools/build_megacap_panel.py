@@ -1,9 +1,9 @@
 """
-Build the compact monthly market-cap panel used by the Mega-cap Lab page.
+Build the compact monthly market-cap panel used by the Rank Lab page.
 
 Why this exists
 ---------------
-The Mega-cap Lab simulates "hold the N largest US companies by market cap and
+The Rank Lab simulates "hold the N largest US companies by market cap and
 replace the ones that drop out". That needs point-in-time market caps for
 current AND delisted S&P 500 members, which no free price file contains
 directly. This script derives them from public sources and writes a small
