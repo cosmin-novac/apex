@@ -694,35 +694,49 @@ def register_callbacks(app):
         # Not logged in -> open the login modal in login mode.
         return no_update, True, "login"
     
-    # ── Auto-reset demo mode on login/logout ──
-    # This is the SINGLE source of truth for demo-mode transitions
-    # on auth changes. Everything else only reads demo-mode.
+    # ── Auto-reset demo mode once the vault has settled ──
+    # This is the SINGLE source of truth for demo-mode transitions on auth
+    # changes. Everything else only reads demo-mode.
+    #
+    # Driven by vault-restore-state, which assets/secure_store.js writes AFTER
+    # it has attempted to decrypt the browser vault — never by the raw auth
+    # transition. When this fires, local-portfolio-backup already holds
+    # whatever the vault had for the active user, so deciding demo-vs-real
+    # cannot race the async client-side decrypt (the old race intermittently
+    # showed demo data on reload even though the vault held a real portfolio).
     @app.callback(
         [Output("demo-mode", "data"),
          Output("portfolio-data-store", "data", allow_duplicate=True),
          Output("tr-encrypted-creds", "data", allow_duplicate=True)],
-        Input("current-user-store", "data"),
+        Input("vault-restore-state", "data"),
         [State("demo-mode", "data"),
-         State("url", "pathname"),
          State("local-portfolio-backup", "data")],
         prevent_initial_call=True,
     )
-    def on_auth_change(current_user, demo_mode, pathname, local_backup):
+    def on_vault_settled(restore_state, demo_mode, local_backup):
         """Hydrate the portfolio from local storage and exit demo when data exists.
 
         The browser-only backup is the durable home for synced data; fall back to
         the local pytr cache from a previous sync. TR credentials already live in
         the browser, so they are left untouched (no_update).
         """
-        uid = auth.current_uid(current_user)
-        # Logged out → demo, and clear any browser-held TR credentials.
-        if not uid:
+        if not isinstance(restore_state, dict):
+            raise PreventUpdate
+        uid = restore_state.get("uid")
+        # Locked / logged out → demo, and clear any browser-held TR credentials.
+        if not uid or restore_state.get("status") == "locked":
             return True, _load_demo_json(), None
 
-        backup = _backup_for_uid(local_backup, uid)
+        # Prefer the payload carried in the restore event itself: it is an
+        # Input, so it is always current, while the local-portfolio-backup
+        # State can be a snapshot taken before the restore was committed.
+        backup = (_backup_for_uid(restore_state.get("portfolio"), uid)
+                  or _backup_for_uid(local_backup, uid))
         if backup:
             return False, backup, no_update
 
+        # Vault empty or unreadable: fall back to the local pytr cache from a
+        # previous sync on this machine.
         try:
             from components.tr_api import get_cached_portfolio
             cached = get_cached_portfolio(user_id=uid)

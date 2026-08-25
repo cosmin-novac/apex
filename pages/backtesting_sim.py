@@ -663,7 +663,8 @@ def layout(lang="en"):
                         id="loading-graph",
                         type="circle",
                         children=dcc.Graph(id='backtesting-graph', className="chart-container",
-                                            config={"displayModeBar": False, "displaylogo": False}),
+                                            config={"displayModeBar": False, "displaylogo": False,
+                                                    "responsive": True}),
                     ),
                 ], style={"padding": "0 4px 0 4px", "position": "relative"}),
             ], className="card-modern mb-3"),
@@ -679,8 +680,8 @@ def layout(lang="en"):
                         type="circle",
                         children=dash_table.DataTable(
                             id='backtesting-table',
-                            style_table={'height': '300px', 'overflowY': 'auto'},
-                            style_cell={'textAlign': 'left', 'padding': '8px', 'fontFamily': 'Inter, sans-serif', 'fontSize': '0.85rem'},
+                            style_table={'height': '300px', 'overflowY': 'auto', 'overflowX': 'auto'},
+                            style_cell={'textAlign': 'left', 'padding': '8px', 'fontFamily': 'Inter, sans-serif', 'fontSize': '0.85rem', 'whiteSpace': 'nowrap'},
                             style_header={'fontWeight': '600', 'backgroundColor': '#f8fafc'},
                         )
                     )
@@ -875,7 +876,9 @@ def _load_asset_data(asset_ticker):
 
 
 _CHART_LAYOUT = dict(
-    height=560,
+    # Height comes from .chart-container in style.css (shorter on phones);
+    # autosize + the graph's responsive config make Plotly fill it.
+    autosize=True,
     margin=dict(l=50, r=20, t=60, b=30),
     plot_bgcolor='white',
     paper_bgcolor='white',

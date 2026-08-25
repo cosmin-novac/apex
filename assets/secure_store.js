@@ -13,7 +13,13 @@
  *
  * Exposes two Dash clientside callbacks under window.dash_clientside.apexVault:
  *   persistBackup(portfolioBackup, trCreds, currentUser) -> encrypt + store
- *   restoreBackup(nIntervals, currentUser)               -> decrypt + [portfolio, trCreds]
+ *   restoreBackup(nIntervals, currentUser, curBackup, curCreds)
+ *       -> decrypt + [portfolio, trCreds, restoreState]
+ *
+ * restoreBackup additionally reports {uid, status} into vault-restore-state
+ * ONLY after the vault read has actually finished. Server callbacks that decide
+ * demo-vs-real listen to that store instead of the raw auth transition, which
+ * removes the race between the async decrypt and the server round-trip.
  */
 (function () {
   "use strict";
@@ -89,30 +95,55 @@
         };
         await vaultSet(uid, key, blob);
       } catch (e) {
-        console.warn("[apex vault] persist failed:", e);
+        // A failed persist means the next visit falls back to demo data, so be
+        // loud about it (QuotaExceededError = localStorage full).
+        console.error("[apex vault] persist failed — synced data will NOT survive a reload:", e);
       }
       return NU;
     },
 
-    // Restore + decrypt the blob on login. Output feeds the in-memory portfolio
-    // backup and the (memory) TR credentials store; server callbacks hydrate from
-    // there. Returns [portfolio, trCreds].
-    restoreBackup: async function (nIntervals, currentUser) {
+    // Restore + decrypt the blob on page load / login. Retried by a short
+    // interval (the stay-signed-in key is imported asynchronously, so an early
+    // tick can run before it exists) and re-fired on any identity change.
+    // Returns [portfolio, trCreds, restoreState]; restoreState ({uid, status})
+    // is emitted only when it changes, so downstream callbacks don't churn.
+    restoreBackup: async function (nIntervals, currentUser, curBackup, curCreds) {
       var NU = window.dash_clientside.no_update;
+      // The restored portfolio rides INSIDE the state payload: the server
+      // callback reads it from its Input (always fresh) instead of a State,
+      // because States can be served from a snapshot taken before this
+      // callback's own outputs were committed.
+      function stateOut(uid, status, portfolio) {
+        var sig = (uid || "") + ":" + status;
+        if (window.__apexVaultLastState === sig) return NU;
+        window.__apexVaultLastState = sig;
+        return { uid: uid || null, status: status, portfolio: portfolio || null };
+      }
       try {
         var uid = activeUid();
         var key = activeKey();
-        if (!uid || !key) return [NU, NU];
+        if (!uid || !key) {
+          // Locked: logged out, or the key import hasn't finished yet.
+          window.__apexVaultRestoredFor = null;
+          return [NU, NU, stateOut(null, "locked")];
+        }
+        // Already restored for this uid and the stores still hold data.
+        // (If an auth transition cleared the stores, hydrate them again.)
+        if (window.__apexVaultRestoredFor === uid && (curBackup != null || curCreds != null)) {
+          return [NU, NU, NU];
+        }
         var blob = await vaultGet(uid, key);
-        if (!blob) return [NU, NU];
+        window.__apexVaultRestoredFor = uid;
+        if (!blob) return [NU, NU, stateOut(uid, "empty")];
         return [
           blob.portfolio != null ? blob.portfolio : NU,
           blob.tr_creds != null ? blob.tr_creds : NU,
+          stateOut(uid, "restored", blob.portfolio),
         ];
       } catch (e) {
         console.warn("[apex vault] restore failed:", e);
+        return [NU, NU, stateOut(activeUid(), "error")];
       }
-      return [NU, NU];
     },
   };
 })();

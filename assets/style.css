@@ -665,8 +665,11 @@ textarea::placeholder {
         display: flex;
     }
 
+    /* Phones get a real 16px gutter: the nested bootstrap containers
+       inherit --bs-gutter-x: 0 from the app shell's g-0 row, so this
+       padding is the ONLY thing keeping text off the screen edge. */
     .main-content {
-        padding: 16px 12px !important;
+        padding: 16px !important;
     }
 
     /* Sticky header must sit below mobile header */
@@ -787,11 +790,41 @@ textarea::placeholder {
         font-size: 0.78rem;
         padding: 6px 10px;
     }
+
+    /* Page headers: tighter on phones */
+    .page-header {
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+    }
+    .page-title { font-size: 1.1rem; }
+    .page-subtitle { font-size: 0.78rem; }
+
+    /* Cards: less chrome on small screens */
+    .card-header-modern {
+        padding: 10px 12px;
+        font-size: 0.8rem;
+    }
+
+    /* Backtesting chart: shorter on phones */
+    .chart-container { height: 400px; }
+
+    /* Backtesting date picker: full width instead of overflowing */
+    .compact-date,
+    .compact-date .SingleDatePicker,
+    .compact-date .SingleDatePickerInput,
+    .compact-date .DateInput {
+        width: 100%;
+    }
+
+    /* Data tables scroll inside their card, never the whole page */
+    .dash-table-container .dash-spreadsheet-container {
+        max-width: 100%;
+    }
 }
 
 @media (max-width: 480px) {
     .main-content {
-        padding: 12px 8px !important;
+        padding: 14px 16px !important;
     }
     .preset-col {
         flex: 0 0 50% !important;
@@ -853,8 +886,10 @@ textarea::placeholder {
     padding-top: 8px;
 }
 
-/* Row spacing reset */
-.row {
+/* Row spacing reset. Excludes .g-0 (the app shell row): its columns are
+   p-0, so the negative margin there is uncompensated and shifted every
+   page 8px off the left screen edge. */
+.row:not(.g-0) {
     margin-left: -8px;
     margin-right: -8px;
 }
@@ -1560,6 +1595,12 @@ input.compact-input {
 .chart-container {
     width: 100%;
     min-height: 0;
+    /* Plotly figures using autosize fill this height (see backtesting_sim). */
+    height: 560px;
+}
+.chart-container .js-plotly-plot,
+.chart-container .plot-container {
+    height: 100%;
 }
 
 .table-container {
@@ -3748,6 +3789,30 @@ button.btn::-moz-focus-inner {
     line-height: 1.5;
 }
 
+/* ── Investment Simulator: paired inputs ─────────────────────────────
+   Side by side on phones (short form), stacked in the narrow desktop
+   parameter column. */
+.ps-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 12px;
+}
+/* Bottom-align the paired fields: if one label wraps to two lines, both
+   inputs still sit on the same baseline instead of floating apart. */
+.ps-pair > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+/* Long German labels ("Besteuerungsmethode") fit the half column without a
+   dangling wrapped letter. */
+.ps-pair .input-label {
+    letter-spacing: 0.02em !important;
+}
+@media (min-width: 768px) {
+    .ps-pair { grid-template-columns: minmax(0, 1fr); column-gap: 0; }
+}
+
 /* ============================================================
    Landing page (route "/")
    Editorial layout: warm paper ground, serif headlines, hairline
@@ -3827,8 +3892,7 @@ button.btn::-moz-focus-inner {
 }
 .lp-btn-quiet:hover { color: var(--lp-accent); border-bottom-color: var(--lp-accent); }
 .lp-row-arrow { display: inline-block; transition: transform 0.18s ease; }
-.lp-btn-quiet:hover .lp-row-arrow,
-.lp-row-link:hover .lp-row-arrow { transform: translateX(3px); }
+.lp-btn-quiet:hover .lp-row-arrow { transform: translateX(3px); }
 
 /* ── Hero chart ── */
 .lp-chart-card {
@@ -3857,6 +3921,7 @@ button.btn::-moz-focus-inner {
     font-weight: 600;
     color: var(--lp-ink);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 .lp-chart-caption {
     font-size: 0.8rem;
@@ -3906,50 +3971,65 @@ button.btn::-moz-focus-inner {
     margin-bottom: 26px;
 }
 
-/* ── Capability rows ── */
-.lp-rows { border-top: 1px solid var(--lp-rule); margin-top: 22px; }
-.lp-row-link { text-decoration: none; display: block; }
-.lp-row {
+/* ── Capability cards ── */
+.lp-cards {
     display: grid;
-    grid-template-columns: 56px 1fr auto;
-    gap: 20px;
-    align-items: baseline;
-    padding: 24px 12px 24px 0;
-    border-bottom: 1px solid var(--lp-rule);
-    transition: background 0.18s ease;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin-top: 22px;
 }
-.lp-row-link:hover .lp-row { background: var(--lp-paper); }
-.lp-row-num {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--lp-muted);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.06em;
+.lp-card-link { text-decoration: none; display: block; height: 100%; }
+.lp-card {
+    position: relative;
+    height: 100%;
+    background: #fff;
+    border: 1px solid var(--lp-rule);
+    border-radius: 10px;
+    /* Extra right padding keeps long titles clear of the corner arrow. */
+    padding: 20px 36px 20px 18px;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
-.lp-row-title {
+.lp-card-link:hover .lp-card {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(22, 26, 31, 0.08);
+    border-color: #d4d9e0;
+}
+.lp-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    margin-bottom: 14px;
+}
+.lp-tint-indigo { background: #eef2ff; color: #4f46e5; }
+.lp-tint-amber  { background: #fef3c7; color: #b45309; }
+.lp-tint-green  { background: #d1fae5; color: #047857; }
+.lp-tint-violet { background: #ede9fe; color: #6d28d9; }
+.lp-tint-cyan   { background: #cffafe; color: #0e7490; }
+.lp-card-title {
     font-family: "Source Serif 4", Georgia, serif;
-    font-size: 1.2rem;
+    font-size: 1.08rem;
     font-weight: 600;
     color: var(--lp-ink);
     margin: 0 0 6px;
 }
-.lp-row-link:hover .lp-row-title { color: var(--lp-accent); }
-.lp-row-desc {
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: var(--lp-body);
-    margin: 0;
-    max-width: 46em;
+.lp-card-link:hover .lp-card-title { color: var(--lp-accent); }
+.lp-card-desc { font-size: 0.88rem; line-height: 1.55; color: var(--lp-body); margin: 0; }
+.lp-card-arrow {
+    position: absolute;
+    top: 18px;
+    right: 16px;
+    color: var(--lp-muted);
+    transition: transform 0.16s ease, color 0.16s ease;
 }
-.lp-row-cta {
-    font-size: 0.875rem;
-    font-weight: 550;
-    color: var(--lp-accent);
-    white-space: nowrap;
-}
+.lp-card-link:hover .lp-card-arrow { transform: translateX(3px); color: var(--lp-accent); }
 
 /* ── Data notes ── */
 .lp-note { padding-top: 18px; border-top: 2px solid var(--lp-ink); }
+.lp-note-icon { font-size: 1.1rem; color: var(--lp-ink); margin-bottom: 6px; }
 .lp-note-title {
     font-size: 1rem;
     font-weight: 600;
@@ -3995,11 +4075,35 @@ button.btn::-moz-focus-inner {
     .lp-fact:nth-child(3), .lp-fact:nth-child(4) { border-top: 1px solid var(--lp-rule); }
 }
 @media (max-width: 575px) {
-    .lp-facts { grid-template-columns: 1fr; }
-    .lp-fact + .lp-fact { border-left: none; padding-left: 0; border-top: 1px solid var(--lp-rule); }
-    .lp-row { grid-template-columns: 40px 1fr; }
-    .lp-row-cta { grid-column: 2; margin-top: 10px; }
-    .lp-section { padding-top: 44px; }
+    /* Keep the 2×2 facts grid from the 991px rules; just tighten it. */
+    .lp-hero { padding: 20px 0 24px; }
+    .lp-eyebrow { display: none; }
+    .lp-hero-title { margin-bottom: 14px; }
+    .lp-hero-sub { font-size: 0.95rem; margin-bottom: 20px; }
+    .lp-hero-note { font-size: 0.82rem; margin-top: 14px; }
+    .lp-cta-row { gap: 12px; }
+    .lp-btn-primary { width: 100%; justify-content: center; }
+    .lp-hero-chart-col { margin-top: 18px; }
+    .lp-chart-card { padding: 14px 14px 12px; }
+    .lp-chart-value { font-size: 1.25rem; }
+    .lp-fact { padding-top: 12px; padding-bottom: 12px; }
+    /* Cards go one per row with the icon on the left, so five of them stay
+       a short, scannable list. */
+    .lp-cards { grid-template-columns: 1fr; gap: 10px; }
+    .lp-card {
+        display: grid;
+        grid-template-columns: 40px 1fr;
+        column-gap: 14px;
+        align-items: start;
+        padding: 14px 32px 14px 14px;
+    }
+    .lp-card-icon { margin-bottom: 0; }
+    .lp-card-arrow { top: 14px; right: 14px; }
+    .lp-section { padding-top: 36px; }
+    .lp-section-title { font-size: 1.35rem; }
+    .lp-colophon { margin-top: 40px; }
+    .lp-closing { padding: 20px; margin-top: 8px; }
+    .lp-disclaimer { margin-top: 28px; }
 }
 
 /* ============================================================

@@ -39,6 +39,14 @@ mode, not someone's portfolio.
   `{ portfolio, tr_creds }`, encrypted with the password-derived key. It is
   written whenever the portfolio backup or TR credentials change and restored on
   login. With no key (logged out) it is a no-op, so nothing leaks before login.
+- **Restore handshake:** the vault read is asynchronous, so `restoreBackup`
+  reports its outcome (`{uid, status}`, status ∈ locked/empty/restored/error)
+  into the `vault-restore-state` store *after* the decrypt finishes, and is
+  retried for a few seconds by `vault-restore-interval` (the stay-signed-in key
+  import is itself async). The server-side demo-vs-real decision
+  (`on_vault_settled` in `pages/portfolio_analysis.py`) listens to that store —
+  never to the raw auth transition — so it cannot race the decrypt and fall
+  back to demo while real data exists.
 - `tr-encrypted-creds` is a **session** store (not `localStorage`), hydrated from
   the vault after login and cleared on logout, so credentials are never shared
   across profiles on a shared browser.
