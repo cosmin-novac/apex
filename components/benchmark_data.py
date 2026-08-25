@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Iterable, Tuple
+import numpy as np
 import pandas as pd
 import yfinance as yf
 import threading
@@ -117,29 +118,35 @@ def _signature_transactions(transactions: List[Dict]) -> str:
 
 
 def _load_cache() -> Dict:
-    """Load benchmark cache from disk."""
+    """Load benchmark cache from disk (stale-while-revalidate).
+
+    A stale cache is still LOADED — yesterday's index closes are perfectly
+    good for drawing a chart right now — and a background refresh is kicked
+    off instead of blocking the first chart render on a network fetch.
+    """
     global _benchmark_cache, _cache_loaded
-    
+
     if BENCHMARK_CACHE_FILE.exists():
         try:
             data = json.loads(BENCHMARK_CACHE_FILE.read_text(encoding="utf-8"))
             cached_at = datetime.fromisoformat(data.get("cached_at", "2000-01-01"))
             age_hours = (datetime.now() - cached_at).total_seconds() / 3600
-            
-            if age_hours < CACHE_VALIDITY_HOURS:
-                # Convert cached data back to DataFrames
-                for symbol, records in data.get("benchmarks", {}).items():
-                    if records:
-                        df = pd.DataFrame(records)
-                        df = _normalize_benchmark_df(df)
-                        if df is not None and len(df) > 0:
-                            _benchmark_cache[symbol] = df
-                _cache_loaded = True
-                log.debug("Loaded benchmark cache with %s indices", len(_benchmark_cache))
-                return data
+
+            for symbol, records in data.get("benchmarks", {}).items():
+                if records:
+                    df = pd.DataFrame(records)
+                    df = _normalize_benchmark_df(df)
+                    if df is not None and len(df) > 0:
+                        _benchmark_cache[symbol] = df
+            _cache_loaded = True
+            log.debug("Loaded benchmark cache with %s indices (age %.1f h)",
+                      len(_benchmark_cache), age_hours)
+            if age_hours >= CACHE_VALIDITY_HOURS and _benchmark_cache:
+                threading.Thread(target=prefetch_all_benchmarks, daemon=True).start()
+            return data
         except Exception as e:
             log.debug("Error loading benchmark cache: %s", e)
-    
+
     return {}
 
 
@@ -184,7 +191,10 @@ def fetch_benchmark(symbol: str, start_date: datetime, end_date: datetime = None
     return None
 
 
-def prefetch_all_benchmarks(years_back: int = 6):
+# 12 years covers the deepest window anything asks for (the comparison
+# table's 10-year column plus margin), so the "extend backwards" refetch
+# never triggers for normal use.
+def prefetch_all_benchmarks(years_back: int = 12):
     """Pre-fetch all benchmark data for the last N years."""
     global _benchmark_cache
     
@@ -363,36 +373,41 @@ def simulate_benchmark_investment(
     # Get benchmark prices for the full date range
     start_date = min(d for d, _ in investment_timeline)
     end_date = max(history_dates)
-    
+
     prices_df = get_benchmark_data(benchmark_symbol, start_date, end_date)
     if prices_df is None or len(prices_df) == 0:
         return []
-    
-    # Reset index for easier lookup
-    prices_df = prices_df.reset_index()
-    prices_df['Date'] = pd.to_datetime(prices_df['Date']).dt.tz_localize(None)
-    
-    def get_price_at_date(target_date):
-        """Get price on or before target date."""
-        target = pd.Timestamp(target_date).normalize()
-        valid = prices_df[prices_df['Date'] <= target]
-        if len(valid) == 0:
-            return None
-        return float(valid.iloc[-1]['Close'])
-    
+
+    # Vectorized "price on or before date" lookups. The previous version
+    # filtered the whole price frame per date — O(dates x prices), seconds
+    # per benchmark on a multi-year history; searchsorted makes it O(n log n).
+    price_dates = prices_df.index.values  # sorted naive datetime64 (midnights)
+    price_closes = prices_df["Close"].to_numpy(dtype=float)
+
+    def prices_on_or_before(dates_ns):
+        """Close on or before each date; NaN where none exists yet."""
+        idx = np.searchsorted(price_dates, dates_ns, side="right") - 1
+        out = price_closes[np.clip(idx, 0, None)]
+        return np.where(idx >= 0, out, np.nan)
+
+    inv_dates_ns = np.array(
+        [np.datetime64(pd.Timestamp(d).normalize()) for d, _ in investment_timeline],
+        dtype="datetime64[ns]",
+    )
+    inv_prices = prices_on_or_before(inv_dates_ns)
+
     # Simulate DCA: track cumulative units owned and invested
-    units_timeline = []  # (date, cumulative_units, cumulative_invested)
+    units_timeline_dates = []
+    units_arr = []
+    invested_arr = []
     cumulative_units = 0.0
     cumulative_invested = 0.0
-    
-    for inv_date, amount in investment_timeline:
-        price = get_price_at_date(inv_date)
-        
-        if price and price > 0:
+
+    for (inv_date, amount), price in zip(investment_timeline, inv_prices):
+        if np.isfinite(price) and price > 0:
             if amount > 0:
                 # Buy: add units
-                units_bought = amount / price
-                cumulative_units += units_bought
+                cumulative_units += amount / price
                 cumulative_invested += amount
             else:
                 # Sell: remove proportional units
@@ -400,33 +415,44 @@ def simulate_benchmark_investment(
                     sell_ratio = min(1.0, abs(amount) / cumulative_invested)
                     cumulative_units *= (1 - sell_ratio)
                     cumulative_invested = max(0, cumulative_invested + amount)
-        
-        units_timeline.append((inv_date, cumulative_units, cumulative_invested))
-    
-    # Calculate value at each history date
-    history = []
-    for hist_date in sorted(history_dates):
-        # Find cumulative state at this date
-        units = 0.0
-        invested = 0.0
-        
-        for ut_date, ut_units, ut_invested in units_timeline:
-            if ut_date <= hist_date:
-                units = ut_units
-                invested = ut_invested
-            else:
-                break
-        
-        price = get_price_at_date(hist_date)
-        value = units * price if price and units > 0 else invested
-        
-        history.append({
+
+        units_timeline_dates.append(np.datetime64(pd.Timestamp(inv_date)))
+        units_arr.append(cumulative_units)
+        invested_arr.append(cumulative_invested)
+
+    ut_dates = np.array(units_timeline_dates, dtype="datetime64[ns]")
+    ut_units = np.array(units_arr, dtype=float)
+    ut_invested = np.array(invested_arr, dtype=float)
+
+    hist_sorted = sorted(history_dates)
+    hist_ns = np.array(
+        [np.datetime64(pd.Timestamp(d)) for d in hist_sorted], dtype="datetime64[ns]"
+    )
+    hist_norm_ns = np.array(
+        [np.datetime64(pd.Timestamp(d).normalize()) for d in hist_sorted],
+        dtype="datetime64[ns]",
+    )
+
+    # Cumulative state in effect at each history date (transactions are sorted).
+    state_idx = np.searchsorted(ut_dates, hist_ns, side="right") - 1
+    units_at = np.where(state_idx >= 0, ut_units[np.clip(state_idx, 0, None)], 0.0)
+    invested_at = np.where(state_idx >= 0, ut_invested[np.clip(state_idx, 0, None)], 0.0)
+    hist_prices = prices_on_or_before(hist_norm_ns)
+
+    values = np.where(
+        np.isfinite(hist_prices) & (hist_prices > 0) & (units_at > 0),
+        units_at * hist_prices,
+        invested_at,
+    )
+
+    return [
+        {
             "date": hist_date.strftime("%Y-%m-%d"),
-            "invested": round(invested, 2),
-            "value": round(value, 2),
-        })
-    
-    return history
+            "invested": round(float(inv), 2),
+            "value": round(float(val), 2),
+        }
+        for hist_date, inv, val in zip(hist_sorted, invested_at, values)
+    ]
 
 
 def get_benchmark_simulation(
@@ -486,11 +512,14 @@ def get_benchmark_simulation(
 
 
 def initialize_benchmarks():
-    """Warm benchmark cache on demand in a background thread."""
-    # Load cache first
+    """Warm the benchmark cache in a background thread at app startup.
+
+    _load_cache() serves whatever the disk holds immediately (and refreshes
+    stale data in the background); only a completely empty cache needs the
+    initial fetch here. Either way the first /compare visit never blocks on
+    the network.
+    """
     _load_cache()
-    
-    # If cache is empty or old, fetch in background
     if not _benchmark_cache:
         thread = threading.Thread(target=prefetch_all_benchmarks, daemon=True)
         thread.start()

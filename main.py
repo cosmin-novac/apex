@@ -43,6 +43,14 @@ try:
 except Exception as exc:
     log.warning("Playwright browser bootstrap failed during startup: %s", exc)
 
+# Warm the benchmark price cache in the background so the first /compare
+# visit draws its chart from disk/memory instead of waiting on Yahoo.
+try:
+    from components.benchmark_data import initialize_benchmarks
+    initialize_benchmarks()
+except Exception as exc:
+    log.warning("Benchmark cache warm-up failed during startup: %s", exc)
+
 _dash_duplicate_callback_counter = _count(1)
 
 
@@ -67,12 +75,40 @@ app = dash.Dash(
     external_stylesheets=[
         dbc.themes.BOOTSTRAP,
         dbc.icons.BOOTSTRAP,
-        "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap",
     ],
     suppress_callback_exceptions=True,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
     update_title=None,
 )
+
+# Web fonts load asynchronously (media="print" flip). As a plain stylesheet in
+# external_stylesheets they are render-blocking AND block every Dash script
+# below them, so a slow or blocked fonts.googleapis.com froze the whole app —
+# which showed up as "the chart takes forever". Text renders in the fallback
+# font immediately and swaps when the webfonts arrive.
+_FONTS_HREF = ("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
+               "&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap")
+app.index_string = f"""<!DOCTYPE html>
+<html>
+    <head>
+        {{%metas%}}
+        <title>{{%title%}}</title>
+        {{%favicon%}}
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="{_FONTS_HREF}" media="print" onload="this.media='all'">
+        <noscript><link rel="stylesheet" href="{_FONTS_HREF}"></noscript>
+        {{%css%}}
+    </head>
+    <body>
+        {{%app_entry%}}
+        <footer>
+            {{%config%}}
+            {{%scripts%}}
+            {{%renderer%}}
+        </footer>
+    </body>
+</html>"""
 
 
 sidebar = html.Div([
@@ -156,7 +192,6 @@ app.layout = dbc.Container([
     # across profiles on the same browser.
     dcc.Store(id="tr-encrypted-creds", storage_type="memory"),
     dcc.Store(id="demo-mode", data=True, storage_type="local"),
-    dcc.Interval(id="load-cached-data-interval", interval=500, max_intervals=1),
     # Mirrors the local-auth session uid into current-user-store (components/auth.py).
     dcc.Interval(id="auth-uid-poll", interval=1000),
     settings_modal,
@@ -296,6 +331,13 @@ app.clientside_callback(
         const triggered = (ctx && ctx.triggered && ctx.triggered.length) ? ctx.triggered[0].prop_id.split('.')[0] : null;
         if (triggered === 'mobile-overlay' || triggered === 'url') {
             document.body.classList.remove('sidebar-open');
+            if (triggered === 'url') {
+                // A new route starts at the top, not at the previous page's
+                // scroll position. Desktop scrolls .content-col, mobile the window.
+                const col = document.querySelector('.content-col');
+                if (col) col.scrollTop = 0;
+                window.scrollTo(0, 0);
+            }
             return dash_clientside.no_update;
         }
         if (triggered === 'mobile-menu-btn') document.body.classList.toggle('sidebar-open');

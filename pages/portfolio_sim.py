@@ -322,7 +322,7 @@ def layout(lang="en"):
                             id='table',
                             columns=_table_columns(_df_init, lang),
                             data=_init_table_data,
-                            style_table={'height': '360px', 'overflowY': 'auto', 'overflowX': 'auto'},
+                            style_table={'height': '250px', 'overflowY': 'auto', 'overflowX': 'auto'},
                             style_cell={
                                 'textAlign': 'right', 'padding': '6px 10px',
                                 'fontFamily': 'Inter, sans-serif', 'fontSize': '0.75rem',
