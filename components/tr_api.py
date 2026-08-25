@@ -57,6 +57,44 @@ if not ENCRYPTION_KEY:
 TR_WAF_TOKEN_METHOD = _default_waf_token_method()
 
 
+# Execution prices further than this factor from the same-day market close are
+# treated as unadjusted pre-split prices and dropped from the price series.
+SPLIT_GUARD_MAX_RATIO = 1.5
+
+
+def merge_execution_and_market_prices(
+    market_prices: Dict[str, float],
+    execution_prices: Dict[str, float],
+    label: str = "",
+) -> Dict[str, float]:
+    """Overlay execution prices on daily market closes, split-safely.
+
+    Execution prices are ground truth for what a trade actually cost, so they
+    win on their own dates — unless a same-day market close disagrees by more
+    than SPLIT_GUARD_MAX_RATIO in either direction. Market closes are
+    split-adjusted, raw execution prices are not: after a stock split (e.g.
+    Amazon's 20:1 in 2022) an old execution price is a large multiple of the
+    adjusted close, and forward-filling it would poison every window that
+    starts before the next real data point. Where no market close exists
+    (bonds, instruments without external data) the execution price is the only
+    truth available and is always kept.
+    """
+    merged = dict(market_prices)
+    for date_str, exec_price in execution_prices.items():
+        close = market_prices.get(date_str)
+        if close and exec_price:
+            ratio = exec_price / close
+            if ratio > SPLIT_GUARD_MAX_RATIO or ratio < 1 / SPLIT_GUARD_MAX_RATIO:
+                log.info(
+                    f"  Dropping execution price {exec_price:.2f} on {date_str}"
+                    f"{' for ' + label if label else ''}: market close is "
+                    f"{close:.2f} ({ratio:.1f}x apart — likely a stock split)"
+                )
+                continue
+        merged[date_str] = exec_price
+    return merged
+
+
 def _default_playwright_browsers_dir() -> Path:
     """Pick a browser cache path that survives Azure App Service restarts."""
     if os.name != "nt" and Path("/home").exists():
@@ -1759,9 +1797,10 @@ class TRConnection:
             except Exception as exc:
                 log.warning(f"  Market prices unavailable for {name}: {exc}")
                 market_prices = {}
-            # Execution prices win on their own dates: they are ground truth
-            # for what the position was actually worth at the trade.
-            merged_prices = {**market_prices, **known_prices}
+            # Execution prices win on their own dates — unless the same-day
+            # market close says the raw price is from before a stock split.
+            merged_prices = merge_execution_and_market_prices(
+                market_prices, known_prices, label=name)
             if not merged_prices:
                 continue
             self._write_progress(

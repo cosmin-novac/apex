@@ -685,7 +685,17 @@ def layout(lang="en"):
     
     # TR Connect Modal
     _create_tr_connect_modal(lang),
-    
+
+    # Per-security trading history, opened from the securities table
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle(id="sec-history-title"), close_button=True),
+        dbc.ModalBody(id="sec-history-body", className="pt-2"),
+        dbc.ModalFooter(
+            dbc.Button(t("pa.close", lang), id="sec-history-close",
+                       color="secondary", outline=True, size="sm"),
+        ),
+    ], id="sec-history-modal", size="lg", is_open=False, scrollable=True),
+
     # Hidden stores
     dcc.Store(id="selected-range", data="YTD"),
     dcc.Store(id="securities-sort", data={"col": "value", "asc": False}),
@@ -1719,6 +1729,8 @@ def register_callbacks(app):
                     className="sec-th",
                 )
             )
+        # Trailing details column (not sortable)
+        header_cells.append(html.Th("", className="sec-th"))
         thead = html.Thead(html.Tr(header_cells))
 
         # Rows
@@ -1761,6 +1773,16 @@ def register_callbacks(app):
                          className="text-end sensitive" if r.get("dividends") else "text-end",
                          style={"color": "#10b981"} if r.get("dividends", 0) > 0 else {}),
                 html.Td(_fmt_pct(r.get("allocation"), lang, 1), className="text-end"),
+                html.Td(
+                    html.Button(
+                        html.I(className="bi bi-clock-history"),
+                        id={"type": "sec-detail", "isin": isin},
+                        className="sec-detail-btn",
+                        title=t("pa.trade_history", lang),
+                        **{"aria-label": t("pa.trade_history", lang)},
+                    ) if isin else "",
+                    className="text-end",
+                ),
             ]
             body_rows.append(html.Tr(cells, className="sec-row"))
 
@@ -1803,7 +1825,127 @@ def register_callbacks(app):
         else:
             new_asc = False  # default desc for new column
         return {"col": clicked_col, "asc": new_asc}
-    
+
+    # ── Per-security trading history modal ───────────────────────────────
+    _TRADE_SUBTITLES_BUY = {"Kauforder", "Sparplan ausgeführt", "Limit-Buy-Order",
+                            "Bonusaktien", "Tausch"}
+    _TRADE_SUBTITLES_SELL = {"Verkaufsorder", "Limit-Sell-Order", "Stop-Sell-Order"}
+
+    @app.callback(
+        [Output("sec-history-modal", "is_open"),
+         Output("sec-history-title", "children"),
+         Output("sec-history-body", "children")],
+        [Input({"type": "sec-detail", "isin": dash.ALL}, "n_clicks"),
+         Input("sec-history-close", "n_clicks")],
+        [State("portfolio-data-store", "data"),
+         State("lang-store", "data")],
+        prevent_initial_call=True,
+    )
+    def toggle_security_history(detail_clicks, close_clicks, data_json, lang_data):
+        trig = ctx.triggered_id
+        if trig == "sec-history-close":
+            return False, no_update, no_update
+        # Table re-renders recreate the buttons and re-fire this input with
+        # reset n_clicks; only a real click (a positive value) may open.
+        if not isinstance(trig, dict) or not ctx.triggered or \
+                not ctx.triggered[0].get("value"):
+            raise PreventUpdate
+
+        from components.portfolio_history import extract_isin_from_icon
+
+        lang = get_lang(lang_data)
+        isin = trig.get("isin", "")
+        try:
+            data = json.loads(data_json) if isinstance(data_json, str) else (data_json or {})
+        except Exception:
+            data = {}
+        portfolio = (data or {}).get("data", {}) or {}
+        transactions = portfolio.get("transactions", []) or []
+        name = next((p.get("name") for p in portfolio.get("positions", [])
+                     if p.get("isin") == isin), isin)
+        title = f"{name} · {t('pa.trade_history', lang)}"
+
+        def _num(v):
+            try:
+                return float(v or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        matching = [txn for txn in transactions
+                    if extract_isin_from_icon(txn.get("icon", ""),
+                                              txn.get("title")) == isin]
+        matching.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        if not matching:
+            return True, title, html.Div(t("pa.no_trades", lang),
+                                         className="text-muted text-center py-4")
+
+        bought_sh = sold_sh = bought_eur = sold_eur = 0.0
+        rows = []
+        for txn in matching:
+            subtitle = str(txn.get("subtitle", "") or "")
+            amount = _num(txn.get("amount"))
+            shares = _num(txn.get("shares"))
+            label, icon, badge_color = classify_activity(
+                txn.get("title", ""), subtitle, lang)
+            price = abs(amount) / shares if shares > 0 else None
+            if subtitle in _TRADE_SUBTITLES_BUY and shares > 0:
+                bought_sh += shares
+                bought_eur += abs(amount)
+            elif subtitle in _TRADE_SUBTITLES_SELL and shares > 0:
+                sold_sh += shares
+                sold_eur += abs(amount)
+            try:
+                ts = datetime.fromisoformat(
+                    str(txn.get("timestamp", "")).replace("+0000", "+00:00")
+                ).replace(tzinfo=None)
+                date_str = ts.strftime("%d %b %Y, %H:%M")
+            except Exception:
+                date_str = str(txn.get("timestamp", ""))[:10]
+            rows.append(html.Tr([
+                html.Td(date_str, className="text-nowrap"),
+                html.Td(dbc.Badge([html.I(className=f"bi {icon} me-1"), label],
+                                  color=badge_color, className="sec-history-badge")),
+                html.Td(cu.fmt_num(shares, lang, 4) if shares > 0 else "–",
+                        className="text-end sensitive"),
+                html.Td(cu.fmt_eur(price, lang) if price else "–",
+                        className="text-end"),
+                html.Td(cu.fmt_eur(amount, lang, signed=amount != 0),
+                        className="text-end sensitive fw-semibold",
+                        style={"color": "#10b981" if amount > 0 else "#374151"}),
+            ]))
+
+        header = html.Thead(html.Tr([
+            html.Th(t("pa.date", lang)),
+            html.Th(t("pa.type", lang)),
+            html.Th(t("pa.shares", lang), className="text-end"),
+            html.Th(t("pa.price", lang), className="text-end"),
+            html.Th(t("pa.amount", lang), className="text-end"),
+        ]))
+        summary = None
+        if bought_sh or sold_sh:
+            summary = html.Div([
+                html.Span([
+                    html.I(className="bi bi-cart-plus me-1"),
+                    f"{t('pa.trades_bought', lang)}: ",
+                    html.Span(f"{cu.fmt_num(bought_sh, lang, 4)}"
+                              f" ({cu.fmt_eur(bought_eur, lang)})",
+                              className="sensitive"),
+                ], className="me-4 small text-muted"),
+                html.Span([
+                    html.I(className="bi bi-cart-dash me-1"),
+                    f"{t('pa.trades_sold', lang)}: ",
+                    html.Span(f"{cu.fmt_num(sold_sh, lang, 4)}"
+                              f" ({cu.fmt_eur(sold_eur, lang)})",
+                              className="sensitive"),
+                ], className="small text-muted"),
+            ], className="mb-2")
+        body = html.Div(([summary] if summary is not None else []) + [
+            html.Div(html.Table([header, html.Tbody(rows)],
+                                className="sec-history-table"),
+                     style={"overflowX": "auto"}),
+        ])
+        return True, title, body
+
 
     @app.callback(
         [Output("selected-range", "data")] +
@@ -2544,6 +2686,9 @@ def register_callbacks(app):
 
             const label = next ? 'Show Values' : 'Hide Values';
             const cls = next ? 'portfolio-analysis-page privacy-on' : 'portfolio-analysis-page';
+            // Modals render in a portal on <body>, outside the page wrapper;
+            // mirror the class there so .sensitive blurs inside them too.
+            document.body.classList.toggle('privacy-on', next);
 
             return [next, [icon, label], cls];
         }
