@@ -540,7 +540,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "ml.title":                {"en": "Where in the S&P500 index did the returns come from?",
                                 "de": "Woher kamen die Renditen im S&P500 Index?"},
     "ml.intro":                {"en": "Pick companies by their rank in the index and see what that rule would have earned: the small end where tomorrow's giants start, the companies climbing into it, or just the biggest names. Ranks are point-in-time, so nothing here knows the future.",
-                                "de": "Wähle Unternehmen nach ihrem Rang im Index und sieh, was die Regel verdient hätte: das kleine Ende, wo die Riesen von morgen anfangen, die Aufsteiger dorthin, oder schlicht die größten Namen. Die Ränge sind stichtagsgenau, hier weiß also nichts die Zukunft."},
+                                "de": "Wähle Unternehmen nach ihrem Rang im Index aus und teste, welche Rendite diese Auswahl gebracht hätte: das untere Ende, wo die Riesen von morgen anfangen, die Unternehmen, die gerade dorthin aufsteigen, oder einfach die größten Namen. Die Ränge sind stichtagsgenau — nichts hier kennt die Zukunft."},
     "ml.legend_strategy":      {"en": "Top {n} strategy",           "de": "Top-{n}-Strategie"},
     "ml.legend_sp500":         {"en": "S&P 500 (total return)",     "de": "S&P 500 (Total Return)"},
     "ml.run":                  {"en": "Run simulation",             "de": "Simulation starten"},
