@@ -6,12 +6,15 @@ the user set. These tests hold the maths to that promise.
 """
 
 import sys
+import types
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pages import portfolio_sim
 from pages.portfolio_sim import (
     MC_MAX_SAMPLES,
     _make_mc_figure,
@@ -127,6 +130,26 @@ def test_single_year_and_single_scenario_do_not_crash():
         lo, hi = fig.layout.yaxis.range
         assert len(paths) == samples and len(avg) == years
         assert hi > lo
+
+
+def test_replayed_sp500_growth_still_works(monkeypatch):
+    """Adding returns_sequence reshuffled this branch, so pin it down."""
+    class FakeTicker:
+        def __init__(self, symbol):
+            self.symbol = symbol
+
+        def history(self, start):
+            idx = pd.date_range(start=start, periods=6 * 365, freq="D")
+            return pd.DataFrame({"Close": np.linspace(100, 200, len(idx))}, index=idx)
+
+    monkeypatch.setattr(portfolio_sim, "yf", types.SimpleNamespace(Ticker=FakeTicker))
+    df = simulate_portfolio(100_000, None, 'fixed', 5_000, None, 0.25, 'FIFO',
+                            sp500_start_year=2019, monthly_deposit=250)
+    # Years come from the replayed history, not from a years argument.
+    assert len(df) == 5
+    assert df['Portfolio Value'].notna().all()
+    assert (df['Deposits'] == 3000).all()
+    assert (df['Growth'] > 0).all(), "a rising series must produce growth"
 
 
 def test_sample_cap_is_a_real_bound():
