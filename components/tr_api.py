@@ -612,10 +612,13 @@ class TRConnection:
         for waf_method in self._login_waf_methods():
             try:
                 if waf_method == "playwright":
+                    self._write_progress(10, "Login", "Preparing the secure browser…")
                     ensure_playwright_browser()
+                self._write_progress(40, "Login", "Requesting the code from Trade Republic…")
                 api = self._new_api(waf_token=waf_method)
                 countdown = api.initiate_weblogin()
                 self.api = api
+                self._write_progress(95, "Login", "Code sent — check your Trade Republic app")
                 return countdown
             except Exception as exc:
                 last_error = exc
@@ -2895,6 +2898,10 @@ class TRConnection:
         Returns encrypted credentials for browser storage.
         """
         try:
+            # First write wins the progress display: without it the poll shows
+            # the initiate phase's stale "code sent" line during verification.
+            self._write_progress(2, "Login", "Verifying the code…")
+
             if not self.api and not self._restore_pending_login():
                 return {"success": False, "error": "No login in progress. Please start again."}
 

@@ -15,9 +15,6 @@ else:
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output, State
-import dash._callback as _dash_callback
-import dash._utils as _dash_utils
-from itertools import count as _count
 from flask import send_from_directory
 
 from pages.backtesting_sim import layout as backtesting_layout, register_callbacks as register_backtesting_callbacks
@@ -50,24 +47,6 @@ try:
     initialize_benchmarks()
 except Exception as exc:
     log.warning("Benchmark cache warm-up failed during startup: %s", exc)
-
-_dash_duplicate_callback_counter = _count(1)
-
-
-def _stable_create_callback_id(output):
-    def _concat(x):
-        callback_id = x.component_id_str().replace(".", "\.") + "." + x.component_property
-        if x.allow_duplicate:
-            callback_id += f"@dup{next(_dash_duplicate_callback_counter):04d}"
-        return callback_id
-
-    if isinstance(output, (list, tuple)):
-        return ".." + "...".join(_concat(x) for x in output) + ".."
-    return _concat(output)
-
-
-_dash_utils.create_callback_id = _stable_create_callback_id
-_dash_callback.create_callback_id = _stable_create_callback_id
 
 app = dash.Dash(
     __name__,
