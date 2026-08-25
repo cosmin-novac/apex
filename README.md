@@ -80,6 +80,22 @@ python main.py
 
 Then open http://127.0.0.1:8888/.
 
+### Docker
+
+No local Python or Playwright setup needed — the image bakes in Python 3.11,
+every dependency, and the Chromium runtime used for Trade Republic sync:
+
+```bash
+cp .env.example .env   # optional; set TR_ENCRYPTION_KEY if you use TR sync
+docker compose build
+docker compose up
+```
+
+Then open http://127.0.0.1:8888/. The named volume `apex-data` persists the
+Trade Republic web-session cache (so reconnects can skip a fresh OTP login)
+and the backtesting price cache across restarts. To use a different host
+port, change the `ports` mapping in `docker-compose.yml`.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and adjust as needed. All variables are optional

@@ -280,10 +280,16 @@ def _modern_web_login_supported() -> bool:
 
 
 def _playwright_browser_install_needed() -> bool:
-    """Return True when the configured browser cache is still empty."""
-    return not any(PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-linux/chrome")) and not any(
-        PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-win/chrome.exe")
-    ) and not any(PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-mac/Chromium.app"))
+    """Return True when the configured browser cache is still empty.
+
+    Playwright ≥1.49 ships Chromium in platform-suffixed folders
+    (chrome-linux64, chrome-win64, …); older releases used chrome-linux /
+    chrome-win / chrome-mac. Glob both so an already-installed browser is
+    recognised and startup never re-downloads ~150 MB for nothing.
+    """
+    return not any(PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-linux*/chrome")) and not any(
+        PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-win*/chrome.exe")
+    ) and not any(PLAYWRIGHT_BROWSERS_DIR.glob("chromium-*/chrome-mac*/Chromium.app"))
 
 
 def _running_on_azure_linux() -> bool:

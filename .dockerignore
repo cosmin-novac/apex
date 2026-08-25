@@ -1,0 +1,30 @@
+# Keep the build context (and image) free of local-only files.
+.git
+.github
+.venv
+.env
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.vscode
+**/__pycache__
+*.py[cod]
+
+# Runtime/private data and caches (never bake into an image)
+data/raw
+data/asset_cache
+data/private
+data/banksync_server
+data/banksync_users.json
+data/.banksync_master.key
+apex-publish-profile.xml
+
+# Deploy configs of other targets
+azure-pipelines.yml
+.slugignore
+.webappignore
+
+# Docker files themselves aren't needed inside the image
+Dockerfile
+docker-compose.yml
+.dockerignore
