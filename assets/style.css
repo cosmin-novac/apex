@@ -2579,8 +2579,10 @@ hr {
     background: rgba(99, 102, 241, 0.12);
 }
 
-/* Minimal main chart: details live in the side panel instead of Plotly hover boxes */
-#main-portfolio-chart-v2 .hoverlayer,
+/* The donut swaps its center text on hover (chart_logger.js), so its Plotly
+   hover box stays hidden. The main chart's unified tooltip must be VISIBLE —
+   an old "details live in the side panel" rule hid it here and silently
+   defeated the hovertemplates the chart ships. */
 #holdings-donut-chart .hoverlayer {
     display: none !important;
 }
@@ -2718,14 +2720,15 @@ hr {
     filter: blur(7px);
 }
 
-/* Value tab (€ y-axis): blur the axis numbers and the hover values, not the
-   chart. The performance/drawdown tabs are % and stay untouched. */
+/* Value tab (€ y-axis): blur the axis numbers and suppress the €-only
+   tooltip, not the chart. A blurred floating tooltip reads as a glitch, so
+   it is hidden outright while values are hidden. The performance/drawdown
+   tabs are % and stay untouched. */
 .privacy-on .money-axis g.ytick text {
     filter: blur(5px);
 }
-.privacy-on .money-axis .hoverlayer,
-.privacy-on #holdings-donut-chart .hoverlayer {
-    filter: blur(6px);
+.privacy-on .money-axis .hoverlayer {
+    display: none;
 }
 
 /* ===== Sticky Header Bar (Parqet-style) ===== */
