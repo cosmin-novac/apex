@@ -99,6 +99,62 @@ def bench_trailing_return(bdf, days_ago):
     return (current - past_val) / past_val * 100 if past_val > 0 else None
 
 
+def range_start_date(selected_range, end_date):
+    """Start of the header timeframe window ending at *end_date*.
+
+    Returns None for 'max' — callers treat that as "whole history"."""
+    r = (selected_range or "max").lower()
+    if r == "1w":
+        return end_date - timedelta(days=7)
+    if r == "1m":
+        return end_date - timedelta(days=30)
+    if r == "ytd":
+        return datetime(end_date.year, 1, 1)
+    if r == "1y":
+        return end_date - timedelta(days=365)
+    if r == "3y":
+        return end_date - timedelta(days=365 * 3)
+    if r == "5y":
+        return end_date - timedelta(days=365 * 5)
+    return None
+
+
+def range_label(selected_range, lang):
+    """Short human label for the header timeframe ('1M', 'YTD', … / 'Gesamt')."""
+    r = (selected_range or "max").lower()
+    if r == "max":
+        return t("pa.total", lang)
+    return r.upper()
+
+
+def position_range_pl(price_history, quantity, start_date):
+    """(P&L €, P&L %) of the current holding over the selected window.
+
+    Price-based: quantity × (last price − price at the window start). A
+    position first priced inside the window (bought there) measures from its
+    first price, i.e. since purchase. Returns (None, None) when there is no
+    usable price history — the table shows a dash instead of silently falling
+    back to the all-time number under a range-labeled column."""
+    points = price_history or []
+    if not points or not quantity:
+        return None, None
+    start_str = start_date.strftime("%Y-%m-%d")
+    p_now = points[-1].get("price")
+    p_start = None
+    for pt in points:  # ascending by date
+        if pt.get("date", "") <= start_str:
+            p_start = pt.get("price")
+        else:
+            break
+    if p_start is None:
+        p_start = points[0].get("price")
+    if not p_now or not p_start or p_start <= 0:
+        return None, None
+    pl = quantity * (p_now - p_start)
+    pct = (p_now / p_start - 1) * 100
+    return round(pl, 2), round(pct, 2)
+
+
 def classify_activity(title_raw, subtitle_raw, lang):
     """Return (label, icon, badge_color) for a Trade Republic activity row.
 
@@ -587,8 +643,11 @@ def layout(lang="en"):
             dbc.Card([
                 dbc.CardHeader([
                     html.I(className="bi bi-bar-chart me-2"),
-                    t("pa.returns_summary", lang)
-                ], className="card-header-modern"),
+                    t("pa.returns_summary", lang),
+                    # Names the header timeframe the summary is scoped to.
+                    dbc.Badge(id="rendite-range-badge", className="ms-auto",
+                              color="light", text_color="secondary"),
+                ], className="card-header-modern d-flex align-items-center"),
                 dbc.CardBody([
                     html.Div(id="rendite-breakdown")
                 ], className="py-2"),
@@ -1206,12 +1265,11 @@ def register_callbacks(app):
          Output("metric-total-return", "children"),
          Output("metric-total-return", "className"),
          Output("metric-total-abs", "children")],
-        [Input("portfolio-data-store", "data"),
-         Input("selected-range", "data")],
+        Input("portfolio-data-store", "data"),
         State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_return_metrics(data_json, selected_range, lang_data):
+    def update_return_metrics(data_json, lang_data):
         lang = get_lang(lang_data)
         default = ("--", "metric-value", "",
                    "--", "metric-value", "",
@@ -1235,48 +1293,30 @@ def register_callbacks(app):
             
             df['date'] = pd.to_datetime(df['date'])
             df = df.sort_values('date')
-            
-            # ── Apply timeframe filter ──
-            selected_range = (selected_range or "max").lower()
-            end_date = df['date'].max()
-            if selected_range == "1w":
-                start_date = end_date - timedelta(days=7)
-            elif selected_range == "1m":
-                start_date = end_date - timedelta(days=30)
-            elif selected_range == "ytd":
-                start_date = datetime(end_date.year, 1, 1)
-            elif selected_range == "1y":
-                start_date = end_date - timedelta(days=365)
-            elif selected_range == "3y":
-                start_date = end_date - timedelta(days=365*3)
-            elif selected_range == "5y":
-                start_date = end_date - timedelta(days=365*5)
-            else:
-                start_date = df['date'].min()
 
-            df_filtered = df[df['date'] >= start_date].copy()
-            if len(df_filtered) == 0:
-                return default
-            
-            current_value = df_filtered['value'].iloc[-1]
-            
+            # These cards carry their OWN windows (1M/3M/YTD/Total), so they
+            # deliberately ignore the header timeframe pills: switching the
+            # chart to 1W must not change what "3M Rendite" means.
+            end_date = df['date'].max()
+            current_value = df['value'].iloc[-1]
+
             # Get total invested (from latest 'invested' field or fallback to portfolio data)
-            total_invested = df_filtered['invested'].iloc[-1] if 'invested' in df_filtered.columns else current_value
-            
+            total_invested = df['invested'].iloc[-1] if 'invested' in df.columns else current_value
+
             # Also try getting from portfolio data directly
             portfolio = data.get("data", {})
             if portfolio.get("investedAmount", 0) > 0:
                 total_invested = portfolio["investedAmount"]
-            
+
             def calc_return_on_investment(days_ago):
                 """Calculate return and absolute change compared to invested amount at that time."""
                 target_date = end_date - timedelta(days=days_ago)
-                past_data = df_filtered[df_filtered['date'] <= target_date]
+                past_data = df[df['date'] <= target_date]
                 if len(past_data) == 0:
-                    past_data = df_filtered.iloc[:1]  # fallback to first row in filtered range
-                
+                    past_data = df.iloc[:1]  # portfolio younger than the window
+
                 invested_then = past_data['invested'].iloc[-1] if 'invested' in past_data.columns else past_data['value'].iloc[-1]
-                
+
                 if invested_then > 0 and total_invested > 0:
                     current_profit = current_value - total_invested
                     past_profit = past_data['value'].iloc[-1] - invested_then
@@ -1284,11 +1324,11 @@ def register_callbacks(app):
                     pct_change = abs_change / total_invested * 100
                     return pct_change, abs_change
                 return 0, 0
-            
-            # YTD (relative to filtered range)
+
+            # YTD (since January 1st)
             ytd_return, ytd_abs = 0, 0
-            ytd_start = df_filtered[df_filtered['date'] >= datetime(datetime.now().year, 1, 1)]
-            if len(ytd_start) > 0 and 'invested' in df_filtered.columns:
+            ytd_start = df[df['date'] >= datetime(datetime.now().year, 1, 1)]
+            if len(ytd_start) > 0 and 'invested' in df.columns:
                 ytd_invested = ytd_start['invested'].iloc[0]
                 ytd_value = ytd_start['value'].iloc[0]
                 ytd_profit = ytd_value - ytd_invested
@@ -1296,12 +1336,18 @@ def register_callbacks(app):
                 ytd_abs = current_profit - ytd_profit
                 if total_invested > 0:
                     ytd_return = ytd_abs / total_invested * 100
-            
-            # Total return within filtered range
-            first_value = df_filtered['value'].iloc[0]
-            first_invested = df_filtered['invested'].iloc[0] if 'invested' in df_filtered.columns else first_value
+
+            # Total return over the whole history, as TWR — the same number
+            # the Performance tab and the comparison table's Total column
+            # report. (Profit divided by the first invested amount explodes
+            # for portfolios that started tiny.)
+            from components.performance_calc import calculate_twr_series
+            values_list = df['value'].tolist()
+            invested_list = df['invested'].tolist() if 'invested' in df.columns else values_list
+            total_return = calculate_twr_series(values_list, invested_list)[-1]
+            first_value = df['value'].iloc[0]
+            first_invested = df['invested'].iloc[0] if 'invested' in df.columns else first_value
             total_abs = (current_value - total_invested) - (first_value - first_invested)
-            total_return = (total_abs / first_invested * 100) if first_invested > 0 else 0
             
             m1_return, m1_abs = calc_return_on_investment(30)
             m3_return, m3_abs = calc_return_on_investment(90)
@@ -1331,14 +1377,19 @@ def register_callbacks(app):
          Output("recent-activities-list", "children"),
          Output("securities-data", "data"),
          Output("holdings-count", "children"),
-         Output("winners-losers-badge", "children")],
+         Output("winners-losers-badge", "children"),
+         Output("rendite-range-badge", "children")],
         [Input("portfolio-data-store", "data"),
-         Input("asset-class-filter", "value")],
+         Input("asset-class-filter", "value"),
+         # The Returns Summary and the securities P&L follow the header
+         # timeframe; both label the window so nobody has to guess.
+         Input("selected-range", "data")],
         State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_rendite_and_lists(data_json, asset_class, lang_data):
+    def update_rendite_and_lists(data_json, asset_class, selected_range, lang_data):
         lang = get_lang(lang_data)
+        rng_label = range_label(selected_range, lang)
         if not data_json:
             return (
                 html.Div(t("pa.no_data_synced", lang), className="text-muted text-center py-3"),
@@ -1346,6 +1397,7 @@ def register_callbacks(app):
                 [],
                 "0",
                 "",
+                rng_label,
             )
 
         try:
@@ -1361,12 +1413,44 @@ def register_callbacks(app):
             if selected_classes and set(selected_classes) != all_classes and set(selected_classes) != default_classes:
                 positions = [p for p in positions if get_position_asset_class(p) in selected_classes]
             transactions = portfolio.get("transactions", [])
+            history = portfolio.get("history", []) or []
 
             total_value = float(portfolio.get("totalValue", 0))
             invested = float(portfolio.get("investedAmount", 0))
             cash = float(portfolio.get("cash", 0))
             profit = float(portfolio.get("totalProfit", 0))
             profit_pct = float(portfolio.get("totalProfitPercent", 0))
+
+            # Header timeframe window (None/'max' → whole history).
+            end_dt = datetime.now()
+            if history:
+                try:
+                    end_dt = datetime.strptime(history[-1]["date"], "%Y-%m-%d")
+                except Exception:
+                    pass
+            rng_start = range_start_date(selected_range, end_dt)
+            rng_start_str = rng_start.strftime("%Y-%m-%d") if rng_start else None
+
+            # Price gains over the window, from the portfolio history: value
+            # change minus capital added. On 'max' the portfolio totals apply.
+            if rng_start_str and history:
+                def _hist_at(key, date_str):
+                    val = None
+                    for row in history:
+                        if row.get("date", "") <= date_str:
+                            val = row.get(key)
+                        else:
+                            break
+                    if val is None:
+                        val = history[0].get(key)
+                    return float(val or 0)
+
+                v_start = _hist_at("value", rng_start_str)
+                i_start = _hist_at("invested", rng_start_str)
+                v_now = float(history[-1].get("value", total_value) or 0)
+                i_now = float(history[-1].get("invested", invested) or 0)
+                profit = (v_now - v_start) - (i_now - i_start)
+                profit_pct = (profit / v_start * 100) if v_start > 0 else 0.0
 
             def fmt_eur(val):
                 return cu.fmt_eur(val, lang, signed=val != 0)
@@ -1407,6 +1491,12 @@ def register_callbacks(app):
             dividends_per_isin = {}
 
             for txn in transactions:
+                # Only transactions inside the selected window count toward
+                # the Returns Summary (and the per-position dividends).
+                if rng_start_str:
+                    ts = str(txn.get("timestamp", ""))[:10]
+                    if ts and ts < rng_start_str:
+                        continue
                 title = lower_text(txn, "title")
                 subtitle = lower_text(txn, "subtitle")
                 amount = parse_amount(txn.get("amount"))
@@ -1513,24 +1603,31 @@ def register_callbacks(app):
 
             recent_list = html.Div(recent_items) if recent_items else html.Div(t("pa.no_recent_activity", lang), className="text-muted text-center py-3")
 
-            # Build securities data for the HTML table
+            # Build securities data for the HTML table. P&L follows the header
+            # timeframe: price-based over the window, all-time on 'max'.
+            pos_histories = portfolio.get("positionHistories", {}) or {}
             sec_rows = []
             winners = 0
             losers = 0
             for pos in sorted(positions, key=lambda x: x.get("value", 0), reverse=True):
                 value = float(pos.get("value", 0))
                 invested_pos = float(pos.get("invested", 0))
-                profit_pos = float(pos.get("profit", value - invested_pos))
-                profit_pct_pos = (profit_pos / invested_pos * 100) if invested_pos > 0 else 0
                 allocation = (value / total_value * 100) if total_value > 0 else 0
                 pos_isin = pos.get("isin", "")
                 pos_dividends = dividends_per_isin.get(pos_isin, 0)
                 qty = float(pos.get("quantity", 0))
                 avg_buy = float(pos.get("averageBuyIn", 0))
 
-                if profit_pos > 0:
+                if rng_start is not None:
+                    ph = (pos_histories.get(pos_isin) or {}).get("history")
+                    profit_pos, profit_pct_pos = position_range_pl(ph, qty, rng_start)
+                else:
+                    profit_pos = float(pos.get("profit", value - invested_pos))
+                    profit_pct_pos = (profit_pos / invested_pos * 100) if invested_pos > 0 else 0
+
+                if profit_pos is not None and profit_pos > 0:
                     winners += 1
-                elif profit_pos < 0:
+                elif profit_pos is not None and profit_pos < 0:
                     losers += 1
 
                 sec_rows.append({
@@ -1540,8 +1637,8 @@ def register_callbacks(app):
                     "qty": round(qty, 4),
                     "avg_buy": round(avg_buy, 2),
                     "value": round(value, 2),
-                    "profit": round(profit_pos, 2),
-                    "profit_pct": round(profit_pct_pos, 2),
+                    "profit": round(profit_pos, 2) if profit_pos is not None else None,
+                    "profit_pct": round(profit_pct_pos, 2) if profit_pct_pos is not None else None,
                     "dividends": round(pos_dividends, 2) if pos_dividends else 0,
                     "allocation": round(allocation, 1),
                 })
@@ -1552,7 +1649,7 @@ def register_callbacks(app):
                 html.Span(f"\u2193{losers}", style={"color": "#ef4444", "fontWeight": "600", "fontSize": "0.8rem"}),
             ])
 
-            return rendite_rows, recent_list, sec_rows, str(len(positions)), wl_badge
+            return rendite_rows, recent_list, sec_rows, str(len(positions)), wl_badge, rng_label
 
         except Exception:
             return (
@@ -1561,6 +1658,7 @@ def register_callbacks(app):
                 [],
                 "0",
                 "",
+                rng_label,
             )
 
     # ── Securities HTML table with real <img> logos ──────────────────────
@@ -1595,7 +1693,8 @@ def register_callbacks(app):
             return "–"
         return cu.fmt_pct(v, lang, decimals=decimals)
 
-    def _build_securities_html(rows, sort_col="value", sort_asc=False, lang="en"):
+    def _build_securities_html(rows, sort_col="value", sort_asc=False, lang="en",
+                               rng_label=None):
         """Build an html.Table with inline <img> logos and clickable sort headers."""
         # Sort
         rows = sorted(rows, key=lambda r: r.get(sort_col, 0) or 0,
@@ -1605,6 +1704,9 @@ def register_callbacks(app):
         header_cells = []
         for col_id, align in _SEC_COL_IDS:
             col_label = t(_SEC_COL_KEYS.get(col_id, col_id), lang)
+            # The P&L columns follow the header timeframe — say so.
+            if rng_label and col_id in ("profit", "profit_pct", "dividends"):
+                col_label = f"{col_label} ({rng_label})"
             arrow = ""
             if col_id == sort_col:
                 arrow = " ↑" if sort_asc else " ↓"
@@ -1624,9 +1726,10 @@ def register_callbacks(app):
         for r in rows:
             isin = r.get("isin", "")
             name = r.get("name", "?")
-            profit = r.get("profit", 0)
-            profit_pct = r.get("profit_pct", 0)
-            pnl_color = "#10b981" if profit >= 0 else "#ef4444"
+            profit = r.get("profit")
+            profit_pct = r.get("profit_pct")
+            pnl_color = "#6b7280" if profit is None else (
+                "#10b981" if profit >= 0 else "#ef4444")
 
             # Logo: check local file
             logo_el = None
@@ -1668,15 +1771,19 @@ def register_callbacks(app):
         Output("securities-table-container", "children"),
         Input("securities-data", "data"),
         Input("securities-sort", "data"),
-        State("lang-store", "data"),
+        [State("lang-store", "data"),
+         # State is enough: a range change refreshes securities-data, which
+         # re-fires this render with the current range already selected.
+         State("selected-range", "data")],
     )
-    def render_securities_table(sec_data, sort_state, lang_data):
+    def render_securities_table(sec_data, sort_state, lang_data, selected_range):
         lang = get_lang(lang_data)
         if not sec_data:
             return html.Div(t("pa.no_securities", lang), className="text-muted text-center py-3")
         col = sort_state.get("col", "value") if sort_state else "value"
         asc = sort_state.get("asc", False) if sort_state else False
-        return _build_securities_html(sec_data, col, asc, lang=lang)
+        return _build_securities_html(sec_data, col, asc, lang=lang,
+                                      rng_label=range_label(selected_range, lang))
 
     # Sort click handler (pattern-matching callback)
     @app.callback(
