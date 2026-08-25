@@ -406,17 +406,30 @@ def simulate_benchmark_investment(
     for (inv_date, amount), price in zip(investment_timeline, inv_prices):
         if np.isfinite(price) and price > 0:
             if amount > 0:
-                # Buy: add units
+                # Buy: the same euros buy benchmark units at that day's close.
                 cumulative_units += amount / price
                 cumulative_invested += amount
             else:
-                # Sell: remove proportional units
-                if cumulative_invested > 0:
-                    sell_ratio = min(1.0, abs(amount) / cumulative_invested)
-                    cumulative_units *= (1 - sell_ratio)
-                    cumulative_invested = max(0, cumulative_invested + amount)
+                # Sell: mirror the real action 1:1 — sell exactly |amount| €
+                # worth of the benchmark at that day's close. (Previously this
+                # removed the fraction |amount|/invested of the UNITS, i.e. a
+                # share of the cost basis: with the simulated position in
+                # profit that drained more than the real sale took out, in
+                # loss less — systematically skewing the comparison at every
+                # sell.) Capped at liquidation if the simulated position is
+                # worth less than the sale.
+                if cumulative_units > 0:
+                    cumulative_units -= min(cumulative_units, abs(amount) / price)
+                    # Invested drops by the full sale amount so the TWR flow
+                    # detection (delta invested) strips the sale, matching the
+                    # portfolio's own accounting.
+                    cumulative_invested = max(0.0, cumulative_invested + amount)
 
-        units_timeline_dates.append(np.datetime64(pd.Timestamp(inv_date)))
+        # Normalized to midnight: the portfolio history counts a trade on its
+        # calendar day (change_date.date() <= date), so the mirrored state
+        # must too — with the raw intraday timestamp, every history point ON
+        # a trade day missed that day's trade.
+        units_timeline_dates.append(np.datetime64(pd.Timestamp(inv_date).normalize()))
         units_arr.append(cumulative_units)
         invested_arr.append(cumulative_invested)
 
