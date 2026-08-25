@@ -1,6 +1,8 @@
 import dash_bootstrap_components as dbc
-from dash import dcc, html, dash_table, no_update
+from dash import ctx, dcc, html, dash_table, no_update
 from dash.dependencies import Input, Output, State
+import math
+import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from dash.exceptions import PreventUpdate
@@ -14,8 +16,16 @@ from core import utils as cu
 
 def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annual_withdrawal,
                        years_to_simulate, tax_rate=0.25, tax_method='FIFO', sp500_start_year=None,
-                       monthly_deposit=0.0):
-    if sp500_start_year:
+                       monthly_deposit=0.0, returns_sequence=None):
+    """Project a portfolio year by year.
+
+    ``returns_sequence`` supplies one return per year (used by the Monte
+    Carlo mode); without it every year grows at ``annual_growth_rate``, or
+    at the replayed S&P 500 return when ``sp500_start_year`` is given.
+    """
+    if returns_sequence is not None:
+        years_to_simulate = len(returns_sequence)
+    elif sp500_start_year:
         sp500 = yf.Ticker("^GSPC")
         sp500_data = sp500.history(start=f"{sp500_start_year}-01-01")
         annual_returns = sp500_data['Close'].resample('YE').last().pct_change().dropna()
@@ -27,7 +37,10 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
 
     for year in range(1, years_to_simulate + 1):
         starting_value = current_value
-        growth_rate = annual_returns.iloc[year - 1] if sp500_start_year else annual_growth_rate
+        if returns_sequence is not None:
+            growth_rate = returns_sequence[year - 1]
+        else:
+            growth_rate = annual_returns.iloc[year - 1] if sp500_start_year else annual_growth_rate
 
         if monthly_deposit > 0:
             # Contributions land at each month's end, so they compound within
@@ -70,6 +83,57 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+# ────────────────────────────  MONTE CARLO  ────────────────────────────
+# Bounds keep one click from spawning a minutes-long job on the server.
+MC_MAX_SAMPLES = 500
+MC_MAX_YEARS = 100
+
+
+def monte_carlo_returns(target_rate, volatility, years, samples, seed=7):
+    """Draw yearly returns that compound to ``target_rate`` in the long run.
+
+    Each year is ``exp(mu + volatility*Z) - 1`` with ``mu = ln(1 + target)``
+    and Z standard normal, i.e. lognormal returns whose *log* return averages
+    exactly ``mu``. Two consequences make this the honest model:
+
+    • The compound growth of a path converges to the target rate as the
+      horizon grows. A 7 % target stays a 7 % long-run rate rather than
+      drifting up by the volatility drag a naive normal draw would add.
+    • A yearly return can never be worse than -100 %, so no path produces a
+      negative portfolio.
+
+    The draw is seeded, so the same inputs always produce the same picture.
+    """
+    mu = math.log(1.0 + target_rate)
+    rng = np.random.default_rng(seed)
+    return np.exp(mu + volatility * rng.standard_normal((samples, years))) - 1.0
+
+
+def simulate_monte_carlo(current_value, annual_growth_rate, withdrawal_type, annual_withdrawal,
+                         years_to_simulate, tax_rate=0.25, tax_method='FIFO',
+                         monthly_deposit=0.0, volatility=0.15, samples=200, seed=7):
+    """Run ``samples`` random-return projections of the same portfolio.
+
+    Returns ``(paths, average_df)``: one portfolio-value series per scenario,
+    and the year-by-year average across all of them. Every scenario runs
+    through the same withdrawal and tax engine as the single-run simulation.
+    """
+    draws = monte_carlo_returns(annual_growth_rate, volatility,
+                                years_to_simulate, samples, seed)
+    frames = [
+        simulate_portfolio(
+            current_value, annual_growth_rate, withdrawal_type, annual_withdrawal,
+            years_to_simulate, tax_rate, tax_method,
+            monthly_deposit=monthly_deposit, returns_sequence=row.tolist(),
+        )
+        for row in draws
+    ]
+    paths = [f['Portfolio Value'].tolist() for f in frames]
+    average_df = (pd.concat(frames, ignore_index=True)
+                  .groupby('Year', as_index=False).mean().round(2))
+    return paths, average_df
 
 
 # ──────────────────────────────  CHART  ──────────────────────────────
@@ -126,11 +190,83 @@ _REF_LINES = {
 }
 
 
+# The scenario cloud is deliberately grey: it is context, not a second
+# category competing for identity. Against it the average curve keeps the
+# portfolio hue it wears in the deterministic chart (same entity, same
+# colour), separated by ΔE ≈ 30 for normal vision and every CVD type. The
+# legend plus the year-by-year table below name both series in text.
+_MC_PATH_COLOR = 'rgba(148,163,184,0.28)'
+
+
+def _apply_layout(fig, lang):
+    """Shared chart chrome for both simulation modes (single y-axis)."""
+    fig.update_layout(
+        separators=cu.plotly_separators(lang),
+        margin=dict(l=10, r=10, t=10, b=10),
+        plot_bgcolor='white', paper_bgcolor='white',
+        font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font_size=10),
+        xaxis=dict(title=t("ps.year", lang), showgrid=True, gridcolor='#f1f5f9', dtick=5),
+        yaxis=dict(title=t("ps.amount_eur", lang), showgrid=True, gridcolor='#f1f5f9',
+                   tickprefix=('€' if lang != 'de' else ''),
+                   ticksuffix=(' €' if lang == 'de' else ''),
+                   separatethousands=True),
+        hovermode='x unified',
+    )
+    return fig
+
+
+def _make_mc_figure(paths, average_df, lang="de"):
+    """Monte Carlo chart: every scenario in grey, their average on top.
+
+    Only the portfolio value is drawn, because the flow series would be a
+    different number per scenario and add nothing but noise. All scenarios
+    live in ONE trace separated by None gaps: 500 individual traces would
+    crawl in the browser and flood the legend.
+    """
+    eur_hover = "%{y:,.0f} €" if lang == "de" else "€%{y:,.0f}"
+    years = average_df['Year'].tolist()
+    xs, ys = [], []
+    for path in paths:
+        xs.extend(years)
+        xs.append(None)
+        ys.extend(path)
+        ys.append(None)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=xs, y=ys, mode='lines',
+        name=f"{t('ps.mc_paths', lang)} ({len(paths)})",
+        line=dict(color=_MC_PATH_COLOR, width=1),
+        hoverinfo='skip',
+    ))
+    avg_name = t("ps.mc_average", lang)
+    avg_values = average_df['Portfolio Value'].tolist()
+    fig.add_trace(go.Scatter(
+        x=years, y=avg_values,
+        mode='lines+markers', name=avg_name,
+        line=dict(color=_PROJ_PALETTE['Portfolio Value'], width=2.5),
+        marker=dict(size=4),
+        hovertemplate="<b>" + avg_name + "</b>  " + eur_hover + "<extra></extra>",
+    ))
+    _apply_layout(fig, lang)
+
+    # A lognormal tail is brutally fat: at 18 % volatility over 30 years a few
+    # runs reach 40 M € while the average sits near 4 M €, and autoscaling to
+    # those squashes everything readable onto the floor. Scale to the 95th
+    # percentile of the scenario values, never below the average curve, and
+    # let the handful of extreme runs leave the frame (the info text says so).
+    if paths:
+        flat = np.concatenate([np.asarray(p, dtype=float) for p in paths])
+        y_top = max(float(np.percentile(flat, 95)), max(avg_values or [0])) * 1.08
+        fig.update_yaxes(range=[0, max(y_top, 1.0)])
+    return fig
+
+
 def _make_figure(df, lang="de"):
     """Build the projection chart (levels + cumulative flows, one axis)."""
     # NOT an f-string: single braces must reach Plotly as the template.
     eur_hover = "%{y:,.0f} €" if lang == "de" else "€%{y:,.0f}"
-    year_label = t("ps.year", lang)
     fig = go.Figure()
     for col in ['Portfolio Value', 'Growth', 'Deposits', 'Withdrawals', 'Taxes Paid', 'Ending Value', 'Cost Basis']:
         if col not in df.columns:
@@ -151,26 +287,14 @@ def _make_figure(df, lang="de"):
             marker=dict(size=4),
             hovertemplate="<b>" + name + "</b>  " + eur_hover + "<extra></extra>",
         ))
-    fig.update_layout(
-        separators=cu.plotly_separators(lang),
-        margin=dict(l=10, r=10, t=10, b=10),
-        plot_bgcolor='white', paper_bgcolor='white',
-        font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font_size=10),
-        xaxis=dict(title=year_label, showgrid=True, gridcolor='#f1f5f9', dtick=5),
-        yaxis=dict(title=t("ps.amount_eur", lang), showgrid=True, gridcolor='#f1f5f9',
-                   tickprefix=('€' if lang != 'de' else ''),
-                   ticksuffix=(' €' if lang == 'de' else ''),
-                   separatethousands=True),
-        hovermode='x unified',
-    )
-    return fig
+    return _apply_layout(fig, lang)
 
 
 # ── Default simulation (computed once at import) ──
 _DEFAULTS = dict(
     value=700_000, growth=7, deposit=0, withdrawal=30_000,
     years=30, tax=25, method='FIFO', wtype='fixed',
+    volatility=15, samples=200,
 )
 _df_init = simulate_portfolio(
     _DEFAULTS['value'], _DEFAULTS['growth'] / 100, _DEFAULTS['wtype'],
@@ -321,6 +445,52 @@ def layout(lang="en"):
                         ], id="run-simulation-btn", color="primary", className="w-100",
                            size="lg", style={"fontWeight": "600"}),
 
+                        # ── Monte Carlo (needs a target rate, so it is hidden
+                        # when historical S&P 500 returns drive the growth) ──
+                        html.Div([
+                            html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
+                            html.Div([
+                                html.Label(t("ps.montecarlo", lang),
+                                           className="input-label mb-0"),
+                                dbc.Button(html.I(className="bi bi-info-circle"),
+                                           id="mc-info-btn", color="link", size="sm",
+                                           className="mc-info-btn"),
+                                dbc.Popover([
+                                    dbc.PopoverHeader(t("ps.mc_info_title", lang)),
+                                    dbc.PopoverBody([
+                                        html.P(t("ps.mc_info_1", lang), className="mb-2"),
+                                        html.P(t("ps.mc_info_2", lang), className="mb-2"),
+                                        html.P(t("ps.mc_info_3", lang), className="mb-0"),
+                                    ]),
+                                ], id="mc-info-popover", target="mc-info-btn",
+                                   trigger="legacy", placement="top",
+                                   className="mc-info-popover"),
+                            ], className="d-flex align-items-center mb-2"),
+                            html.Div([
+                                html.Div([
+                                    html.Label(t("ps.volatility", lang), className="input-label"),
+                                    dbc.InputGroup([
+                                        dbc.Input(id="input-volatility", type="number",
+                                                  value=_DEFAULTS['volatility'],
+                                                  min=0, max=100, step=1),
+                                        dbc.InputGroupText("%"),
+                                    ], size="sm", className="mb-2"),
+                                ]),
+                                html.Div([
+                                    html.Label(t("ps.mc_samples", lang), className="input-label"),
+                                    dbc.Input(id="input-mc-samples", type="number",
+                                              value=_DEFAULTS['samples'], min=10,
+                                              max=MC_MAX_SAMPLES, step=10, size="sm",
+                                              className="mb-2"),
+                                ]),
+                            ], className="ps-pair"),
+                            dbc.Button([
+                                html.I(className="bi bi-shuffle me-2"),
+                                t("ps.run_mc", lang),
+                            ], id="run-montecarlo-btn", color="primary", outline=True,
+                               className="w-100", style={"fontWeight": "600"}),
+                        ], id="montecarlo-block"),
+
                         # Error display
                         html.Div(id="sim-error-box", className="mt-2"),
                     ], className="py-3 px-3"),
@@ -415,13 +585,16 @@ def register_callbacks(app):
 
     @app.callback(
         [Output("custom-years-input", "style"),
-         Output("sp500-year-input", "style")],
+         Output("sp500-year-input", "style"),
+         Output("montecarlo-block", "style")],
         Input("simulation-time-frame", "value"),
     )
     def toggle_time_frame_input(tf):
+        # Monte Carlo randomises around a target rate, so it only applies to
+        # the custom-rate mode. Replayed history has no rate to vary.
         if tf == 'custom':
-            return {'display': 'block'}, {'display': 'none'}
-        return {'display': 'none'}, {'display': 'block'}
+            return {'display': 'block'}, {'display': 'none'}, {'display': 'block'}
+        return {'display': 'none'}, {'display': 'block'}, {'display': 'none'}
 
     # ── SINGLE callback: button click → figure + table + error ──
     @app.callback(
@@ -430,7 +603,8 @@ def register_callbacks(app):
          Output('table', 'columns'),
          Output('sim-error-box', 'children')],
         [Input('run-simulation-btn', 'n_clicks'),
-         Input('run-simulation-btn-top', 'n_clicks')],
+         Input('run-simulation-btn-top', 'n_clicks'),
+         Input('run-montecarlo-btn', 'n_clicks')],
         [State('input-current-value', 'value'),
          State('input-annual-growth-rate', 'value'),
          State('input-monthly-deposit', 'value'),
@@ -441,15 +615,18 @@ def register_callbacks(app):
          State('input-sp500-start-year', 'value'),
          State('input-tax-rate', 'value'),
          State('input-tax-method', 'value'),
+         State('input-volatility', 'value'),
+         State('input-mc-samples', 'value'),
          State('lang-store', 'data')],
         prevent_initial_call=True,
     )
-    def run_simulation(n_clicks, n_clicks_top, current_value, growth_rate, monthly_deposit,
-                       wtype, withdrawal, time_frame, years, sp500_year, tax_rate,
-                       tax_method, lang_data):
-        if not n_clicks and not n_clicks_top:
+    def run_simulation(n_clicks, n_clicks_top, n_clicks_mc, current_value, growth_rate,
+                       monthly_deposit, wtype, withdrawal, time_frame, years, sp500_year,
+                       tax_rate, tax_method, volatility, mc_samples, lang_data):
+        if not n_clicks and not n_clicks_top and not n_clicks_mc:
             raise PreventUpdate
         lang = get_lang(lang_data)
+        monte_carlo = ctx.triggered_id == 'run-montecarlo-btn'
 
         try:
             # Validate inputs
@@ -469,6 +646,23 @@ def register_callbacks(app):
             print(f"[Sim] Running: €{current_value:,.0f}, {growth_rate}% growth, "
                   f"€{monthly_deposit:,.0f}/month deposit, "
                   f"{wtype} withdrawal €{withdrawal:,.0f}, {years}y, {tax_rate}% tax")
+
+            if monte_carlo:
+                if not years or years < 1 or years > MC_MAX_YEARS:
+                    raise ValueError(t("ps.err_years", lang))
+                if volatility is None or volatility < 0 or volatility > 100:
+                    raise ValueError(t("ps.err_volatility", lang))
+                if mc_samples is None or mc_samples < 10 or mc_samples > MC_MAX_SAMPLES:
+                    raise ValueError(t("ps.err_samples", lang))
+                paths, df = simulate_monte_carlo(
+                    current_value, growth_rate / 100, wtype, withdrawal,
+                    int(years), (tax_rate or 0) / 100, tax_method,
+                    monthly_deposit=monthly_deposit,
+                    volatility=volatility / 100, samples=int(mc_samples),
+                )
+                fig = _make_mc_figure(paths, df, lang)
+                print(f"[Sim] Monte Carlo: {len(paths)} scenarios × {len(df)} years")
+                return fig, df.to_dict('records'), _table_columns(df, lang), ""
 
             if time_frame == 'custom':
                 if not years or years < 1:

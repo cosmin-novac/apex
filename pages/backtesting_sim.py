@@ -642,7 +642,7 @@ def layout(lang="en"):
             
             # Modals
             ai_rule_modal,
-            info_modal,
+            info_modal(lang),
             save_rules_modal,
             load_rules_modal,
             dcc.Store(id="saved-rules-store", storage_type="local"),

@@ -111,6 +111,18 @@ def layout(lang="en"):
         html.Div([
             dbc.Row([
                 dbc.Col([
+                    html.P([
+                        html.I(className="bi bi-stars lp-oss-icon"),
+                        # Text and link share one flex item: a flex container
+                        # strips the trailing space of each text run, which
+                        # would glue the sentence to the link.
+                        html.Span([
+                            t("landing.oss_line", lang),
+                            html.A(t("landing.oss_join", lang), href=GITHUB_URL,
+                                   target="_blank", rel="noopener",
+                                   className="lp-oss-link"),
+                        ]),
+                    ], className="lp-oss"),
                     html.P(t("landing.eyebrow", lang), className="lp-eyebrow"),
                     html.H1([t("landing.hero_line1", lang), html.Br(), html.Span(t("landing.hero_line2", lang), className="lp-hero-em")],
                             className="lp-hero-title"),

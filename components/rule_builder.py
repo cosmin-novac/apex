@@ -7,6 +7,7 @@ from dash.exceptions import PreventUpdate
 import json
 
 from components.gpt_functionality import generate_rule
+from components.i18n import t
 
 
 # Available indicators/columns for rule building
@@ -260,16 +261,52 @@ ai_rule_modal = dbc.Modal(
 # Info Modal (existing)
 from components.gpt_functionality import context_description
 
-info_modal = dbc.Modal([
-    dbc.ModalHeader(dbc.ModalTitle([
-        html.I(className="bi bi-info-circle me-2"),
-        "Rule Writing Guide"
-    ])),
-    dbc.ModalBody(html.Div(context_description, style={"whiteSpace": "pre-line"})),
-    dbc.ModalFooter(
-        dbc.Button("Got it!", id="close-info-modal", color="primary", n_clicks=0)
-    ),
-], id="info-modal", is_open=False, size="xl", scrollable=True)
+_RULE_EXAMPLES = [
+    ("current('price') < n_days_ago('price', 30)", "bt.rules_ex1"),
+    ("current('rsi_14') < 30", "bt.rules_ex2"),
+    ("current('price') > current('sma_200') * 1.5", "bt.rules_ex3"),
+]
+
+
+def info_modal(lang="en"):
+    """The rule-writing guide.
+
+    The reference list of functions and columns alone left people guessing
+    what a rule actually does to their money, so the explanation of the
+    mechanics comes first and the reference sits under it.
+    """
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle([
+            html.I(className="bi bi-info-circle me-2"),
+            t("bt.rules_title", lang),
+        ])),
+        dbc.ModalBody([
+            html.P(t("bt.rules_p1", lang)),
+            html.P(t("bt.rules_p2", lang)),
+            html.H6(t("bt.rules_h_size", lang), className="rule-guide-h"),
+            html.P(t("bt.rules_p3", lang)),
+            html.H6(t("bt.rules_h_gotchas", lang), className="rule-guide-h"),
+            html.Ul([
+                html.Li(t("bt.rules_g1", lang)),
+                html.Li(t("bt.rules_g2", lang)),
+            ]),
+            html.H6(t("bt.rules_h_write", lang), className="rule-guide-h"),
+            html.P(t("bt.rules_p4", lang)),
+            html.Ul([
+                html.Li([html.Code(expr), html.Br(), html.Span(t(key, lang),
+                                                               className="text-muted")])
+                for expr, key in _RULE_EXAMPLES
+            ]),
+            html.Hr(),
+            html.H6(t("bt.rules_h_ref", lang), className="rule-guide-h"),
+            html.Div(context_description, style={"whiteSpace": "pre-line"},
+                     className="rule-guide-ref"),
+        ]),
+        dbc.ModalFooter(
+            dbc.Button(t("bt.rules_got_it", lang), id="close-info-modal",
+                       color="primary", n_clicks=0)
+        ),
+    ], id="info-modal", is_open=False, size="xl", scrollable=True)
 
 # Save Rules Modal
 save_rules_modal = dbc.Modal([
