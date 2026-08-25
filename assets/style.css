@@ -3943,6 +3943,80 @@ button.btn::-moz-focus-inner {
     color: #64748b;
 }
 
+/* Monte Carlo result summary, shown in place of the yearly table.
+   One hero figure and three tiles: the survival rate is what a withdrawal
+   plan is judged on, the tiles describe the spread behind it. */
+.mc-stats {
+    padding: 4px 2px 2px;
+}
+.mc-hero-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+.mc-hero-value {
+    font-family: Inter, sans-serif;
+    font-size: 3rem;
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+}
+.mc-hero-verdict {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.mc-hero-note {
+    font-size: 0.82rem;
+    color: #64748b;
+    line-height: 1.5;
+}
+.mc-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+}
+.mc-tile {
+    border: 1px solid #e5e7eb;
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    background: #fcfcfb;
+}
+.mc-tile-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    margin-bottom: 4px;
+}
+.mc-tile-value {
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.2;
+}
+.mc-tile-note {
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.45;
+    margin-top: 3px;
+}
+.mc-footnote {
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.55;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+}
+@media (max-width: 767.98px) {
+    .mc-tiles { grid-template-columns: 1fr; }
+    .mc-hero-value { font-size: 2.5rem; }
+}
+
 /* Monte Carlo: the info button beside the section label, and a popover wide
    enough for prose (Bootstrap caps .popover at 276px by default). */
 .mc-info-btn {
