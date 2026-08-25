@@ -3,6 +3,7 @@ from dash import dcc, html, dash_table, no_update
 from dash.dependencies import Input, Output, State
 import pandas as pd
 import plotly.graph_objs as go
+from plotly.subplots import make_subplots
 from dash.exceptions import PreventUpdate
 import yfinance as yf
 import traceback
@@ -92,20 +93,33 @@ def _table_columns(df, lang):
     return [{"name": t(_COL_KEYS.get(c, c), lang), "id": c} for c in df.columns]
 
 
+# Portfolio level (top panel) vs per-year flows (bottom panel). One shared
+# x-axis, one € scale per panel: the portfolio grows into the hundreds of
+# thousands while the yearly flows stay near zero, so on a single axis the
+# flows were unreadable — and overlaying two scales on one plot (a dual-axis
+# chart) misleads more than it helps.
+_LEVEL_COLS = ('Portfolio Value', 'Ending Value', 'Cost Basis')
+
+# CVD-validated per panel (adjacent-pair ΔE checks, same palette family as the
+# portfolio-analysis charts).
+_PROJ_PALETTE = {
+    'Portfolio Value': '#4a3aa7',
+    'Ending Value': '#eb6834',
+    'Cost Basis': '#0891b2',
+    'Growth': '#1baf7a',
+    'Deposits': '#2a78d6',
+    'Withdrawals': '#eda100',
+    'Taxes Paid': '#e34948',
+}
+
+
 def _make_figure(df, lang="de"):
-    """Build the projection chart from a simulation DataFrame."""
-    eur_hover = "%{{y:,.0f}} €" if lang == "de" else "€%{{y:,.0f}}"
-    fig = go.Figure()
-    palette = {
-        'Portfolio Value': '#6366f1',
-        'Ending Value': '#8b5cf6',
-        'Growth': '#10b981',
-        'Deposits': '#14b8a6',
-        'Withdrawals': '#f59e0b',
-        'Taxes Paid': '#ef4444',
-        'Cost Basis': '#06b6d4',
-    }
+    """Build the two-panel projection chart from a simulation DataFrame."""
+    # NOT an f-string: single braces must reach Plotly as the template.
+    eur_hover = "%{y:,.0f} €" if lang == "de" else "€%{y:,.0f}"
     year_label = t("ps.year", lang)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        row_heights=[0.62, 0.38], vertical_spacing=0.08)
     for col in ['Portfolio Value', 'Growth', 'Deposits', 'Withdrawals', 'Taxes Paid', 'Ending Value', 'Cost Basis']:
         if col not in df.columns:
             continue
@@ -115,23 +129,26 @@ def _make_figure(df, lang="de"):
             mode='lines+markers',
             name=name,
             visible=True if col not in ('Ending Value', 'Cost Basis') else 'legendonly',
-            line=dict(color=palette.get(col, '#888'), width=2),
+            line=dict(color=_PROJ_PALETTE.get(col, '#888'), width=2),
             marker=dict(size=4),
-            hovertemplate=f"<b>{name}</b><br>{year_label} %{{x}}<br>{eur_hover}<extra></extra>",
-        ))
+            hovertemplate="<b>" + name + "</b>  " + eur_hover + "<extra></extra>",
+        ), row=1 if col in _LEVEL_COLS else 2, col=1)
     fig.update_layout(
         separators=cu.plotly_separators(lang),
         margin=dict(l=10, r=10, t=10, b=10),
         plot_bgcolor='white', paper_bgcolor='white',
         font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font_size=10),
-        xaxis=dict(title=year_label, showgrid=True, gridcolor='#f1f5f9', dtick=5),
-        yaxis=dict(title=t("ps.amount_eur", lang), showgrid=True, gridcolor='#f1f5f9',
-                   tickprefix=('€' if lang != 'de' else ''),
-                   ticksuffix=(' €' if lang == 'de' else ''),
-                   separatethousands=True),
         hovermode='x unified',
     )
+    money_axis = dict(showgrid=True, gridcolor='#f1f5f9',
+                      tickprefix=('€' if lang != 'de' else ''),
+                      ticksuffix=(' €' if lang == 'de' else ''),
+                      separatethousands=True)
+    fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', dtick=5)
+    fig.update_xaxes(title_text=year_label, row=2, col=1)
+    fig.update_yaxes(title_text=t("ps.portfolio_value", lang), row=1, col=1, **money_axis)
+    fig.update_yaxes(title_text=t("ps.yearly_flows", lang), row=2, col=1, **money_axis)
     return fig
 
 

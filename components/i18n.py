@@ -243,6 +243,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "ps.breakdown":             {"en": "Year-by-Year Breakdown",    "de": "Jahresübersicht"},
     "ps.year":                  {"en": "Year",                      "de": "Jahr"},
     "ps.amount_eur":            {"en": "Amount (€)",                "de": "Betrag (€)"},
+    "ps.yearly_flows":          {"en": "Per year (€)",              "de": "Pro Jahr (€)"},
     "ps.portfolio_value":       {"en": "Portfolio Value",           "de": "Portfoliowert"},
     "ps.growth":                {"en": "Growth",                    "de": "Wachstum"},
     "ps.deposits":              {"en": "Deposits",                  "de": "Einzahlungen"},
