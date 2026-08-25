@@ -77,6 +77,28 @@ def _backup_for_uid(local_backup, uid):
         return None
 
 
+def bench_trailing_return(bdf, days_ago):
+    """Trailing return of a benchmark over its own last *days_ago* days.
+
+    Anchored to the benchmark's own last close on purpose: the portfolio
+    history always ends today (live prices), while index data ends at the
+    last completed close — usually one day earlier. Anchoring the window at
+    the portfolio's last date would make every benchmark window one day
+    short, and the 1D column exactly 0.00% every day.
+    """
+    if bdf is None or len(bdf) == 0:
+        return None
+    current = bdf['Close'].iloc[-1]
+    target = bdf['Date'].iloc[-1] - timedelta(days=days_ago)
+    if target < bdf['Date'].iloc[0] - timedelta(days=5):
+        return None
+    past = bdf[bdf['Date'] <= target]
+    if len(past) == 0:
+        return None
+    past_val = past['Close'].iloc[-1]
+    return (current - past_val) / past_val * 100 if past_val > 0 else None
+
+
 def classify_activity(title_raw, subtitle_raw, lang):
     """Return (label, icon, badge_color) for a Trade Republic activity row.
 
@@ -2471,17 +2493,6 @@ def register_callbacks(app):
                 bdf['Date'] = pd.to_datetime(bdf['Date'])
                 bdf = bdf.sort_values('Date')
                 current_bench = bdf['Close'].iloc[-1]
-                bench_first_date = bdf['Date'].iloc[0].to_pydatetime()
-
-                def bench_return(days_ago, _bdf=bdf, _cur=current_bench, _first=bench_first_date):
-                    target = last_date - timedelta(days=days_ago)
-                    if target < _first - timedelta(days=5):
-                        return None
-                    past = _bdf[_bdf['Date'] <= target]
-                    if len(past) == 0:
-                        return None
-                    past_val = past['Close'].iloc[-1]
-                    return (_cur - past_val) / past_val * 100 if past_val > 0 else None
 
                 ytd_bench = bdf[bdf['Date'] >= datetime(last_date.year, 1, 1)]
                 ytd_b = None
@@ -2500,16 +2511,16 @@ def register_callbacks(app):
                     "asset": benchmark_names.get(bench, bench),
                     "is_portfolio": False,
                     "values": {
-                        "1D": bench_return(1),
-                        "1W": bench_return(7),
-                        "1M": bench_return(30),
-                        "3M": bench_return(90),
+                        "1D": bench_trailing_return(bdf, 1),
+                        "1W": bench_trailing_return(bdf, 7),
+                        "1M": bench_trailing_return(bdf, 30),
+                        "3M": bench_trailing_return(bdf, 90),
                         "YTD": ytd_b,
-                        "1Y": bench_return(365),
-                        "2Y": bench_return(365 * 2),
-                        "3Y": bench_return(365 * 3),
-                        "5Y": bench_return(365 * 5),
-                        "10Y": bench_return(365 * 10),
+                        "1Y": bench_trailing_return(bdf, 365),
+                        "2Y": bench_trailing_return(bdf, 365 * 2),
+                        "3Y": bench_trailing_return(bdf, 365 * 3),
+                        "5Y": bench_trailing_return(bdf, 365 * 5),
+                        "10Y": bench_trailing_return(bdf, 365 * 10),
                         "TOTAL": total_b,
                     },
                 })
