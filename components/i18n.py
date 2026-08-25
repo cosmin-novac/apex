@@ -472,8 +472,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
 
     # ── Rule Builder ────────────────────────────────────────────────────
     "rl.trading_rules":         {"en": "Trading Rules",             "de": "Handelsregeln"},
-    "rl.no_rules":              {"en": "No rules yet - click + Buy or + Sell to add one.",
-                                 "de": "Noch keine Regeln - klicke + Kauf oder + Verkauf zum Hinzufügen."},
+    "rl.no_rules":              {"en": "No rules yet. Click + Buy or + Sell to add one.",
+                                 "de": "Noch keine Regeln. Klicke auf + Kauf oder + Verkauf, um eine anzulegen."},
     "rl.run_backtest":          {"en": "Run Backtest",              "de": "Backtest starten"},
     "rl.quick_builder":         {"en": "Quick Builder",             "de": "Schnellbaukasten"},
     "rl.left_indicator":        {"en": "Left-hand indicator…",      "de": "Linker Indikator…"},
@@ -511,6 +511,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "rl.bollinger_lower":       {"en": "Bollinger Lower",           "de": "Bollinger Unten"},
     "rl.last_highest":          {"en": "Last Highest",              "de": "Letztes Hoch"},
     "rl.last_lowest":           {"en": "Last Lowest",               "de": "Letztes Tief"},
+    "rl.settings":              {"en": "Settings",                  "de": "Einstellungen"},
     "rl.api_key_missing":       {"en": "OpenAI API key is missing. Set it in ",
                                  "de": "OpenAI API-Schlüssel fehlt. Setze ihn in den "},
     "rl.settings_gear":         {"en": ".",
