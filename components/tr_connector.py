@@ -4,7 +4,7 @@ Real authentication using pytr library
 """
 
 import dash
-from dash import html, dcc, Input, Output, State, callback, no_update, ctx
+from dash import html, dcc, Input, Output, State, callback, no_update, ctx, ClientsideFunction
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
 import json
@@ -70,13 +70,22 @@ def create_tr_connector_card():
                     ], className="mb-0 mt-1 small")
                 ], color="info", className="mb-3"),
                 
-                # Check for existing credentials message
+                # Saved-credentials guidance. Both variants stay in the DOM
+                # permanently (only styles toggle): removing tr-reconnect-link
+                # from the layout breaks every callback that has it as an
+                # Input with a renderer ReferenceError.
                 html.Div(id="tr-saved-creds-section", children=[
                     dbc.Alert([
                         html.I(className="bi bi-key me-2"),
-                        "Found saved credentials. ",
-                        html.A("Click to reconnect", id="tr-reconnect-link", href="#", className="alert-link")
-                    ], color="success", className="mb-3"),
+                        html.Span(id="tr-saved-session-text"),
+                        html.A(id="tr-reconnect-link", href="#", className="alert-link"),
+                    ], id="tr-reconnect-ready-alert", color="success", className="mb-3",
+                       style={"display": "none"}),
+                    dbc.Alert([
+                        html.I(className="bi bi-arrow-clockwise me-2"),
+                        html.Span(id="tr-reauth-hint-text"),
+                    ], id="tr-reconnect-expired-alert", color="info", className="mb-3",
+                       style={"display": "none"}),
                 ], style={"display": "none"}),
                 
                 html.Label("Phone Number", className="input-label"),
@@ -100,7 +109,10 @@ def create_tr_connector_card():
                     html.I(className="bi bi-send me-2"),
                     "Send Verification Code"
                 ], id="tr-start-auth-btn", color="primary", className="w-100", size="sm", n_clicks=0),
-                
+
+                # Live status while the code request is in flight (the WAF
+                # browser dance can take a while) — fed by the progress poll.
+                html.Div(id="tr-initiate-status", className="text-center text-muted small mt-2"),
                 html.Div(id="tr-auth-feedback", className="mt-2"),
             ], id="tr-initial-view"),
             
@@ -275,24 +287,28 @@ def register_tr_callbacks(app):
         prevent_initial_call=True
     )
 
+    # Instant switch to the syncing view on reconnect. Done via raw DOM with a
+    # dummy output on purpose: the server reconnect callback has the exact
+    # same single Input, and Dash's duplicate-output ids are hashed from the
+    # input list — declaring these as allow_duplicate Outputs here would
+    # collide with the server callback's and the renderer rejects the app.
     app.clientside_callback(
         """
         function(n_clicks) {
-            if (!n_clicks) {
-                return Array(4).fill(window.dash_clientside.no_update);
+            if (n_clicks) {
+                var hide = document.getElementById('tr-initial-view');
+                if (hide) { hide.style.display = 'none'; }
+                var show = document.getElementById('tr-syncing-view');
+                if (show) { show.style.display = 'block'; }
+                var st = document.getElementById('tr-connection-status');
+                if (st) { st.className = 'connection-status syncing'; }
+                var tx = document.getElementById('tr-status-text');
+                if (tx) { tx.innerText = 'Reconnecting...'; }
             }
-            return [
-                {"display": "none"},
-                {"display": "block"},
-                "connection-status syncing",
-                "Reconnecting..."
-            ];
+            return window.dash_clientside.no_update;
         }
         """,
-        [Output('tr-initial-view', 'style', allow_duplicate=True),
-         Output('tr-syncing-view', 'style', allow_duplicate=True),
-         Output('tr-connection-status', 'className', allow_duplicate=True),
-         Output('tr-status-text', 'children', allow_duplicate=True)],
+        Output('tr-reconnect-link', 'data-loading'),  # dummy output
         Input('tr-reconnect-link', 'n_clicks'),
         prevent_initial_call=True
     )
@@ -350,6 +366,8 @@ def register_tr_callbacks(app):
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-send me-2"></i>Send Verification Code';
             }
+            var status = document.getElementById('tr-initiate-status');
+            if (status) { status.innerText = ''; }
             return window.dash_clientside.no_update;
         }
         """,
@@ -359,22 +377,35 @@ def register_tr_callbacks(app):
     )
 
     # ── Live sync progress ────────────────────────────────────────────────
-    # Start polling progress when a data fetch begins (verify / reconnect /
-    # refresh), and stop when the fetch lands a result or an error.
+    # Start polling progress when a request begins (send code / verify /
+    # reconnect / refresh) and stop at phase boundaries. Two callbacks share
+    # the interval's `disabled`; both MUST be named ClientsideFunctions from
+    # assets/tr_connector.js. Inline (string) clientside callbacks are
+    # registered under a key derived from the output id WITHOUT the @dup
+    # suffix, so two inline allow_duplicate callbacks on the same output
+    # silently overwrite each other and only the last-defined body runs for
+    # both. Named functions keep their own identity. The enable callback also
+    # must have ONLY click inputs: if it listened to server outputs too, Dash
+    # would defer the click firing until the in-flight server callbacks
+    # settle, which is exactly the window the poll needs to cover.
     app.clientside_callback(
-        "function(v, r, f){ if (v || r || f) { return false; } return window.dash_clientside.no_update; }",
+        ClientsideFunction(namespace='trConnector', function_name='enableSyncPoll'),
         Output('tr-sync-progress-interval', 'disabled', allow_duplicate=True),
-        [Input('tr-verify-otp-btn', 'n_clicks'),
+        [Input('tr-start-auth-btn', 'n_clicks'),
+         Input('tr-verify-otp-btn', 'n_clicks'),
          Input('tr-reconnect-link', 'n_clicks'),
          Input('tr-refresh-btn', 'n_clicks')],
         prevent_initial_call=True,
     )
     app.clientside_callback(
-        "function(){ return true; }",
+        ClientsideFunction(namespace='trConnector', function_name='stopSyncPoll'),
         Output('tr-sync-progress-interval', 'disabled', allow_duplicate=True),
         [Input('tr-portfolio-summary', 'children'),
          Input('tr-auth-feedback', 'children'),
-         Input('tr-otp-feedback', 'children')],
+         Input('tr-otp-feedback', 'children'),
+         # Step transitions end a polling phase: code arrived (→ otp) or the
+         # flow finished (→ connected/initial). Verify re-enables on click.
+         Input('tr-auth-step', 'data')],
         prevent_initial_call=True,
     )
 
@@ -382,7 +413,8 @@ def register_tr_callbacks(app):
         [Output('tr-sync-progress-bar', 'value'),
          Output('tr-sync-progress-bar', 'label'),
          Output('tr-sync-current-step', 'children'),
-         Output('tr-sync-elapsed', 'children')],
+         Output('tr-sync-elapsed', 'children'),
+         Output('tr-initiate-status', 'children')],
         Input('tr-sync-progress-interval', 'n_intervals'),
         State('current-user-store', 'data'),
         prevent_initial_call=True,
@@ -395,7 +427,7 @@ def register_tr_callbacks(app):
         prog = get_fetch_progress(uid)
         if not prog:
             # Fetch hasn't written progress yet (e.g. still completing login).
-            return no_update, no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update
         pct = max(0, min(100, int(prog.get('pct', 0))))
         stage = prog.get('stage', '')
         detail = prog.get('detail', '')
@@ -405,7 +437,9 @@ def register_tr_callbacks(app):
             elapsed_line = f"⚠ Still working… no update for {ago}s"
         else:
             elapsed_line = f"Last update {ago}s ago"
-        return pct, f"{pct}%", step_line, elapsed_line
+        # The same step line also feeds the status under "Send Verification
+        # Code", so the long WAF/browser phase is never a silent minute.
+        return pct, f"{pct}%", step_line, elapsed_line, step_line
 
     # Saved-credentials guidance. Two flavors:
     #  - server session cookies still exist → one-click silent reconnect link
@@ -426,7 +460,11 @@ def register_tr_callbacks(app):
 
     @app.callback(
         [Output('tr-saved-creds-section', 'style'),
-         Output('tr-saved-creds-section', 'children')],
+         Output('tr-reconnect-ready-alert', 'style'),
+         Output('tr-reconnect-expired-alert', 'style'),
+         Output('tr-saved-session-text', 'children'),
+         Output('tr-reconnect-link', 'children'),
+         Output('tr-reauth-hint-text', 'children')],
         [Input('tr-check-creds-trigger', 'data'),
          Input('current-user-store', 'data'),
          Input('tr-connect-modal', 'is_open')],
@@ -435,23 +473,16 @@ def register_tr_callbacks(app):
     )
     def check_saved_credentials(_, current_user, is_open, lang_data):
         lang = get_lang(lang_data)
+        hidden = {"display": "none"}
         uid = auth.current_uid(current_user)
-        if not uid:
-            return {"display": "none"}, no_update
-        phone = _known_phone(uid)
+        phone = _known_phone(uid) if uid else None
         if not phone:
-            return {"display": "none"}, no_update
+            return hidden, hidden, hidden, no_update, no_update, no_update
         if has_session(user_id=uid):
-            return {"display": "block"}, dbc.Alert([
-                html.I(className="bi bi-key me-2"),
-                t("tr.saved_session", lang),
-                html.A(t("tr.reconnect_now", lang), id="tr-reconnect-link",
-                       href="#", className="alert-link"),
-            ], color="success", className="mb-3")
-        return {"display": "block"}, dbc.Alert([
-            html.I(className="bi bi-arrow-clockwise me-2"),
-            t("tr.reauth_hint", lang).format(phone=phone),
-        ], color="info", className="mb-3")
+            return ({"display": "block"}, {"display": "block"}, hidden,
+                    t("tr.saved_session", lang), t("tr.reconnect_now", lang), no_update)
+        return ({"display": "block"}, hidden, {"display": "block"},
+                no_update, no_update, t("tr.reauth_hint", lang).format(phone=phone))
 
     # Prefill the phone number so an expired session needs only the PIN and a
     # fresh code — not a full re-entry of the login form.
