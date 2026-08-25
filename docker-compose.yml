@@ -1,0 +1,23 @@
+services:
+  apex:
+    build: .
+    image: apex
+    ports:
+      # Host port 8888 (as in the README) → gunicorn on 8000 in the container.
+      - "8888:8000"
+    env_file:
+      # Optional: cp .env.example .env and set TR_ENCRYPTION_KEY etc.
+      # The app runs fine without one (demo mode + backtesting work fully).
+      - path: .env
+        required: false
+    volumes:
+      # Survives rebuilds/restarts: Trade Republic web-session cache (so a
+      # reconnect can skip a fresh OTP login) and the backtesting price cache.
+      - apex-data:/data
+    # Chromium (Trade Republic WAF login) needs more than Docker's 64 MB
+    # default shared memory.
+    shm_size: 1gb
+    restart: unless-stopped
+
+volumes:
+  apex-data:
