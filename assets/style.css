@@ -2766,6 +2766,22 @@ hr {
     background: rgba(255, 255, 255, 0.1);
 }
 
+/* Re-sync with Trade Republic: a real, labeled button instead of a ghost
+   icon — it is the reconnect/refresh entry point for the whole page. */
+.sticky-header .sync-btn-prominent {
+    color: #c7d2fe !important;
+    border: 1px solid rgba(129, 140, 248, 0.55);
+    background: rgba(99, 102, 241, 0.16);
+    padding: 5px 12px;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+.sticky-header .sync-btn-prominent:hover {
+    background: rgba(99, 102, 241, 0.4);
+    border-color: rgba(165, 180, 252, 0.8);
+    color: #fff !important;
+}
+
 .sticky-header .header-dropdown-wrapper {
     position: relative;
 }

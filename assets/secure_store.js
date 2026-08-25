@@ -113,11 +113,12 @@
       // callback reads it from its Input (always fresh) instead of a State,
       // because States can be served from a snapshot taken before this
       // callback's own outputs were committed.
-      function stateOut(uid, status, portfolio) {
+      function stateOut(uid, status, portfolio, trCreds) {
         var sig = (uid || "") + ":" + status;
         if (window.__apexVaultLastState === sig) return NU;
         window.__apexVaultLastState = sig;
-        return { uid: uid || null, status: status, portfolio: portfolio || null };
+        return { uid: uid || null, status: status,
+                 portfolio: portfolio || null, tr_creds: trCreds || null };
       }
       try {
         var uid = activeUid();
@@ -138,7 +139,7 @@
         return [
           blob.portfolio != null ? blob.portfolio : NU,
           blob.tr_creds != null ? blob.tr_creds : NU,
-          stateOut(uid, "restored", blob.portfolio),
+          stateOut(uid, "restored", blob.portfolio, blob.tr_creds),
         ];
       } catch (e) {
         console.warn("[apex vault] restore failed:", e);
