@@ -22,6 +22,7 @@ from components.tr_api import (
     is_connected,
     has_session,
     friendly_tr_error,
+    decrypt_credentials,
 )
 from components import auth
 from components.i18n import t, get_lang
@@ -406,22 +407,69 @@ def register_tr_callbacks(app):
             elapsed_line = f"Last update {ago}s ago"
         return pct, f"{pct}%", step_line, elapsed_line
 
-    # Check for saved credentials on load (check browser storage)
+    # Saved-credentials guidance. Two flavors:
+    #  - server session cookies still exist → one-click silent reconnect link
+    #  - only the phone number is known (e.g. server restart wiped cookies)
+    #    → explain that the phone is prefilled and only PIN + a new code are
+    #      needed. Previously this section simply disappeared in that case and
+    #      the user faced an unexplained blank login form.
+    # Reads the phone from the per-user server connection (hydrated by
+    # on_vault_settled from the encrypted vault token): store values written
+    # by the clientside vault restore can arrive stale in later dispatches, so
+    # the tr-encrypted-creds store is deliberately NOT used here.
+    def _known_phone(uid):
+        try:
+            from components.tr_api import get_connection
+            return get_connection(uid).phone_no
+        except Exception:
+            return None
+
     @app.callback(
-        Output('tr-saved-creds-section', 'style'),
+        [Output('tr-saved-creds-section', 'style'),
+         Output('tr-saved-creds-section', 'children')],
         [Input('tr-check-creds-trigger', 'data'),
-         Input('tr-encrypted-creds', 'data')],
-        State('current-user-store', 'data'),
+         Input('current-user-store', 'data'),
+         Input('tr-connect-modal', 'is_open')],
+        State('lang-store', 'data'),
         prevent_initial_call=False
     )
-    def check_saved_credentials(_, encrypted_creds, current_user):
+    def check_saved_credentials(_, current_user, is_open, lang_data):
+        lang = get_lang(lang_data)
         uid = auth.current_uid(current_user)
         if not uid:
-            return {"display": "none"}
-        # Show reconnect option if we have encrypted creds in browser and TR web-session cookies on server.
-        if encrypted_creds and has_session(user_id=uid):
-            return {"display": "block"}
-        return {"display": "none"}
+            return {"display": "none"}, no_update
+        phone = _known_phone(uid)
+        if not phone:
+            return {"display": "none"}, no_update
+        if has_session(user_id=uid):
+            return {"display": "block"}, dbc.Alert([
+                html.I(className="bi bi-key me-2"),
+                t("tr.saved_session", lang),
+                html.A(t("tr.reconnect_now", lang), id="tr-reconnect-link",
+                       href="#", className="alert-link"),
+            ], color="success", className="mb-3")
+        return {"display": "block"}, dbc.Alert([
+            html.I(className="bi bi-arrow-clockwise me-2"),
+            t("tr.reauth_hint", lang).format(phone=phone),
+        ], color="info", className="mb-3")
+
+    # Prefill the phone number so an expired session needs only the PIN and a
+    # fresh code — not a full re-entry of the login form.
+    @app.callback(
+        Output('tr-phone-input', 'value'),
+        [Input('tr-connect-modal', 'is_open'),
+         Input('current-user-store', 'data')],
+        State('tr-phone-input', 'value'),
+        prevent_initial_call=False,
+    )
+    def prefill_phone(is_open, current_user, current_value):
+        if current_value:
+            raise PreventUpdate
+        uid = auth.current_uid(current_user)
+        phone = _known_phone(uid) if uid else None
+        if not phone:
+            raise PreventUpdate
+        return phone
 
     @app.callback(
         Output('tr-auth-feedback', 'children', allow_duplicate=True),

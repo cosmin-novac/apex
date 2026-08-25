@@ -327,7 +327,8 @@ def layout(lang="en"):
             # Sync button (hidden — sync via banner CTA)
             dbc.Button([
                 html.I(className="bi bi-arrow-repeat"),
-            ], id="sync-tr-data-btn", color="link", size="sm", className="header-icon-btn", n_clicks=0, title=t("pa.sync", lang), style={"display": "none"}),
+                html.Span(t("pa.sync", lang), className="d-none d-md-inline ms-1"),
+            ], id="sync-tr-data-btn", color="link", size="sm", className="header-icon-btn sync-btn-prominent", n_clicks=0, title=t("pa.sync", lang), style={"display": "none"}),
 
             # Demo mode toggle (hidden — auto-managed)
             dbc.Button([
@@ -715,6 +716,19 @@ def register_callbacks(app):
         if not uid or restore_state.get("status") == "locked":
             return True, _load_demo_json(), None
 
+        # Remember the TR reconnect token on the per-user server connection so
+        # the connect modal can prefill the phone number and offer a proper
+        # reconnect. The restore payload is the one channel that reliably
+        # carries vault data to the server (store-written values can arrive
+        # stale in later callback dispatches).
+        creds = restore_state.get("tr_creds")
+        if creds:
+            try:
+                from components.tr_api import get_connection
+                get_connection(uid).set_credentials_from_encrypted(creds)
+            except Exception as e:
+                _log.warning("Could not restore TR reconnect token: %s", e)
+
         # Prefer the payload carried in the restore event itself: it is an
         # Input, so it is always current, while the local-portfolio-backup
         # State can be a snapshot taken before the restore was committed.
@@ -807,14 +821,17 @@ def register_callbacks(app):
             link_text = t("pa.demo_login", lang)
             suffix_text = t("pa.demo_suffix", lang)
 
-        # Show sync + demo-toggle buttons when logged-in user has real data
-        btn_visible = {} if has_real_data else {"display": "none"}
+        # The sync button is the reconnect/refresh entry point — show it for
+        # every logged-in user (it opens the connect modal when there is no
+        # session yet). The demo toggle only makes sense once real data exists.
+        sync_visible = {} if uid else {"display": "none"}
+        toggle_visible = {} if has_real_data else {"display": "none"}
 
         if show_demo:
             return (banner_style, t("pa.switch_real", lang), "bi bi-briefcase-fill",
-                    link_text, suffix_text, btn_visible, btn_visible)
+                    link_text, suffix_text, sync_visible, toggle_visible)
         return (banner_style, t("pa.switch_demo", lang), "bi bi-person-badge",
-                link_text, suffix_text, btn_visible, btn_visible)
+                link_text, suffix_text, sync_visible, toggle_visible)
     
     # Sync button: if connected → sync; if not logged in → login; if not connected → open TR modal
     @app.callback(
@@ -826,14 +843,21 @@ def register_callbacks(app):
         Input("sync-tr-data-btn", "n_clicks"),
         [State("tr-encrypted-creds", "data"),
          State("tr-connect-modal", "is_open"),
-         State("current-user-store", "data")],
+         State("current-user-store", "data"),
+         State("lang-store", "data")],
         prevent_initial_call=True,
     )
-    def sync_data(n_clicks, encrypted_creds, modal_open, current_user):
+    def sync_data(n_clicks, encrypted_creds, modal_open, current_user, lang_data):
         if not n_clicks:
             raise PreventUpdate
 
         uid = auth.current_uid(current_user)
+        lang = get_lang(lang_data)
+
+        def _btn(icon_cls):
+            # Keep the desktop text label when swapping the status icon.
+            return [html.I(className=icon_cls),
+                    html.Span(t("pa.sync", lang), className="d-none d-md-inline ms-1")]
 
         from components.tr_api import fetch_all_data, reconnect, is_connected
 
@@ -850,9 +874,9 @@ def register_callbacks(app):
         data = fetch_all_data(user_id=uid)
         if data.get("success"):
             portfolio_json = json.dumps(data)
-            return portfolio_json, html.I(className="bi bi-check-circle"), False, False, False
+            return portfolio_json, _btn("bi bi-check-circle"), False, False, False
 
-        return no_update, html.I(className="bi bi-x-circle"), False, modal_open, no_update
+        return no_update, _btn("bi bi-x-circle"), False, modal_open, no_update
     
     # Update metrics when data changes
     @app.callback(

@@ -649,6 +649,72 @@ class TRConnection:
             raise last_error
         raise RuntimeError("Trade Republic login could not be started.")
 
+    # ── Pending-login handoff (survives process boundaries) ─────────────
+    # pytr keeps the in-flight login (processId + session cookies) only in
+    # memory. If the verify request is served by a different worker process
+    # than the initiate request — or in-memory state is lost — completing the
+    # login failed with "No login in progress" even though the user just
+    # received a valid code. Persisting the handoff next to the cookie jar
+    # makes the verify step work from any process.
+
+    @property
+    def _pending_login_path(self) -> Path:
+        return self._user_cache_dir / "pending_login.json"
+
+    def _save_pending_login(self, countdown) -> None:
+        try:
+            process_id = getattr(self.api, "_process_id", None) if self.api else None
+            if not process_id:
+                return
+            # Flush the in-memory session cookies (TR session + WAF token) to
+            # the cookie jar so a rebuilt API can authenticate the verify call.
+            try:
+                self.api._websession.cookies.save(ignore_discard=True)
+            except Exception as e:
+                log.warning("Could not flush TR login cookies for %s: %s", self.user_id, e)
+            self._pending_login_path.write_text(json.dumps({
+                "process_id": process_id,
+                "phone": self.phone_no,
+                "ts": datetime.now().timestamp(),
+                "countdown": countdown,
+            }), encoding="utf-8")
+        except Exception as e:
+            log.warning("Could not persist pending TR login for %s: %s", self.user_id, e)
+
+    def _restore_pending_login(self) -> bool:
+        """Rebuild the in-flight login (processId + cookies) from disk."""
+        try:
+            if not self._pending_login_path.exists():
+                return False
+            data = json.loads(self._pending_login_path.read_text(encoding="utf-8"))
+            # A login code is only briefly valid; treat older handoffs as dead.
+            if datetime.now().timestamp() - float(data.get("ts", 0)) > 600:
+                return False
+            process_id = data.get("process_id")
+            if not process_id:
+                return False
+            if data.get("phone"):
+                self.phone_no = data["phone"]
+            api = self._new_api()
+            if self._cookies_path.exists():
+                try:
+                    api._websession.cookies.load(ignore_discard=True)
+                except Exception as e:
+                    log.warning("Could not load TR login cookies for %s: %s", self.user_id, e)
+            api._process_id = process_id
+            self.api = api
+            log.info("Restored pending TR login from disk for user=%s", self.user_id)
+            return True
+        except Exception as e:
+            log.warning("Could not restore pending TR login for %s: %s", self.user_id, e)
+            return False
+
+    def _clear_pending_login(self) -> None:
+        try:
+            self._pending_login_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
     def _strip_waf_cookie_file(self) -> None:
         """Drop stale AWS WAF token cookies from the persisted pytr jar."""
         if not self._cookies_path.exists():
@@ -2759,6 +2825,7 @@ class TRConnection:
         """Clear credentials and web-session cookies."""
         if self._cookies_path.exists():
             self._cookies_path.unlink()
+        self._clear_pending_login()
         self.phone_no = None
         self.pin = None
         self._securities_account_number = None
@@ -2798,6 +2865,10 @@ class TRConnection:
             # Apex's asyncio worker loop.
             countdown = await asyncio.to_thread(self._initiate_weblogin_sync)
 
+            # Persist the handoff so the verify step can complete this login
+            # from any worker process (see _save_pending_login).
+            self._save_pending_login(countdown)
+
             return {
                 "success": True,
                 "message": "Verification code sent to your Trade Republic app.",
@@ -2824,7 +2895,7 @@ class TRConnection:
         Returns encrypted credentials for browser storage.
         """
         try:
-            if not self.api:
+            if not self.api and not self._restore_pending_login():
                 return {"success": False, "error": "No login in progress. Please start again."}
 
             code = (code or "").strip()
@@ -2844,6 +2915,7 @@ class TRConnection:
             # The PIN was only needed to complete this login. Drop it from memory
             # now so it is never persisted and not held longer than necessary.
             self.pin = None
+            self._clear_pending_login()
 
             return {
                 "success": True,
@@ -3377,7 +3449,14 @@ def has_saved_credentials(user_id: str = "_default") -> bool:
 def initiate_login(phone_no: str, pin: str, user_id: str = "_default") -> Dict[str, Any]:
     """Start the login process - sends verification code to TR app."""
     conn = get_connection(user_id)
-    return conn.run(conn._initiate_web_login(phone_no, pin), timeout=TR_LOGIN_INIT_TIMEOUT_SECONDS)
+    try:
+        return conn.run(conn._initiate_web_login(phone_no, pin), timeout=TR_LOGIN_INIT_TIMEOUT_SECONDS)
+    except FuturesTimeoutError:
+        log.warning("Trade Republic login initiation timed out for user=%s", conn.user_id)
+        return {
+            "success": False,
+            "error": "Starting the Trade Republic login took too long. Please try again.",
+        }
 
 
 def complete_login(code: str, user_id: str = "_default") -> Dict[str, Any]:
