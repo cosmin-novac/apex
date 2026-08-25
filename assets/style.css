@@ -3030,6 +3030,53 @@ hr {
     font-size: 11px;
 }
 
+/* Row details button → per-security trading-history modal */
+.sec-detail-btn {
+    border: none;
+    background: transparent;
+    color: #9ca3af;
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+    line-height: 1;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.sec-detail-btn:hover {
+    color: #6366f1;
+    background: #eef2ff;
+}
+
+.sec-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Inter, sans-serif;
+    font-size: 12.5px;
+}
+
+.sec-history-table th {
+    color: #6b7280;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 6px 10px;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+}
+
+.sec-history-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.sec-history-badge {
+    font-size: 10.5px;
+    font-weight: 500;
+}
+
 /* Spin animation for sync button */
 .spin {
     animation: spin 1s linear infinite;
