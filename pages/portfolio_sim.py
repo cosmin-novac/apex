@@ -13,7 +13,8 @@ from core import utils as cu
 # ──────────────────────────────  SIMULATION  ──────────────────────────────
 
 def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annual_withdrawal,
-                       years_to_simulate, tax_rate=0.25, tax_method='FIFO', sp500_start_year=None):
+                       years_to_simulate, tax_rate=0.25, tax_method='FIFO', sp500_start_year=None,
+                       monthly_deposit=0.0):
     if sp500_start_year:
         sp500 = yf.Ticker("^GSPC")
         sp500_data = sp500.history(start=f"{sp500_start_year}-01-01")
@@ -22,12 +23,25 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
 
     rows = []
     cost_basis = current_value
+    monthly_deposit = monthly_deposit or 0.0
 
     for year in range(1, years_to_simulate + 1):
         starting_value = current_value
         growth_rate = annual_returns.iloc[year - 1] if sp500_start_year else annual_growth_rate
-        growth = current_value * growth_rate
-        current_value += growth
+
+        if monthly_deposit > 0:
+            # Contributions land at each month's end, so they compound within
+            # the year at the equivalent monthly rate.
+            monthly_growth = (1.0 + growth_rate) ** (1.0 / 12.0) - 1.0
+            for _ in range(12):
+                current_value = current_value * (1.0 + monthly_growth) + monthly_deposit
+            deposits = monthly_deposit * 12.0
+            cost_basis += deposits
+            growth = current_value - starting_value - deposits
+        else:
+            deposits = 0.0
+            growth = current_value * growth_rate
+            current_value += growth
 
         withdrawal_amount = (current_value * (annual_withdrawal / 100)
                              if withdrawal_type == 'percentage' else annual_withdrawal)
@@ -40,20 +54,43 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
         current_value -= (withdrawal_amount + taxes_paid)
         cost_basis -= cost_basis * (withdrawal_amount / starting_value) if starting_value > 0 else 0
 
-        rows.append({
+        row = {
             "Year": year,
             "Portfolio Value": round(starting_value, 2),
+        }
+        if monthly_deposit > 0:
+            row["Deposits"] = round(deposits, 2)
+        row.update({
             "Growth": round(growth, 2),
             "Withdrawals": round(withdrawal_amount, 2),
             "Taxes Paid": round(taxes_paid, 2),
             "Ending Value": round(current_value, 2),
             "Cost Basis": round(cost_basis, 2),
         })
+        rows.append(row)
 
     return pd.DataFrame(rows)
 
 
 # ──────────────────────────────  CHART  ──────────────────────────────
+
+# Table/trace labels are the DataFrame's English column ids; display names are
+# translated through these i18n keys.
+_COL_KEYS = {
+    "Year": "ps.year",
+    "Portfolio Value": "ps.portfolio_value",
+    "Growth": "ps.growth",
+    "Deposits": "ps.deposits",
+    "Withdrawals": "ps.withdrawals",
+    "Taxes Paid": "ps.taxes_paid",
+    "Ending Value": "ps.ending_value",
+    "Cost Basis": "ps.cost_basis",
+}
+
+
+def _table_columns(df, lang):
+    return [{"name": t(_COL_KEYS.get(c, c), lang), "id": c} for c in df.columns]
+
 
 def _make_figure(df, lang="de"):
     """Build the projection chart from a simulation DataFrame."""
@@ -63,21 +100,24 @@ def _make_figure(df, lang="de"):
         'Portfolio Value': '#6366f1',
         'Ending Value': '#8b5cf6',
         'Growth': '#10b981',
+        'Deposits': '#14b8a6',
         'Withdrawals': '#f59e0b',
         'Taxes Paid': '#ef4444',
         'Cost Basis': '#06b6d4',
     }
-    for col in ['Portfolio Value', 'Growth', 'Withdrawals', 'Taxes Paid', 'Ending Value', 'Cost Basis']:
+    year_label = t("ps.year", lang)
+    for col in ['Portfolio Value', 'Growth', 'Deposits', 'Withdrawals', 'Taxes Paid', 'Ending Value', 'Cost Basis']:
         if col not in df.columns:
             continue
+        name = t(_COL_KEYS.get(col, col), lang)
         fig.add_trace(go.Scatter(
             x=df['Year'].tolist(), y=df[col].tolist(),
             mode='lines+markers',
-            name=col,
+            name=name,
             visible=True if col not in ('Ending Value', 'Cost Basis') else 'legendonly',
             line=dict(color=palette.get(col, '#888'), width=2),
             marker=dict(size=4),
-            hovertemplate=f"<b>{col}</b><br>Year %{{x}}<br>{eur_hover}<extra></extra>",
+            hovertemplate=f"<b>{name}</b><br>{year_label} %{{x}}<br>{eur_hover}<extra></extra>",
         ))
     fig.update_layout(
         separators=cu.plotly_separators(lang),
@@ -85,8 +125,8 @@ def _make_figure(df, lang="de"):
         plot_bgcolor='white', paper_bgcolor='white',
         font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font_size=10),
-        xaxis=dict(title="Year", showgrid=True, gridcolor='#f1f5f9', dtick=5),
-        yaxis=dict(title="Amount (€)", showgrid=True, gridcolor='#f1f5f9',
+        xaxis=dict(title=year_label, showgrid=True, gridcolor='#f1f5f9', dtick=5),
+        yaxis=dict(title=t("ps.amount_eur", lang), showgrid=True, gridcolor='#f1f5f9',
                    tickprefix=('€' if lang != 'de' else ''),
                    ticksuffix=(' €' if lang == 'de' else ''),
                    separatethousands=True),
@@ -97,18 +137,15 @@ def _make_figure(df, lang="de"):
 
 # ── Default simulation (computed once at import) ──
 _DEFAULTS = dict(
-    value=700_000, growth=7, withdrawal=30_000,
+    value=700_000, growth=7, deposit=0, withdrawal=30_000,
     years=30, tax=25, method='FIFO', wtype='fixed',
 )
 _df_init = simulate_portfolio(
     _DEFAULTS['value'], _DEFAULTS['growth'] / 100, _DEFAULTS['wtype'],
     _DEFAULTS['withdrawal'], _DEFAULTS['years'], _DEFAULTS['tax'] / 100,
-    _DEFAULTS['method'],
+    _DEFAULTS['method'], monthly_deposit=_DEFAULTS['deposit'],
 )
-# Pre-compute initial values (tolist() already called in _make_figure)
-_init_figure = _make_figure(_df_init)
 _init_table_data = _df_init.to_dict('records')
-_init_table_cols = [{"name": c, "id": c} for c in _df_init.columns]
 
 
 # ──────────────────────────────  LAYOUT  ──────────────────────────────
@@ -145,13 +182,27 @@ def layout(lang="en"):
                                       value=_DEFAULTS['value'], min=0, step=1000),
                         ], size="sm", className="mb-3"),
 
-                        # Growth Rate
-                        html.Label(t("ps.annual_growth", lang), className="input-label"),
-                        dbc.InputGroup([
-                            dbc.Input(id="input-annual-growth-rate", type="number",
-                                      value=_DEFAULTS['growth'], min=0, max=100, step=0.5),
-                            dbc.InputGroupText("%"),
-                        ], size="sm", className="mb-3"),
+                        # Growth Rate + Monthly Contribution (.ps-pair: side by
+                        # side on phones so the form stays short, stacked in
+                        # the narrow desktop column)
+                        html.Div([
+                            html.Div([
+                                html.Label(t("ps.annual_growth", lang), className="input-label"),
+                                dbc.InputGroup([
+                                    dbc.Input(id="input-annual-growth-rate", type="number",
+                                              value=_DEFAULTS['growth'], min=0, max=100, step=0.5),
+                                    dbc.InputGroupText("%"),
+                                ], size="sm", className="mb-3"),
+                            ]),
+                            html.Div([
+                                html.Label(t("ps.monthly_deposit", lang), className="input-label"),
+                                dbc.InputGroup([
+                                    dbc.InputGroupText("€"),
+                                    dbc.Input(id="input-monthly-deposit", type="number",
+                                              value=_DEFAULTS['deposit'], min=0, step=50),
+                                ], size="sm", className="mb-3"),
+                            ]),
+                        ], className="ps-pair"),
 
                         html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
 
@@ -204,19 +255,24 @@ def layout(lang="en"):
                         html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
 
                         # Tax
-                        html.Label(t("ps.tax_rate", lang), className="input-label"),
-                        dbc.InputGroup([
-                            dbc.Input(id="input-tax-rate", type="number",
-                                      value=_DEFAULTS['tax'], min=0, max=100, step=0.5),
-                            dbc.InputGroupText("%"),
-                        ], size="sm", className="mb-3"),
-
-                        html.Label(t("ps.tax_method", lang), className="input-label"),
-                        dcc.Dropdown(
-                            id="input-tax-method",
-                            options=[{'label': t("ps.fifo", lang), 'value': 'FIFO'}],
-                            value='FIFO', clearable=False, className="mb-3",
-                        ),
+                        html.Div([
+                            html.Div([
+                                html.Label(t("ps.tax_rate", lang), className="input-label"),
+                                dbc.InputGroup([
+                                    dbc.Input(id="input-tax-rate", type="number",
+                                              value=_DEFAULTS['tax'], min=0, max=100, step=0.5),
+                                    dbc.InputGroupText("%"),
+                                ], size="sm", className="mb-3"),
+                            ]),
+                            html.Div([
+                                html.Label(t("ps.tax_method", lang), className="input-label"),
+                                dcc.Dropdown(
+                                    id="input-tax-method",
+                                    options=[{'label': t("ps.fifo", lang), 'value': 'FIFO'}],
+                                    value='FIFO', clearable=False, className="mb-3",
+                                ),
+                            ]),
+                        ], className="ps-pair"),
 
                         html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
 
@@ -248,8 +304,9 @@ def layout(lang="en"):
                     dbc.CardBody([
                         dcc.Graph(
                             id='investment-graph',
-                            figure=_init_figure,
-                            config={'displayModeBar': False, 'displaylogo': False},
+                            figure=_make_figure(_df_init, lang),
+                            config={'displayModeBar': False, 'displaylogo': False,
+                                    'responsive': True},
                             style={"height": "320px"},
                         ),
                     ], className="py-2"),
@@ -263,13 +320,13 @@ def layout(lang="en"):
                     dbc.CardBody([
                         dash_table.DataTable(
                             id='table',
-                            columns=_init_table_cols,
+                            columns=_table_columns(_df_init, lang),
                             data=_init_table_data,
-                            style_table={'height': '360px', 'overflowY': 'auto'},
+                            style_table={'height': '360px', 'overflowY': 'auto', 'overflowX': 'auto'},
                             style_cell={
                                 'textAlign': 'right', 'padding': '6px 10px',
                                 'fontFamily': 'Inter, sans-serif', 'fontSize': '0.75rem',
-                                'border': 'none',
+                                'border': 'none', 'whiteSpace': 'nowrap',
                             },
                             style_header={
                                 'fontWeight': '600', 'backgroundColor': '#f8fafc',
@@ -338,6 +395,7 @@ def register_callbacks(app):
          Input('run-simulation-btn-top', 'n_clicks')],
         [State('input-current-value', 'value'),
          State('input-annual-growth-rate', 'value'),
+         State('input-monthly-deposit', 'value'),
          State('withdrawal-type', 'value'),
          State('input-annual-withdrawal', 'value'),
          State('simulation-time-frame', 'value'),
@@ -348,8 +406,9 @@ def register_callbacks(app):
          State('lang-store', 'data')],
         prevent_initial_call=True,
     )
-    def run_simulation(n_clicks, n_clicks_top, current_value, growth_rate, wtype, withdrawal,
-                       time_frame, years, sp500_year, tax_rate, tax_method, lang_data):
+    def run_simulation(n_clicks, n_clicks_top, current_value, growth_rate, monthly_deposit,
+                       wtype, withdrawal, time_frame, years, sp500_year, tax_rate,
+                       tax_method, lang_data):
         if not n_clicks and not n_clicks_top:
             raise PreventUpdate
         lang = get_lang(lang_data)
@@ -357,32 +416,39 @@ def register_callbacks(app):
         try:
             # Validate inputs
             if current_value is None or current_value < 0:
-                raise ValueError("Starting investment must be ≥ 0")
+                raise ValueError(t("ps.err_starting", lang))
             if growth_rate is None:
-                raise ValueError("Growth rate is required")
+                raise ValueError(t("ps.err_growth", lang))
             if withdrawal is None or withdrawal < 0:
-                raise ValueError("Withdrawal must be ≥ 0")
+                raise ValueError(t("ps.err_withdrawal", lang))
+            if monthly_deposit is None:
+                monthly_deposit = 0
+            if monthly_deposit < 0:
+                raise ValueError(t("ps.err_deposit", lang))
             if tax_rate is None:
                 tax_rate = 0
 
             print(f"[Sim] Running: €{current_value:,.0f}, {growth_rate}% growth, "
+                  f"€{monthly_deposit:,.0f}/month deposit, "
                   f"{wtype} withdrawal €{withdrawal:,.0f}, {years}y, {tax_rate}% tax")
 
             if time_frame == 'custom':
                 if not years or years < 1:
-                    raise ValueError("Years to simulate must be ≥ 1")
+                    raise ValueError(t("ps.err_years", lang))
                 df = simulate_portfolio(
                     current_value, growth_rate / 100, wtype, withdrawal,
                     int(years), (tax_rate or 0) / 100, tax_method,
+                    monthly_deposit=monthly_deposit,
                 )
             else:
                 df = simulate_portfolio(
                     current_value, None, wtype, withdrawal,
                     None, (tax_rate or 0) / 100, tax_method, sp500_year,
+                    monthly_deposit=monthly_deposit,
                 )
 
             fig = _make_figure(df, lang)
-            cols = [{"name": c, "id": c} for c in df.columns]
+            cols = _table_columns(df, lang)
             print(f"[Sim] Success: {len(df)} years simulated")
             return fig, df.to_dict('records'), cols, ""
 

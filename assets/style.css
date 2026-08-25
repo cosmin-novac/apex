@@ -787,6 +787,36 @@ textarea::placeholder {
         font-size: 0.78rem;
         padding: 6px 10px;
     }
+
+    /* Page headers: tighter on phones */
+    .page-header {
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+    }
+    .page-title { font-size: 1.1rem; }
+    .page-subtitle { font-size: 0.78rem; }
+
+    /* Cards: less chrome on small screens */
+    .card-header-modern {
+        padding: 10px 12px;
+        font-size: 0.8rem;
+    }
+
+    /* Backtesting chart: shorter on phones */
+    .chart-container { height: 400px; }
+
+    /* Backtesting date picker: full width instead of overflowing */
+    .compact-date,
+    .compact-date .SingleDatePicker,
+    .compact-date .SingleDatePickerInput,
+    .compact-date .DateInput {
+        width: 100%;
+    }
+
+    /* Data tables scroll inside their card, never the whole page */
+    .dash-table-container .dash-spreadsheet-container {
+        max-width: 100%;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1560,6 +1590,12 @@ input.compact-input {
 .chart-container {
     width: 100%;
     min-height: 0;
+    /* Plotly figures using autosize fill this height (see backtesting_sim). */
+    height: 560px;
+}
+.chart-container .js-plotly-plot,
+.chart-container .plot-container {
+    height: 100%;
 }
 
 .table-container {
@@ -3748,6 +3784,18 @@ button.btn::-moz-focus-inner {
     line-height: 1.5;
 }
 
+/* ── Investment Simulator: paired inputs ─────────────────────────────
+   Side by side on phones (short form), stacked in the narrow desktop
+   parameter column. */
+.ps-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 12px;
+}
+@media (min-width: 768px) {
+    .ps-pair { grid-template-columns: minmax(0, 1fr); column-gap: 0; }
+}
+
 /* ============================================================
    Landing page (route "/")
    Editorial layout: warm paper ground, serif headlines, hairline
@@ -3995,11 +4043,27 @@ button.btn::-moz-focus-inner {
     .lp-fact:nth-child(3), .lp-fact:nth-child(4) { border-top: 1px solid var(--lp-rule); }
 }
 @media (max-width: 575px) {
-    .lp-facts { grid-template-columns: 1fr; }
-    .lp-fact + .lp-fact { border-left: none; padding-left: 0; border-top: 1px solid var(--lp-rule); }
-    .lp-row { grid-template-columns: 40px 1fr; }
-    .lp-row-cta { grid-column: 2; margin-top: 10px; }
-    .lp-section { padding-top: 44px; }
+    /* Keep the 2×2 facts grid from the 991px rules; just tighten it. */
+    .lp-hero { padding: 22px 0 24px; }
+    .lp-eyebrow { margin-bottom: 12px; }
+    .lp-hero-title { margin-bottom: 14px; }
+    .lp-hero-sub { font-size: 0.95rem; margin-bottom: 20px; }
+    .lp-hero-note { font-size: 0.82rem; margin-top: 14px; }
+    .lp-cta-row { gap: 12px; }
+    .lp-btn-primary { width: 100%; justify-content: center; }
+    .lp-hero-chart-col { margin-top: 18px; }
+    .lp-chart-card { padding: 14px 14px 12px; }
+    .lp-chart-value { font-size: 1.25rem; }
+    .lp-fact { padding-top: 12px; padding-bottom: 12px; }
+    .lp-row { grid-template-columns: 1fr; gap: 4px; padding: 18px 4px 18px 0; }
+    .lp-row-num { display: none; }
+    .lp-row-desc { font-size: 0.9rem; }
+    .lp-row-cta { margin-top: 8px; }
+    .lp-section { padding-top: 40px; }
+    .lp-section-title { font-size: 1.35rem; }
+    .lp-colophon { margin-top: 44px; }
+    .lp-closing { padding: 20px; margin-top: 8px; }
+    .lp-disclaimer { margin-top: 32px; }
 }
 
 /* ============================================================

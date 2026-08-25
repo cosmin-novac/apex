@@ -40,9 +40,16 @@ def register_auth_callbacks(app):
                 ? window.__apexUserId : null;
             var cur = current || null;
             if (uid === cur) return [nu, nu, nu, nu];  // unchanged -> don't churn downstream
-            // Any identity transition (login / logout / switch) clears browser-held
-            // portfolio/TR state immediately. Server callbacks then hydrate only the
-            // now-active user from their encrypted vault.
+            // Signing in from a signed-out state only announces the uid. The
+            // stores hold nothing another user owns, and wiping here would undo
+            // a vault restore that already completed (the async stay-signed-in
+            // unlock makes this poll race the restore on reload — the old wipe
+            // was why a reload sometimes fell back to demo despite stored data).
+            // secure_store.js re-runs the restore on this uid change and
+            // on_vault_settled then decides demo-vs-real.
+            if (cur === null) return [uid, nu, nu, nu];
+            // Logout or profile switch: clear browser-held portfolio/TR state
+            // immediately so nothing leaks across identities.
             return [uid, null, null, true];
         }
         """,

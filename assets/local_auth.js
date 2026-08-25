@@ -214,4 +214,13 @@
   if (hasCrypto()) {
     restoreStaySession();
   }
+
+  // Ask the browser to treat this origin's storage as persistent. Without it,
+  // localStorage (accounts + encrypted vault) is "best effort" and may be
+  // evicted under storage pressure, which silently deletes local profiles.
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(function () {});
+    }
+  } catch (e) { /* optional API */ }
 })();

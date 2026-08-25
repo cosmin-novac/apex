@@ -141,7 +141,16 @@ app.layout = dbc.Container([
     # so the data survives reloads but is unreadable until that user logs in.
     dcc.Store(id="local-portfolio-backup", storage_type="memory"),
     dcc.Store(id="vault-sync-dummy", storage_type="memory"),
-    dcc.Interval(id="vault-restore-interval", interval=350, max_intervals=1),
+    # Outcome of the last vault read ({uid, status}), written by secure_store.js
+    # AFTER it has attempted to decrypt the vault. Server callbacks that decide
+    # demo-vs-real listen to this, so they never race the async decrypt.
+    dcc.Store(id="vault-restore-state", storage_type="memory"),
+    # Drives the vault restore permanently (clientside, no server traffic when
+    # idle): the password-derived key arrives asynchronously and a login mid-
+    # session must re-hydrate too — a clientside store write does not reliably
+    # trigger another clientside callback, so the interval is the guaranteed
+    # path. restoreBackup returns no_update on every settled tick.
+    dcc.Interval(id="vault-restore-interval", interval=500),
     # Session-scoped (not local): TR credentials live in the encrypted vault and
     # are hydrated into this store only after the owner logs in, never shared
     # across profiles on the same browser.
@@ -312,8 +321,10 @@ app.clientside_callback(
 app.clientside_callback(
     "window.dash_clientside.apexVault.restoreBackup",
     [Output("local-portfolio-backup", "data", allow_duplicate=True),
-     Output("tr-encrypted-creds", "data", allow_duplicate=True)],
+     Output("tr-encrypted-creds", "data", allow_duplicate=True),
+     Output("vault-restore-state", "data")],
     [Input("vault-restore-interval", "n_intervals"), Input("current-user-store", "data")],
+    [State("local-portfolio-backup", "data"), State("tr-encrypted-creds", "data")],
     prevent_initial_call="initial_duplicate",
 )
 
