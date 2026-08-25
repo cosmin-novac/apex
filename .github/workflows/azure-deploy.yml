@@ -7,6 +7,15 @@ on:
       - main
   workflow_dispatch:
 
+# One deployment at a time. Azure OneDeploy rejects a second concurrent
+# deployment with 409 Conflict, so merges landing seconds apart used to fail
+# each other's runs (and the 45s retry raced too). The running deploy always
+# finishes; the newest push waits its turn and any intermediate pending run
+# is superseded (shown as cancelled) — main's head still gets deployed.
+concurrency:
+  group: azure-deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
