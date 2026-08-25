@@ -61,11 +61,38 @@ def test_zero_volatility_reproduces_the_deterministic_run():
     assert all(np.allclose(p, det['Portfolio Value'], atol=0.05) for p in paths)
 
 
-def test_every_scenario_pays_withdrawals_and_taxes():
+def test_scenarios_pay_withdrawals_and_taxes():
     _, avg = simulate_monte_carlo(500_000, 0.07, 'fixed', 20_000, 15, 0.25, 'FIFO',
                                   volatility=0.18, samples=40)
-    assert (avg['Withdrawals'] == 20_000).all()
+    # A scenario pays the full withdrawal until it cannot, never more.
+    assert (avg['Withdrawals'] <= 20_000 + 1e-9).all()
+    assert avg['Withdrawals'].iloc[0] == 20_000, "year one is always affordable here"
     assert (avg['Taxes Paid'] > 0).any(), "gains must be taxed on withdrawal"
+
+
+def test_an_exhausted_portfolio_stays_at_zero():
+    """You cannot draw a pension from an empty account. The balance stops at
+    zero instead of going negative and compounding the debt."""
+    df = simulate_portfolio(100_000, 0.07, 'fixed', 60_000, 10, 0.25, 'FIFO')
+    for col in ('Portfolio Value', 'Growth', 'Withdrawals', 'Taxes Paid',
+                'Ending Value', 'Cost Basis'):
+        assert (df[col] >= 0).all(), f"{col} went negative"
+    # Once it runs dry it stays dry, and nothing is paid out of an empty pot.
+    dry = df[df['Portfolio Value'] == 0]
+    assert len(dry) >= 5, "this case should exhaust well before the horizon"
+    assert (dry['Withdrawals'] == 0).all() and (dry['Ending Value'] == 0).all()
+    # The final partial year draws only what is left, not the full request.
+    last_paid = df[df['Withdrawals'] > 0].iloc[-1]
+    assert last_paid['Withdrawals'] < 60_000
+    assert last_paid['Ending Value'] == 0
+
+
+def test_the_ruin_floor_does_not_touch_sustainable_runs():
+    """The cap must bind only when the money actually runs out."""
+    df = simulate_portfolio(700_000, 0.07, 'fixed', 30_000, 30, 0.25, 'FIFO',
+                            monthly_deposit=500)
+    assert (df['Withdrawals'] == 30_000).all(), "every year affordable, so unchanged"
+    assert (df['Ending Value'] > 0).all()
 
 
 def test_shapes_and_average_line_up():
@@ -110,36 +137,29 @@ def test_axis_is_not_squashed_by_the_fat_tail():
     assert top < biggest, "extreme runs are expected to leave the frame"
 
 
-def test_ruined_scenarios_stay_visible_at_the_page_defaults():
-    """Withdrawals can outrun the portfolio. Those runs must not vanish under
-    a hard zero baseline, or a bust reads as a soft landing.
-
-    Uses the simulator's own default inputs on purpose: this is the case a
-    floor keyed to the average curve missed, because the average and the
-    pooled 5th percentile both stay positive while a real share of the
-    individual scenarios goes under.
-    """
+def test_no_scenario_ever_goes_below_zero():
+    """At the page's own defaults a real share of runs exhausts. They must
+    flatline at zero, not dive into debt that then compounds."""
     paths, avg = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
                                       'FIFO', volatility=0.15, samples=200)
-    worst_per_path = sorted(min(p) for p in paths)
-    n_negative = sum(1 for m in worst_per_path if m < 0)
-    assert n_negative >= 10, "defaults should still ruin a meaningful share"
-    assert avg['Portfolio Value'].min() > 0, "the average alone hides this"
+    lows = [min(p) for p in paths]
+    assert min(lows) == 0.0, f"lowest point should be exactly zero, got {min(lows)}"
+    exhausted = sum(1 for low in lows if low == 0.0)
+    assert exhausted >= 10, "defaults should still ruin a meaningful share"
+    assert (avg['Cost Basis'] >= 0).all(), "a negative cost basis is meaningless"
 
-    low = _make_mc_figure(paths, avg, "en").layout.yaxis.range[0]
-    assert low < 0, f"axis floor {low} hides {n_negative} ruined scenarios"
-    # The bulk of the ruin is visible, not just the single worst path.
-    hidden = sum(1 for m in worst_per_path if m < low)
-    assert hidden <= n_negative // 2, f"{hidden} of {n_negative} ruined runs clipped"
+    # And the chart's floor sits at zero, so a flatlined run is visible on it.
+    low, high = _make_mc_figure(paths, avg, "en").layout.yaxis.range
+    assert low == 0 and high > 0
 
 
-def test_deeply_ruined_run_is_shown():
+def test_deep_ruin_flatlines_rather_than_going_negative():
     paths, avg = simulate_monte_carlo(100_000, 0.07, 'fixed', 200_000, 20, 0.25,
                                       'FIFO', volatility=0.2, samples=30)
-    worst = avg['Portfolio Value'].min()
-    assert worst < 0, "test needs a portfolio that actually runs out"
+    assert all(min(p) == 0.0 for p in paths), "every run here should exhaust"
+    assert avg['Portfolio Value'].min() == 0.0
     low = _make_mc_figure(paths, avg, "en").layout.yaxis.range[0]
-    assert low <= worst, f"axis floor {low} hides the ruin at {worst}"
+    assert low == 0
 
 
 def test_single_year_and_single_scenario_do_not_crash():

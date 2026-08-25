@@ -56,16 +56,29 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
             growth = current_value * growth_rate
             current_value += growth
 
-        withdrawal_amount = (current_value * (annual_withdrawal / 100)
-                             if withdrawal_type == 'percentage' else annual_withdrawal)
+        requested = (current_value * (annual_withdrawal / 100)
+                     if withdrawal_type == 'percentage' else annual_withdrawal)
+        requested = max(0.0, requested)
 
         total_gain = max(0, current_value - cost_basis)
         gain_ratio = total_gain / current_value if current_value > 0 else 0
-        taxable_amount = withdrawal_amount * gain_ratio
-        taxes_paid = max(0, taxable_amount * tax_rate)
+        tax_per_euro = gain_ratio * tax_rate
 
-        current_value -= (withdrawal_amount + taxes_paid)
-        cost_basis -= cost_basis * (withdrawal_amount / starting_value) if starting_value > 0 else 0
+        # An exhausted portfolio stops at zero. You cannot draw a pension from
+        # an empty account, and letting the balance go negative made the run
+        # nonsense: the debt compounded, so a *good* market year deepened it,
+        # and the withdrawal kept being paid out forever. The year's gross
+        # outflow (withdrawal plus the tax it triggers) is therefore capped at
+        # what is actually left. Runs that never exhaust are unaffected: the
+        # cap is not binding, and the tax is the same figure as before.
+        affordable = current_value / (1.0 + tax_per_euro) if current_value > 0 else 0.0
+        withdrawal_amount = min(requested, max(0.0, affordable))
+        taxes_paid = max(0.0, withdrawal_amount * tax_per_euro)
+
+        current_value = max(0.0, current_value - withdrawal_amount - taxes_paid)
+        if starting_value > 0:
+            drawn = min(1.0, withdrawal_amount / starting_value)
+            cost_basis = max(0.0, cost_basis - cost_basis * drawn)
 
         row = {
             "Year": year,
@@ -259,16 +272,13 @@ def _make_mc_figure(paths, average_df, lang="de"):
     if paths:
         flat = np.concatenate([np.asarray(p, dtype=float) for p in paths])
         y_top = max(float(np.percentile(flat, 95)), max(avg_values or [0])) * 1.08
-        # The floor is zero while the portfolio survives, but withdrawals can
-        # outrun it. Those are the scenarios a saver most needs to see, and a
-        # hard zero baseline would hide them: at the page's own defaults 21 of
-        # 200 runs go negative while the average and the pooled 5th percentile
-        # both stay well positive. So the floor reads the distribution of the
-        # per-scenario LOW points, which drops as soon as a real share of runs
-        # goes under, without one catastrophic path squashing the rest.
-        worst = np.array([np.min(np.asarray(p, dtype=float)) for p in paths])
-        y_bottom = min(0.0, float(np.percentile(worst, 5)),
-                       min(avg_values or [0])) * 1.08
+        # Zero is the floor: the engine stops an exhausted portfolio there
+        # rather than letting it go negative, so an exhausted scenario shows
+        # as a line running flat along the bottom of the chart. The minimum
+        # is still read rather than assumed, so the day that guarantee moves
+        # the chart follows instead of quietly clipping the failures.
+        worst = min(float(np.min(flat)), min(avg_values or [0]))
+        y_bottom = min(0.0, worst) * 1.08
         fig.update_yaxes(range=[y_bottom, max(y_top, y_bottom + 1.0)])
     return fig
 
