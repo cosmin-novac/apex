@@ -253,8 +253,13 @@ def _create_tr_connect_modal(lang="en"):
     ], id="tr-connect-modal", size="md", centered=True, className="tr-modal", is_open=False)
 
 
-def create_metric_card(title, value_id, subtitle_id=None, icon=None, color_class=""):
-    """Create a metric card component."""
+def create_metric_card(title, value_id, subtitle_id=None, icon=None, color_class="",
+                       value_sensitive=True, subtitle_sensitive=False):
+    """Create a metric card component.
+
+    Privacy mode blurs only absolute money amounts: mark the main value
+    and/or the subtitle as sensitive depending on which of them carries a
+    euro amount. Percent values stay readable."""
     value_style = {
         "whiteSpace": "nowrap",
         "overflow": "hidden",
@@ -265,14 +270,16 @@ def create_metric_card(title, value_id, subtitle_id=None, icon=None, color_class
     card_style = {
         "containerType": "inline-size",
     }
+    value_cls = "metric-value sensitive" if value_sensitive else "metric-value"
+    subtitle_cls = "metric-subtitle sensitive" if subtitle_sensitive else "metric-subtitle"
     return html.Div([
         html.Div([
             html.Div(title, className="metric-label"),
-            html.Div(id=value_id, className=f"metric-value sensitive {color_class}",
+            html.Div(id=value_id, className=f"{value_cls} {color_class}",
                      children="--", style=value_style),
             html.Div(
                 id=subtitle_id,
-                className="metric-subtitle sensitive",
+                className=subtitle_cls,
                 children="",
             ) if subtitle_id else html.Div(
                 className="metric-subtitle metric-subtitle-placeholder",
@@ -461,11 +468,13 @@ def layout(lang="en"):
         dbc.Col([
             dbc.Card([
                 dbc.CardBody([
-                    dcc.Graph(id="holdings-donut-chart", 
+                    # Not `sensitive`: privacy mode keeps the donut visible and
+                    # blurs only its € center annotation (style.css).
+                    dcc.Graph(id="holdings-donut-chart",
                               config={"displayModeBar": False},
                               style={"height": "260px"}),
                 ], className="py-0 px-0"),
-            ], className="card-modern h-100 sensitive"),
+            ], className="card-modern h-100"),
         ], md=3, className="mb-3"),
         
         # Portfolio Summary + Metrics
@@ -494,17 +503,23 @@ def layout(lang="en"):
                                 ], width=4, className="mb-2"),
                             ]),
                             dbc.Row([
+                                # Main value is a percentage (stays readable in
+                                # privacy mode); the absolute € subtitle blurs.
                                 dbc.Col([
-                                    create_metric_card(t("pa.1m_return", lang), "metric-1m-return", "metric-1m-abs"),
+                                    create_metric_card(t("pa.1m_return", lang), "metric-1m-return", "metric-1m-abs",
+                                                       value_sensitive=False, subtitle_sensitive=True),
                                 ], width=3),
                                 dbc.Col([
-                                    create_metric_card(t("pa.3m_return", lang), "metric-3m-return", "metric-3m-abs"),
+                                    create_metric_card(t("pa.3m_return", lang), "metric-3m-return", "metric-3m-abs",
+                                                       value_sensitive=False, subtitle_sensitive=True),
                                 ], width=3),
                                 dbc.Col([
-                                    create_metric_card(t("pa.ytd_return", lang), "metric-ytd-return", "metric-ytd-abs"),
+                                    create_metric_card(t("pa.ytd_return", lang), "metric-ytd-return", "metric-ytd-abs",
+                                                       value_sensitive=False, subtitle_sensitive=True),
                                 ], width=3),
                                 dbc.Col([
-                                    create_metric_card(t("pa.total_return", lang), "metric-total-return", "metric-total-abs"),
+                                    create_metric_card(t("pa.total_return", lang), "metric-total-return", "metric-total-abs",
+                                                       value_sensitive=False, subtitle_sensitive=True),
                                 ], width=3),
                             ]),
                         ], md=8, className="mb-2"),
@@ -538,7 +553,10 @@ def layout(lang="en"):
                             },
                             clear_on_unhover=True,
                             style={"height": "430px"},
-                            className="sensitive",
+                            # The chart callback swaps this to "money-axis" on
+                            # the value tab; privacy mode then blurs only the €
+                            # axis ticks and hover, never the chart itself.
+                            className="",
                         ),
                         type="circle",
                         color="#6366f1"
@@ -614,9 +632,9 @@ def layout(lang="en"):
     dcc.Store(id="securities-sort", data={"col": "value", "asc": False}),
     dcc.Store(id="securities-data", data=[]),
     dcc.Store(id="privacy-mode", data=False),
-    dcc.Store(id="tr-session-data", storage_type="session"),
-    dcc.Store(id="tr-auth-step", data="initial"),
-    dcc.Store(id="tr-check-creds-trigger", data=0),
+    # tr-session-data / tr-auth-step / tr-check-creds-trigger live in the TR
+    # connector layout (components/tr_connector.py) — defining them here too
+    # would duplicate their ids in the rendered tree.
     html.Div(id="comparison-page", style={"display": "none"}),
     
     # Hidden placeholders for removed outputs still referenced by callbacks
@@ -969,12 +987,14 @@ def register_callbacks(app):
             profit_pct_str = cu.fmt_pct(profit_pct, lang, signed=True)
             cash_str = cu.fmt_eur(cash, lang)
 
-            # Change styling
-            change_class = "fs-5 text-success sensitive" if profit >= 0 else "fs-5 text-danger sensitive"
+            # Change styling. The € amount and the % live in separate spans so
+            # privacy mode can blur the amount while the % stays readable.
+            change_class = "fs-5 text-success" if profit >= 0 else "fs-5 text-danger"
             profit_class = "metric-value text-success sensitive" if profit >= 0 else "metric-value text-danger sensitive"
             change_str = html.Span([
                 html.I(className=f"bi bi-{'arrow-up' if profit >= 0 else 'arrow-down'}-right me-1"),
-                f"{cu.fmt_eur(profit, lang, signed=True)} ({cu.fmt_pct(profit_pct, lang, signed=True)})"
+                html.Span(cu.fmt_eur(profit, lang, signed=True), className="sensitive"),
+                f" ({cu.fmt_pct(profit_pct, lang, signed=True)})",
             ])
 
             return (value_str, change_str, change_class, invested_str, profit_str,
@@ -1190,10 +1210,10 @@ def register_callbacks(app):
     )
     def update_return_metrics(data_json, selected_range, lang_data):
         lang = get_lang(lang_data)
-        default = ("--", "metric-value sensitive", "",
-                   "--", "metric-value sensitive", "",
-                   "--", "metric-value sensitive", "",
-                   "--", "metric-value sensitive", "")
+        default = ("--", "metric-value", "",
+                   "--", "metric-value", "",
+                   "--", "metric-value", "",
+                   "--", "metric-value", "")
         
         if not data_json:
             return default
@@ -1290,7 +1310,8 @@ def register_callbacks(app):
                 return cu.fmt_eur(val, lang, decimals=0, signed=True)
             
             def cls(val):
-                return "metric-value text-success sensitive" if val >= 0 else "metric-value text-danger sensitive"
+                # Percent values stay readable in privacy mode.
+                return "metric-value text-success" if val >= 0 else "metric-value text-danger"
             
             return (fmt(m1_return), cls(m1_return), fmt_abs(m1_abs),
                     fmt(m3_return), cls(m3_return), fmt_abs(m3_abs),
@@ -1420,7 +1441,10 @@ def register_callbacks(app):
                 html.Hr(className="my-2"),
                 html.Div([
                     html.Div(t("pa.price_gains", lang), className="text-muted small"),
-                    html.Div(f"{fmt_eur(profit)} ({fmt_pct(profit_pct)})", className="fw-semibold text-success sensitive" if profit >= 0 else "fw-semibold text-danger sensitive"),
+                    html.Div([
+                        html.Span(fmt_eur(profit), className="sensitive"),
+                        f" ({fmt_pct(profit_pct)})",
+                    ], className="fw-semibold text-success" if profit >= 0 else "fw-semibold text-danger"),
                 ], className="d-flex justify-content-between mb-2"),
                 html.Div([
                     html.Div(t("pa.dividends", lang), className="text-muted small"),
@@ -1615,17 +1639,20 @@ def register_callbacks(app):
                 initials = (words[0][0] + words[1][0]).upper() if len(words) >= 2 else name[:2].upper()
                 logo_el = html.Span(initials, className="sec-initials")
 
+            # Privacy mode blurs the absolute amounts (quantity, € value,
+            # € profit, € dividends). Per-unit buy price and the percentage
+            # columns stay readable so the table remains scannable.
             cells = [
                 html.Td(html.Div([logo_el, html.Span(name, className="sec-name-text")],
                                   className="sec-name-cell")),
                 html.Td(r.get("type", ""), className="sec-type"),
-                html.Td(cu.fmt_num(r['qty'], lang, 4) if r.get("qty") else "–", className="text-end"),
+                html.Td(cu.fmt_num(r['qty'], lang, 4) if r.get("qty") else "–", className="text-end sensitive"),
                 html.Td(_fmt_eur(r.get("avg_buy"), lang), className="text-end"),
                 html.Td(_fmt_eur(r.get("value"), lang), className="text-end sensitive"),
-                html.Td(_fmt_eur(profit, lang), className="text-end", style={"color": pnl_color}),
+                html.Td(_fmt_eur(profit, lang), className="text-end sensitive", style={"color": pnl_color}),
                 html.Td(_fmt_pct(profit_pct, lang), className="text-end", style={"color": pnl_color}),
                 html.Td(_fmt_eur(r.get("dividends"), lang) if r.get("dividends") else "–",
-                         className="text-end",
+                         className="text-end sensitive" if r.get("dividends") else "text-end",
                          style={"color": "#10b981"} if r.get("dividends", 0) > 0 else {}),
                 html.Td(_fmt_pct(r.get("allocation"), lang, 1), className="text-end"),
             ]
@@ -1774,12 +1801,10 @@ def register_callbacks(app):
         
         return history
     
-    def build_portfolio_chart(data_json, chart_type, selected_range, benchmarks, pathname, include_benchmarks, asset_class=None, use_deposits=False, lang="en"):
-        # Render only on compare routes.
-        # On localhost, compare is mounted at "/" as an alias to "/compare".
-        if pathname not in ("/compare", "/"):
-            return go.Figure()  # Return empty figure instead of raising exception
-
+    def build_portfolio_chart(data_json, chart_type, selected_range, benchmarks, include_benchmarks, asset_class=None, use_deposits=False, lang="en"):
+        # No route guard here: pages stay mounted across navigation, so an
+        # empty figure produced while another page is visible would stick when
+        # the user comes back. The figure cache makes off-page builds cheap.
         fig = go.Figure()
         selected_range = (selected_range or "max").lower()
         benchmarks = benchmarks or []
@@ -2347,11 +2372,10 @@ def register_callbacks(app):
          Input("selected-range", "data"),
          Input("benchmark-selector", "value"),
          Input("asset-class-filter", "value")],
-        [State("url", "pathname"),
-         State("lang-store", "data")],
+        State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_chart(data_json, chart_type, selected_range, benchmarks, asset_class, pathname, lang_data):
+    def update_chart(data_json, chart_type, selected_range, benchmarks, asset_class, lang_data):
         lang = get_lang(lang_data)
         # Use deposits for benchmark simulation if "cash" is included in asset filter
         use_deposits = "cash" in (asset_class or [])
@@ -2361,7 +2385,6 @@ def register_callbacks(app):
             chart_type,
             selected_range,
             benchmarks,
-            pathname,
             include_benchmarks=True,
             asset_class=asset_class,
             use_deposits=use_deposits,
@@ -2370,6 +2393,15 @@ def register_callbacks(app):
         _log.info("Portfolio chart (%s, %s) built in %.2fs", chart_type, selected_range,
                   time.perf_counter() - t0)
         return fig
+
+    # The value tab shows absolute € on the y-axis; privacy mode blurs those
+    # ticks (style.css) via this marker class. Performance/drawdown are %.
+    app.clientside_callback(
+        "function(tab){ return tab === 'tab-value' ? 'money-axis' : ''; }",
+        Output("main-portfolio-chart-v2", "className"),
+        Input("chart-tabs", "active_tab"),
+        prevent_initial_call=False,
+    )
 
     # Privacy mode toggle (clientside so it reacts instantly)
     app.clientside_callback(
@@ -2401,14 +2433,13 @@ def register_callbacks(app):
         Output("comparison-table-container", "children"),
         [Input("portfolio-data-store", "data"),
          Input("benchmark-selector", "value")],
-        [State("url", "pathname"),
-         State("lang-store", "data")],
+        State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_comparison_table(data_json, benchmarks, pathname, lang_data):
+    def update_comparison_table(data_json, benchmarks, lang_data):
+        # No route guard: pages stay mounted, so an empty div rendered while
+        # another page is visible would still be there on the way back.
         lang = get_lang(lang_data)
-        if not pathname or pathname != "/compare":
-            return html.Div()
         if not data_json:
             return html.Div(t("pa.chart_empty", lang), className="text-muted text-center py-3")
 
