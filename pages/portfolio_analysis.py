@@ -980,7 +980,14 @@ def register_callbacks(app):
          Output("sync-tr-data-btn", "children"),
          Output("sync-tr-data-btn", "disabled"),
          Output("tr-connect-modal", "is_open", allow_duplicate=True),
-         Output("demo-mode", "data", allow_duplicate=True)],
+         Output("demo-mode", "data", allow_duplicate=True),
+         Output("tr-initial-view", "style", allow_duplicate=True),
+         Output("tr-otp-view", "style", allow_duplicate=True),
+         Output("tr-syncing-view", "style", allow_duplicate=True),
+         Output("tr-connected-view", "style", allow_duplicate=True),
+         Output("tr-auth-step", "data", allow_duplicate=True),
+         Output("tr-connection-status", "className", allow_duplicate=True),
+         Output("tr-status-text", "children", allow_duplicate=True)],
         Input("sync-tr-data-btn", "n_clicks"),
         [State("tr-encrypted-creds", "data"),
          State("tr-connect-modal", "is_open"),
@@ -993,14 +1000,8 @@ def register_callbacks(app):
             raise PreventUpdate
 
         uid = auth.current_uid(current_user)
-        lang = get_lang(lang_data)
 
-        def _btn(icon_cls):
-            # Keep the desktop text label when swapping the status icon.
-            return [html.I(className=icon_cls),
-                    html.Span(t("pa.sync", lang), className="d-none d-md-inline ms-1")]
-
-        from components.tr_api import fetch_all_data, reconnect, is_connected
+        from components.tr_api import reconnect, is_connected, start_fetch_async
 
         # If not connected, try silent reconnect with stored creds
         if not is_connected(user_id=uid) and encrypted_creds:
@@ -1008,16 +1009,20 @@ def register_callbacks(app):
 
         # Still not connected? Open TR Connect modal
         if not is_connected(user_id=uid):
-            return no_update, no_update, False, True, no_update
+            return (no_update, no_update, False, True, no_update,
+                    no_update, no_update, no_update, no_update,
+                    no_update, no_update, no_update)
 
-        # Connected — fetch data. The result lands in the browser-only backup via
-        # the mirror callback; no cloud storage is involved.
-        data = fetch_all_data(user_id=uid)
-        if data.get("success"):
-            portfolio_json = json.dumps(data)
-            return portfolio_json, _btn("bi bi-check-circle"), False, False, False
-
-        return no_update, _btn("bi bi-x-circle"), False, modal_open, no_update
+        # Connected — sync in the background. Waiting for the fetch here held
+        # this request open for minutes and Azure's ~230 s gateway limit
+        # killed it with a 504 while the backend kept working. Instead the TR
+        # modal opens on its syncing view (live progress via the poll) and
+        # deliver_sync_result flips the UI when the sync lands.
+        start_fetch_async(user_id=uid, flow="refresh")
+        return (no_update, no_update, False, True, no_update,
+                {"display": "none"}, {"display": "none"},
+                {"display": "block"}, {"display": "none"},
+                "syncing", "connection-status syncing", "Syncing data...")
     
     # Update metrics when data changes
     @app.callback(
