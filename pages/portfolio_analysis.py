@@ -77,6 +77,35 @@ def _backup_for_uid(local_backup, uid):
         return None
 
 
+def classify_activity(title_raw, subtitle_raw, lang):
+    """Return (label, icon, badge_color) for a Trade Republic activity row.
+
+    Order matters: "kauf" is a substring of "verkauf", so sells must be
+    matched before buys or every German sale renders as a purchase.
+    """
+    tl = (title_raw or "").lower()
+    s = (subtitle_raw or "").lower()
+    if "sparplan" in s or "sparplan" in tl:
+        return t("pa.savings_plan", lang), "bi-arrow-repeat", "info"
+    if "verkauf" in s or "verkauf" in tl or "sell" in s or "sell" in tl:
+        return t("pa.sell", lang), "bi-cart-dash", "warning"
+    if "kauf" in s or "kauf" in tl or "buy" in s or "buy" in tl:
+        return t("pa.buy", lang), "bi-cart-plus", "info"
+    if "dividende" in s or "dividend" in tl or "dividende" in tl:
+        return t("pa.dividend", lang), "bi-cash-coin", "success"
+    if "zinsen" in tl or "interest" in tl:
+        return t("pa.interest_activity", lang), "bi-cash-coin", "success"
+    if "einzahlung" in tl or "deposit" in tl:
+        return t("pa.deposit", lang), "bi-box-arrow-in-down", "success"
+    if "auszahlung" in tl or "withdraw" in tl or "gesendet" in s:
+        return t("pa.withdrawal", lang), "bi-box-arrow-up", "danger"
+    if "steuer" in tl or "tax" in tl:
+        return t("pa.tax", lang), "bi-receipt", "secondary"
+    if "gebühr" in tl or "fee" in tl:
+        return t("pa.fee", lang), "bi-receipt", "secondary"
+    return t("pa.activity", lang), "bi-clock-history", "primary"
+
+
 # Timeframe pill-bar constants (shared between layout and callbacks)
 _TF_IDS  = ["tf-1w", "tf-1m", "tf-ytd", "tf-1y", "tf-3y", "tf-5y", "tf-max"]
 _TF_VALS = ["1W",    "1M",    "YTD",    "1Y",    "3Y",    "5Y",    "MAX"]
@@ -1407,30 +1436,6 @@ def register_callbacks(app):
                 except Exception:
                     return None
 
-            def classify_activity(title_raw, subtitle_raw):
-                """Return (label, icon, badge_color) for a transaction."""
-                tl = title_raw.lower()
-                s = subtitle_raw.lower()
-                if "sparplan" in s or "sparplan" in tl:
-                    return t("pa.savings_plan", lang), "bi-arrow-repeat", "info"
-                if "kauf" in s or "buy" in tl or "kauforder" in tl:
-                    return t("pa.buy", lang), "bi-cart-plus", "info"
-                if "verkauf" in s or "sell" in tl or "verkaufsorder" in tl:
-                    return t("pa.sell", lang), "bi-cart-dash", "warning"
-                if "dividende" in s or "dividend" in tl or "dividende" in tl:
-                    return t("pa.dividend", lang), "bi-cash-coin", "success"
-                if "zinsen" in tl or "interest" in tl:
-                    return t("pa.interest_activity", lang), "bi-cash-coin", "success"
-                if "einzahlung" in tl or "deposit" in tl:
-                    return t("pa.deposit", lang), "bi-box-arrow-in-down", "success"
-                if "auszahlung" in tl or "withdraw" in tl or "gesendet" in s:
-                    return t("pa.withdrawal", lang), "bi-box-arrow-up", "danger"
-                if "steuer" in tl or "tax" in tl:
-                    return t("pa.tax", lang), "bi-receipt", "secondary"
-                if "gebühr" in tl or "fee" in tl:
-                    return t("pa.fee", lang), "bi-receipt", "secondary"
-                return t("pa.activity", lang), "bi-clock-history", "primary"
-
             recent_items = []
             for txn in sorted(transactions, key=lambda x: x.get("timestamp", ""), reverse=True)[:8]:
                 title_raw = txn.get("title") or txn.get("subtitle") or "Activity"
@@ -1439,7 +1444,7 @@ def register_callbacks(app):
                 ts = parse_timestamp(txn.get("timestamp"))
                 date_str = ts.strftime("%d %b %Y, %H:%M") if ts else ""
                 amount_str = fmt_eur(amount) if amount else ""
-                label, icon, badge_color = classify_activity(title_raw, subtitle_raw)
+                label, icon, badge_color = classify_activity(title_raw, subtitle_raw, lang)
 
                 recent_items.append(
                     html.Div([
