@@ -632,6 +632,9 @@ def layout(lang="en"):
     dcc.Store(id="securities-sort", data={"col": "value", "asc": False}),
     dcc.Store(id="securities-data", data=[]),
     dcc.Store(id="privacy-mode", data=False),
+    # All three chart figures (value/drawdown/performance), built together on
+    # data changes; switching tabs just picks one clientside — no round trip.
+    dcc.Store(id="chart-figures-store", storage_type="memory"),
     # tr-session-data / tr-auth-step / tr-check-creds-trigger live in the TR
     # connector layout (components/tr_connector.py) — defining them here too
     # would duplicate their ids in the rendered tree.
@@ -2364,35 +2367,53 @@ def register_callbacks(app):
 
 
 
-    # Main chart (Value / Drawdown)
+    # Main chart: build ALL THREE tabs' figures whenever the data inputs
+    # change. The active tab is deliberately NOT an input — switching tabs is
+    # handled clientside from the store, so it never rebuilds or refetches.
     @app.callback(
-        Output("main-portfolio-chart-v2", "figure"),
+        Output("chart-figures-store", "data"),
         [Input("portfolio-data-store", "data"),
-         Input("chart-tabs", "active_tab"),
          Input("selected-range", "data"),
          Input("benchmark-selector", "value"),
          Input("asset-class-filter", "value")],
         State("lang-store", "data"),
         prevent_initial_call=False
     )
-    def update_chart(data_json, chart_type, selected_range, benchmarks, asset_class, lang_data):
+    def update_chart_figures(data_json, selected_range, benchmarks, asset_class, lang_data):
         lang = get_lang(lang_data)
         # Use deposits for benchmark simulation if "cash" is included in asset filter
         use_deposits = "cash" in (asset_class or [])
         t0 = time.perf_counter()
-        fig = build_portfolio_chart(
-            data_json,
-            chart_type,
-            selected_range,
-            benchmarks,
-            include_benchmarks=True,
-            asset_class=asset_class,
-            use_deposits=use_deposits,
-            lang=lang,
-        )
-        _log.info("Portfolio chart (%s, %s) built in %.2fs", chart_type, selected_range,
+        figs = {
+            chart_type: build_portfolio_chart(
+                data_json,
+                chart_type,
+                selected_range,
+                benchmarks,
+                include_benchmarks=True,
+                asset_class=asset_class,
+                use_deposits=use_deposits,
+                lang=lang,
+            )
+            for chart_type in ("tab-value", "tab-drawdown", "tab-performance")
+        }
+        _log.info("Portfolio chart figures (%s) built in %.2fs", selected_range,
                   time.perf_counter() - t0)
-        return fig
+        return figs
+
+    app.clientside_callback(
+        """
+        function(tab, figs) {
+            const dc = window.dash_clientside;
+            if (!figs) { return dc.no_update; }
+            return figs[tab] || dc.no_update;
+        }
+        """,
+        Output("main-portfolio-chart-v2", "figure"),
+        [Input("chart-tabs", "active_tab"),
+         Input("chart-figures-store", "data")],
+        prevent_initial_call=True,
+    )
 
     # The value tab shows absolute € on the y-axis; privacy mode blurs those
     # ticks (style.css) via this marker class. Performance/drawdown are %.

@@ -1676,6 +1676,7 @@ class TRConnection:
         """
         from components.portfolio_history import (
             extract_isin_from_icon,
+            get_prices_for_dates,
             get_prices_from_transactions,
             interpolate_prices,
             set_isin_mappings,
@@ -1724,35 +1725,52 @@ class TRConnection:
         if not isins_with_transactions or not all_dates:
             return {}
         
-        # Generate history dates (weekly + transaction dates + today)
+        # Generate history dates (DAILY + today). A daily grid with real market
+        # closes gives the charts genuine day-to-day movement; the previous
+        # weekly grid of forward-filled execution prices drew a staircase that
+        # only moved on trade days.
         start_date = min(all_dates)
         end_date = datetime.now().date()
-        
-        history_dates = set()
-        current = start_date
-        while current <= end_date:
-            history_dates.add(current)
-            current += timedelta(days=7)  # Weekly for smoother charts
-        
+
+        history_dates = {start_date + timedelta(days=k)
+                         for k in range((end_date - start_date).days + 1)}
         history_dates.update(all_dates)
-        history_dates.add(end_date)
         sorted_dates = sorted(history_dates)
         date_strs = [d.strftime("%Y-%m-%d") for d in sorted_dates]
-        
+        # Markets only price weekdays; weekends come from the forward fill, so
+        # they are never requested (and never re-fetched as cache misses).
+        weekday_dts = [datetime.combine(d, datetime.min.time())
+                       for d in sorted_dates if d.weekday() < 5]
+
         # Build position histories
         position_histories = {}
-        
-        for isin in isins_with_transactions:
+
+        n_isins = len(isins_with_transactions)
+        for idx, isin in enumerate(sorted(isins_with_transactions)):
             name = isin_to_name.get(isin, isin)
             pos = pos_lookup.get(isin, {})
-            
-            # Get prices for this ISIN
+
+            # Exact execution prices from the user's own trades…
             known_prices = isin_prices.get(isin, {})
-            if not known_prices:
+            # …merged with daily EUR market closes (disk-cached, delta-fetched;
+            # empty for instruments without external data, e.g. some bonds).
+            try:
+                market_prices = get_prices_for_dates(isin, name, weekday_dts)
+            except Exception as exc:
+                log.warning(f"  Market prices unavailable for {name}: {exc}")
+                market_prices = {}
+            # Execution prices win on their own dates: they are ground truth
+            # for what the position was actually worth at the trade.
+            merged_prices = {**market_prices, **known_prices}
+            if not merged_prices:
                 continue
-            
+            self._write_progress(
+                75 + int(9 * (idx + 1) / n_isins), "Price history",
+                f"{name[:34]} ({idx + 1}/{n_isins})",
+            )
+
             # Interpolate prices for all dates
-            prices = interpolate_prices(known_prices, date_strs)
+            prices = interpolate_prices(merged_prices, date_strs)
             
             if prices:
                 # Build price history list
@@ -1826,21 +1844,13 @@ class TRConnection:
         if not isins_with_transactions or not all_dates:
             return {}
         
-        # Generate history dates (monthly + transaction dates + today)
+        # Generate history dates (DAILY + today), matching the primary builder.
         start_date = min(all_dates)
         end_date = datetime.now().date()
-        
-        history_dates = set()
-        current = start_date.replace(day=1)
-        while current <= end_date:
-            history_dates.add(current)
-            if current.month == 12:
-                current = current.replace(year=current.year + 1, month=1)
-            else:
-                current = current.replace(month=current.month + 1)
-        
+
+        history_dates = {start_date + timedelta(days=k)
+                         for k in range((end_date - start_date).days + 1)}
         history_dates.update(all_dates)
-        history_dates.add(end_date)
         sorted_dates = sorted(history_dates)
         
         # Fetch prices for each ISIN
@@ -2446,62 +2456,54 @@ class TRConnection:
         
         log.info(f"Calculating history from {first_deposit_date} to {today} ({len(sorted_dates)} dates)")
         
-        # STEP 4: Calculate value for each date
+        # STEP 4: Calculate value for each date. sorted_dates is a DAILY grid
+        # now, so every series is walked forward with a cursor instead of being
+        # re-sorted and re-scanned per date (which was quadratic and only
+        # tolerable on the old weekly grid).
+        def _forward_walker(series: Dict[str, float]):
+            """Step-function reader: value at the nearest date <= the query.
+
+            Queries must arrive in ascending date order (they do — the outer
+            loop iterates sorted_dates)."""
+            items = sorted(series.items())
+            state = {'i': 0, 'val': None}
+
+            def at(date_str):
+                i = state['i']
+                while i < len(items) and items[i][0] <= date_str:
+                    state['val'] = items[i][1]
+                    i += 1
+                state['i'] = i
+                return state['val']
+            return at
+
+        invested_at = _forward_walker(invested_series)
+        cash_at = _forward_walker(cash_timeline)
+        quantity_at = {isin: _forward_walker(series)
+                       for isin, series in holdings_timeline.items()}
+        price_at = {isin: _forward_walker(series)
+                    for isin, series in price_lookup.items()}
+        all_isins = sorted(set(holdings_timeline.keys()) | set(price_lookup.keys()))
+
         history = []
-        
         for date_str in sorted_dates:
-            # Get invested amount (cumulative deposits up to this date)
-            invested = 0.0
-            for inv_date in sorted(invested_series.keys()):
-                if inv_date <= date_str:
-                    invested = invested_series[inv_date]
-                else:
-                    break
-            
-            # Get cash balance on this date (or nearest earlier)
-            cash_balance = 0.0
-            for cash_date in sorted(cash_timeline.keys()):
-                if cash_date <= date_str:
-                    cash_balance = cash_timeline[cash_date]
-                else:
-                    break
-            
-            # Calculate market value: sum(quantity × price) for each position
+            invested = invested_at(date_str) or 0.0
+            cash_balance = cash_at(date_str) or 0.0
+
+            # Market value: sum(quantity × price) for each position
             securities_value = 0.0
-            missing_prices = []
-            
-            for isin in set(holdings_timeline.keys()) | set(price_lookup.keys()):
-                # Get quantity on this date
-                quantity = 0.0
-                if isin in holdings_timeline:
-                    for h_date in sorted(holdings_timeline[isin].keys()):
-                        if h_date <= date_str:
-                            quantity = holdings_timeline[isin][h_date]
-                        else:
-                            break
-                
-                if quantity <= 0:
+            for isin in all_isins:
+                quantity = quantity_at[isin](date_str) if isin in quantity_at else None
+                if not quantity or quantity <= 0:
                     continue
-                
-                # Get price on this date (or nearest earlier)
-                price = None
-                if isin in price_lookup:
-                    for p_date in sorted(price_lookup[isin].keys()):
-                        if p_date <= date_str:
-                            price = price_lookup[isin][p_date]
-                        else:
-                            break
-                
+                price = price_at[isin](date_str) if isin in price_at else None
                 if price and price > 0:
-                    position_value = quantity * price
-                    securities_value += position_value
-                else:
-                    missing_prices.append(isin_names.get(isin, isin))
-            
+                    securities_value += quantity * price
+
             # Total portfolio value = securities + cash
             # Cash should be positive (it's an asset)
             total_value = securities_value + max(0, cash_balance)
-            
+
             # Only add if we have meaningful data
             if invested > 0 or total_value > 0:
                 history.append({
