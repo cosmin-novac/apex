@@ -665,8 +665,11 @@ textarea::placeholder {
         display: flex;
     }
 
+    /* Phones get a real 16px gutter: the nested bootstrap containers
+       inherit --bs-gutter-x: 0 from the app shell's g-0 row, so this
+       padding is the ONLY thing keeping text off the screen edge. */
     .main-content {
-        padding: 16px 12px !important;
+        padding: 16px !important;
     }
 
     /* Sticky header must sit below mobile header */
@@ -821,7 +824,7 @@ textarea::placeholder {
 
 @media (max-width: 480px) {
     .main-content {
-        padding: 12px 8px !important;
+        padding: 14px 16px !important;
     }
     .preset-col {
         flex: 0 0 50% !important;
@@ -883,8 +886,10 @@ textarea::placeholder {
     padding-top: 8px;
 }
 
-/* Row spacing reset */
-.row {
+/* Row spacing reset. Excludes .g-0 (the app shell row): its columns are
+   p-0, so the negative margin there is uncompensated and shifted every
+   page 8px off the left screen edge. */
+.row:not(.g-0) {
     margin-left: -8px;
     margin-right: -8px;
 }
@@ -3792,6 +3797,11 @@ button.btn::-moz-focus-inner {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 12px;
 }
+/* Long German labels ("Besteuerungsmethode") fit the half column without a
+   dangling wrapped letter. */
+.ps-pair .input-label {
+    letter-spacing: 0.02em !important;
+}
 @media (min-width: 768px) {
     .ps-pair { grid-template-columns: minmax(0, 1fr); column-gap: 0; }
 }
@@ -3905,6 +3915,7 @@ button.btn::-moz-focus-inner {
     font-weight: 600;
     color: var(--lp-ink);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 .lp-chart-caption {
     font-size: 0.8rem;
@@ -4044,8 +4055,8 @@ button.btn::-moz-focus-inner {
 }
 @media (max-width: 575px) {
     /* Keep the 2×2 facts grid from the 991px rules; just tighten it. */
-    .lp-hero { padding: 22px 0 24px; }
-    .lp-eyebrow { margin-bottom: 12px; }
+    .lp-hero { padding: 20px 0 24px; }
+    .lp-eyebrow { display: none; }
     .lp-hero-title { margin-bottom: 14px; }
     .lp-hero-sub { font-size: 0.95rem; margin-bottom: 20px; }
     .lp-hero-note { font-size: 0.82rem; margin-top: 14px; }
@@ -4055,15 +4066,17 @@ button.btn::-moz-focus-inner {
     .lp-chart-card { padding: 14px 14px 12px; }
     .lp-chart-value { font-size: 1.25rem; }
     .lp-fact { padding-top: 12px; padding-bottom: 12px; }
-    .lp-row { grid-template-columns: 1fr; gap: 4px; padding: 18px 4px 18px 0; }
+    .lp-row { grid-template-columns: 1fr; gap: 4px; padding: 16px 4px 16px 0; }
     .lp-row-num { display: none; }
     .lp-row-desc { font-size: 0.9rem; }
-    .lp-row-cta { margin-top: 8px; }
-    .lp-section { padding-top: 40px; }
+    /* The whole row is one tap target — the "open …" label is redundant
+       text on a phone. */
+    .lp-row-cta { display: none; }
+    .lp-section { padding-top: 36px; }
     .lp-section-title { font-size: 1.35rem; }
-    .lp-colophon { margin-top: 44px; }
+    .lp-colophon { margin-top: 40px; }
     .lp-closing { padding: 20px; margin-top: 8px; }
-    .lp-disclaimer { margin-top: 32px; }
+    .lp-disclaimer { margin-top: 28px; }
 }
 
 /* ============================================================
