@@ -1,4 +1,5 @@
 """Apex - standalone portfolio and backtesting application."""
+import json
 import os
 import logging
 from dotenv import load_dotenv
@@ -210,28 +211,61 @@ def redirect_to_default(pathname):
     return dash.no_update
 
 
-@app.callback(Output("page-content", "children"), [Input("url", "pathname"), Input("lang-store", "data")])
-def render_page_content(pathname, lang_data):
+# All pages stay mounted; navigation only toggles which wrapper is visible.
+# Swapping page-content.children on every route change (the previous model)
+# re-mounted the page from scratch — every chart and table refetched and the
+# page state was lost each time the user navigated away and back.
+_PAGES = [
+    # (wrapper key, layout factory, pathnames that show it)
+    ("home",        landing_layout,                          ("/",)),
+    ("compare",     portfolio_analysis_layout,               ("/compare",)),
+    ("backtesting", backtesting_layout,                      ("/backtesting",)),
+    ("psim",        portfolio_sim_layout,                    ("/portfolio",)),
+    ("riskbands",   riskbands_layout,                        ("/riskbands",)),
+    ("realcost",    real_cost_layout,                        ("/realcost",)),
+    ("ranks",       megacap_layout,                          ("/ranks", "/megacap")),
+    ("impressum",   lambda lang: legal_layout("impressum", lang), ("/impressum",)),
+    ("privacy",     lambda lang: legal_layout("privacy", lang),   ("/privacy",)),
+]
+
+
+def _active_page_key(pathname):
+    for key, _fn, paths in _PAGES:
+        if pathname in paths:
+            return key
+    return "home"
+
+
+@app.callback(Output("page-content", "children"),
+              Input("lang-store", "data"),
+              State("url", "pathname"))
+def render_page_content(lang_data, pathname):
+    # Renders ALL pages once (re-runs only on language change); the pathname
+    # merely decides which wrapper starts visible.
     lang = get_lang(lang_data)
-    if pathname in (None, "", "/"):
-        return landing_layout(lang)
-    if pathname == "/compare":
-        return portfolio_analysis_layout(lang)
-    if pathname == "/backtesting":
-        return backtesting_layout(lang)
-    if pathname == "/portfolio":
-        return portfolio_sim_layout(lang)
-    if pathname == "/riskbands":
-        return riskbands_layout(lang)
-    if pathname == "/realcost":
-        return real_cost_layout(lang)
-    if pathname in ("/ranks", "/megacap"):
-        return megacap_layout(lang)
-    if pathname == "/impressum":
-        return legal_layout("impressum", lang)
-    if pathname == "/privacy":
-        return legal_layout("privacy", lang)
-    return portfolio_analysis_layout(lang)
+    active = _active_page_key(pathname)
+    return [
+        html.Div(fn(lang), id=f"page-wrap-{key}",
+                 style={} if key == active else {"display": "none"})
+        for key, fn, _paths in _PAGES
+    ]
+
+
+app.clientside_callback(
+    """
+    function(pathname) {
+        const routes = %s;
+        let active = routes[pathname] || "home";
+        return %s.map(k => k === active ? {} : {"display": "none"});
+    }
+    """ % (
+        json.dumps({p: key for key, _fn, paths in _PAGES for p in paths}),
+        json.dumps([key for key, _fn, _paths in _PAGES]),
+    ),
+    [Output(f"page-wrap-{key}", "style") for key, _fn, _paths in _PAGES],
+    Input("url", "pathname"),
+    prevent_initial_call=True,
+)
 
 
 @app.callback(

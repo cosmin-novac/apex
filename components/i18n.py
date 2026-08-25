@@ -132,7 +132,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "pa.no_bench":              {"en": "No Bench.",                "de": "Kein Bench."},
     "pa.n_bench":               {"en": "{n} Bench.",               "de": "{n} Bench."},
     "pa.not_connected":         {"en": "Not connected",            "de": "Nicht verbunden"},
-    "pa.n_holdings":            {"en": "{n} Holdings",             "de": "{n} Positionen"},
+    "pa.n_holdings":            {"en": "{n} Holdings in Trade Republic", "de": "{n} Positionen in Trade Republic"},
     "pa.synced_date":           {"en": "Synced {date}",            "de": "Sync {date}"},
     "pa.synced":                {"en": "Synced",                   "de": "Synchronisiert"},
     "pa.connected":             {"en": "Connected",                "de": "Verbunden"},
