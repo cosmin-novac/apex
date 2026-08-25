@@ -194,9 +194,9 @@ def layout(lang="en"):
                         # Starting Investment
                         html.Label(t("ps.starting_investment", lang), className="input-label"),
                         dbc.InputGroup([
-                            dbc.InputGroupText("€"),
                             dbc.Input(id="input-current-value", type="number",
                                       value=_DEFAULTS['value'], min=0, step=1000),
+                            dbc.InputGroupText("€"),
                         ], size="sm", className="mb-3"),
 
                         # Growth Rate + Monthly Contribution (.ps-pair: side by
@@ -214,9 +214,9 @@ def layout(lang="en"):
                             html.Div([
                                 html.Label(t("ps.monthly_deposit", lang), className="input-label"),
                                 dbc.InputGroup([
-                                    dbc.InputGroupText("€"),
                                     dbc.Input(id="input-monthly-deposit", type="number",
                                               value=_DEFAULTS['deposit'], min=0, step=50),
+                                    dbc.InputGroupText("€"),
                                 ], size="sm", className="mb-3"),
                             ]),
                         ], className="ps-pair"),
