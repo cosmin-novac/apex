@@ -22,7 +22,7 @@ def recent_daily_dates(end_date, days: int = 7) -> Set:
     """Daily grid points for the last *days* days up to *end_date*.
 
     The history grid is weekly/monthly plus transaction dates, so without
-    these the "previous" point before today can be up to a week old — and a
+    these the "previous" point before today can be up to a week old, and a
     1D/1W trailing window (comparison table) silently measures that longer
     span instead."""
     return {end_date - timedelta(days=k) for k in range(days + 1)}

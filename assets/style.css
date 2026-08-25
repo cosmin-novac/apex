@@ -3913,6 +3913,61 @@ button.btn::-moz-focus-inner {
     letter-spacing: 0.02em !important;
 }
 
+/* Rule writing guide: prose first, raw reference last and visibly quieter. */
+.rule-guide-h {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-top: 18px;
+    margin-bottom: 8px;
+}
+#info-modal .modal-body p,
+#info-modal .modal-body li {
+    font-size: 0.88rem;
+    line-height: 1.65;
+    color: #475569;
+}
+#info-modal .modal-body li {
+    margin-bottom: 6px;
+}
+#info-modal .modal-body code {
+    font-size: 0.82rem;
+    background: #f1f5f9;
+    color: #4a3aa7;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.rule-guide-ref {
+    font-size: 0.8rem;
+    line-height: 1.55;
+    color: #64748b;
+}
+
+/* Monte Carlo: the info button beside the section label, and a popover wide
+   enough for prose (Bootstrap caps .popover at 276px by default). */
+.mc-info-btn {
+    color: #64748b;
+    font-size: 0.95rem;
+    padding: 0 0 0 6px;
+    line-height: 1;
+    box-shadow: none !important;
+}
+.mc-info-btn:hover {
+    color: #6366f1;
+}
+.mc-info-popover {
+    max-width: 380px;
+}
+.mc-info-popover .popover-body {
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: #475569;
+}
+.mc-info-popover .popover-header {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
 /* ============================================================
    Landing page (route "/")
    Editorial layout: warm paper ground, serif headlines, hairline
@@ -3935,6 +3990,35 @@ button.btn::-moz-focus-inner {
 
 /* ── Hero ── */
 .lp-hero { padding: 56px 0 44px; }
+/* Free-and-open-source note: the first line on the page, a quiet pill above
+   the eyebrow so it reads as an invitation rather than a banner. */
+.lp-oss {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 560px;
+    font-size: 0.86rem;
+    line-height: 1.6;
+    color: var(--lp-body);
+    background: rgba(29, 78, 216, 0.05);
+    border: 1px solid rgba(29, 78, 216, 0.13);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 22px;
+}
+.lp-oss-icon {
+    color: var(--lp-accent);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    flex-shrink: 0;
+}
+.lp-oss-link {
+    color: var(--lp-accent);
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(29, 78, 216, 0.35);
+}
+.lp-oss-link:hover { color: var(--lp-accent); border-bottom-color: var(--lp-accent); }
 .lp-eyebrow {
     font-size: 0.75rem;
     letter-spacing: 0.14em;

@@ -82,7 +82,7 @@ def bench_trailing_return(bdf, days_ago):
 
     Anchored to the benchmark's own last close on purpose: the portfolio
     history always ends today (live prices), while index data ends at the
-    last completed close — usually one day earlier. Anchoring the window at
+    last completed close, usually one day earlier. Anchoring the window at
     the portfolio's last date would make every benchmark window one day
     short, and the 1D column exactly 0.00% every day.
     """
@@ -102,7 +102,7 @@ def bench_trailing_return(bdf, days_ago):
 def range_start_date(selected_range, end_date):
     """Start of the header timeframe window ending at *end_date*.
 
-    Returns None for 'max' — callers treat that as "whole history"."""
+    Returns None for 'max'; callers treat that as "whole history"."""
     r = (selected_range or "max").lower()
     if r == "1w":
         return end_date - timedelta(days=7)
@@ -133,7 +133,7 @@ def position_range_pl(price_history, quantity, start_date):
     Price-based: quantity × (last price − price at the window start). A
     position first priced inside the window (bought there) measures from its
     first price, i.e. since purchase. Returns (None, None) when there is no
-    usable price history — the table shows a dash instead of silently falling
+    usable price history. The table shows a dash instead of silently falling
     back to the all-time number under a range-labeled column."""
     points = price_history or []
     if not points or not quantity:
@@ -219,14 +219,14 @@ def _fig_cache_set(key: str, fig_dict: dict):
 
 # Chart series colors: a CVD-validated categorical set (checked with a palette
 # validator; worst adjacent pair ΔE ≥ 9 under CVD simulation). Color follows
-# the entity — the portfolio is always violet, each index keeps its hue.
+# the entity: the portfolio is always violet, each index keeps its hue.
 _PORTFOLIO_COLOR = "#4a3aa7"
 _BENCHMARK_COLORS = {
-    "^GSPC": "#2a78d6",   # S&P 500 — blue
-    "^IXIC": "#eb6834",   # NASDAQ — orange
-    "URTH": "#1baf7a",    # MSCI World — aqua
-    "^GDAXI": "#eda100",  # DAX — yellow
-    "^STOXX": "#e87ba4",  # STOXX 600 — magenta
+    "^GSPC": "#2a78d6",   # S&P 500: blue
+    "^IXIC": "#eb6834",   # NASDAQ: orange
+    "URTH": "#1baf7a",    # MSCI World: aqua
+    "^GDAXI": "#eda100",  # DAX: yellow
+    "^STOXX": "#e87ba4",  # STOXX 600: magenta
 }
 
 
@@ -402,7 +402,7 @@ def get_position_asset_class(position):
 # Layout for the analysis page
 def layout(lang="en"):
   return dbc.Container([
-    # Demo Account Banner — only visible in demo mode
+    # Demo Account Banner, only visible in demo mode
     html.Div(
         [
             html.I(className="bi bi-info-circle-fill me-2"),
@@ -438,13 +438,13 @@ def layout(lang="en"):
         
         # Right side - Controls
         html.Div([
-            # Sync button (hidden — sync via banner CTA)
+            # Sync button (hidden, sync via banner CTA)
             dbc.Button([
                 html.I(className="bi bi-arrow-repeat"),
                 html.Span(t("pa.sync", lang), className="d-none d-md-inline ms-1"),
             ], id="sync-tr-data-btn", color="link", size="sm", className="header-icon-btn sync-btn-prominent", n_clicks=0, title=t("pa.sync", lang), style={"display": "none"}),
 
-            # Demo mode toggle (hidden — auto-managed)
+            # Demo mode toggle (hidden, auto-managed)
             dbc.Button([
                 html.I(className="bi bi-person-badge", id="demo-toggle-icon"),
             ], id="demo-toggle-btn", color="link", size="sm", className="header-icon-btn", n_clicks=0, title=t("pa.switch_demo", lang), style={"display": "none"}),
@@ -702,10 +702,10 @@ def layout(lang="en"):
     dcc.Store(id="securities-data", data=[]),
     dcc.Store(id="privacy-mode", data=False),
     # All three chart figures (value/drawdown/performance), built together on
-    # data changes; switching tabs just picks one clientside — no round trip.
+    # data changes; switching tabs just picks one clientside, no round trip.
     dcc.Store(id="chart-figures-store", storage_type="memory"),
     # tr-session-data / tr-auth-step / tr-check-creds-trigger live in the TR
-    # connector layout (components/tr_connector.py) — defining them here too
+    # connector layout (components/tr_connector.py), defining them here too
     # would duplicate their ids in the rendered tree.
     html.Div(id="comparison-page", style={"display": "none"}),
     
@@ -805,7 +805,7 @@ def register_callbacks(app):
                 pass
         return is_open
 
-    # "Log in" link in demo banner — page-level click handler.
+    # "Log in" link in demo banner, page-level click handler.
     # Logged out -> open the local login modal. Logged in -> open the TR connect
     # modal so the user can sync real data.
     @app.callback(
@@ -829,7 +829,7 @@ def register_callbacks(app):
     # changes. Everything else only reads demo-mode.
     #
     # Driven by vault-restore-state, which assets/secure_store.js writes AFTER
-    # it has attempted to decrypt the browser vault — never by the raw auth
+    # it has attempted to decrypt the browser vault, never by the raw auth
     # transition. When this fires, local-portfolio-backup already holds
     # whatever the vault had for the active user, so deciding demo-vs-real
     # cannot race the async client-side decrypt (the old race intermittently
@@ -888,7 +888,7 @@ def register_callbacks(app):
         except Exception:
             pass
 
-        # No cached data yet — keep demo mode so the banner stays visible
+        # No cached data yet, keep demo mode so the banner stays visible
         return True, _load_demo_json(), no_update
 
     # ── Demo mode toggle (manual button) ──
@@ -962,7 +962,7 @@ def register_callbacks(app):
             link_text = t("pa.demo_login", lang)
             suffix_text = t("pa.demo_suffix", lang)
 
-        # The sync button is the reconnect/refresh entry point — show it for
+        # The sync button is the reconnect/refresh entry point, show it for
         # every logged-in user (it opens the connect modal when there is no
         # session yet). The demo toggle only makes sense once real data exists.
         sync_visible = {} if uid else {"display": "none"}
@@ -1013,8 +1013,8 @@ def register_callbacks(app):
                     no_update, no_update, no_update, no_update,
                     no_update, no_update, no_update)
 
-        # Connected — sync in the background. Waiting for the fetch here held
-        # this request open for minutes and Azure's ~230 s gateway limit
+        # Connected, so sync in the background. Waiting for the fetch here
+        # held this request open for minutes and Azure's ~230 s gateway limit
         # killed it with a 504 while the backend kept working. Instead the TR
         # modal opens on its syncing view (live progress via the poll) and
         # deliver_sync_result flips the UI when the sync lands.
@@ -1231,7 +1231,7 @@ def register_callbacks(app):
             return names.get(selected[0], selected[0])
         return t("pa.n_bench", lang).replace("{n}", str(len(selected)))
 
-    # (Timeframe label is now shown inline in pill bar — no callback needed)
+    # (Timeframe label is now shown inline in pill bar, no callback needed)
 
     # Update header metadata + freshness
     @app.callback(
@@ -1352,7 +1352,7 @@ def register_callbacks(app):
                 if total_invested > 0:
                     ytd_return = ytd_abs / total_invested * 100
 
-            # Total return over the whole history, as TWR — the same number
+            # Total return over the whole history, as TWR, the same number
             # the Performance tab and the comparison table's Total column
             # report. (Profit divided by the first invested amount explodes
             # for portfolios that started tiny.)
@@ -1694,18 +1694,18 @@ def register_callbacks(app):
         "profit_pct": "pa.pl_pct", "dividends": "pa.div", "allocation": "pa.alloc",
     }
 
-    # Preload available logos (file path lookup – done once at import time is fine
+    # Preload available logos (file path lookup, done once at import time is fine
     # because the callback re-checks every render anyway).
     _LOGOS_DIR = Path(__file__).resolve().parent.parent / "assets" / "logos"
 
     def _fmt_eur(v, lang="de"):
         if v is None or v == 0:
-            return "–"
+            return "-"
         return cu.fmt_eur(v, lang)
 
     def _fmt_pct(v, lang="de", decimals=2):
         if v is None:
-            return "–"
+            return "-"
         return cu.fmt_pct(v, lang, decimals=decimals)
 
     def _build_securities_html(rows, sort_col="value", sort_asc=False, lang="en",
@@ -1719,7 +1719,7 @@ def register_callbacks(app):
         header_cells = []
         for col_id, align in _SEC_COL_IDS:
             col_label = t(_SEC_COL_KEYS.get(col_id, col_id), lang)
-            # The P&L columns follow the header timeframe — say so.
+            # The P&L columns follow the header timeframe, say so.
             if rng_label and col_id in ("profit", "profit_pct", "dividends"):
                 col_label = f"{col_label} ({rng_label})"
             arrow = ""
@@ -1769,12 +1769,12 @@ def register_callbacks(app):
                 html.Td(html.Div([logo_el, html.Span(name, className="sec-name-text")],
                                   className="sec-name-cell")),
                 html.Td(r.get("type", ""), className="sec-type"),
-                html.Td(cu.fmt_num(r['qty'], lang, 4) if r.get("qty") else "–", className="text-end sensitive"),
+                html.Td(cu.fmt_num(r['qty'], lang, 4) if r.get("qty") else "-", className="text-end sensitive"),
                 html.Td(_fmt_eur(r.get("avg_buy"), lang), className="text-end"),
                 html.Td(_fmt_eur(r.get("value"), lang), className="text-end sensitive"),
                 html.Td(_fmt_eur(profit, lang), className="text-end sensitive", style={"color": pnl_color}),
                 html.Td(_fmt_pct(profit_pct, lang), className="text-end", style={"color": pnl_color}),
-                html.Td(_fmt_eur(r.get("dividends"), lang) if r.get("dividends") else "–",
+                html.Td(_fmt_eur(r.get("dividends"), lang) if r.get("dividends") else "-",
                          className="text-end sensitive" if r.get("dividends") else "text-end",
                          style={"color": "#10b981"} if r.get("dividends", 0) > 0 else {}),
                 html.Td(_fmt_pct(r.get("allocation"), lang, 1), className="text-end"),
@@ -1910,9 +1910,9 @@ def register_callbacks(app):
                 html.Td(date_str, className="text-nowrap"),
                 html.Td(dbc.Badge([html.I(className=f"bi {icon} me-1"), label],
                                   color=badge_color, className="sec-history-badge")),
-                html.Td(cu.fmt_num(shares, lang, 4) if shares > 0 else "–",
+                html.Td(cu.fmt_num(shares, lang, 4) if shares > 0 else "-",
                         className="text-end sensitive"),
-                html.Td(cu.fmt_eur(price, lang) if price else "–",
+                html.Td(cu.fmt_eur(price, lang) if price else "-",
                         className="text-end"),
                 html.Td(cu.fmt_eur(amount, lang, signed=amount != 0),
                         className="text-end sensitive fw-semibold",
@@ -2495,7 +2495,7 @@ def register_callbacks(app):
                         ))
                     else:
                         # Fallback: if simulation isn't available, use normalized
-                        # index data. Only meaningful on the performance tab —
+                        # index data. Only meaningful on the performance tab,
                         # scaling an index onto absolute € values without the
                         # DCA simulation just draws an arbitrary line (in demo
                         # mode it pinned five flat lines to the x-axis).
@@ -2622,7 +2622,7 @@ def register_callbacks(app):
 
 
     # Main chart: build ALL THREE tabs' figures whenever the data inputs
-    # change. The active tab is deliberately NOT an input — switching tabs is
+    # change. The active tab is deliberately NOT an input, switching tabs is
     # handled clientside from the store, so it never rebuilds or refetches.
     @app.callback(
         Output("chart-figures-store", "data"),
@@ -2847,7 +2847,7 @@ def register_callbacks(app):
 
             def cell(value, period):
                 if value is None:
-                    return html.Td("–", className="pcmp-na", title=t("pa.cmp_na", lang))
+                    return html.Td("-", className="pcmp-na", title=t("pa.cmp_na", lang))
                 scale = scale_by_period.get(period) or 1.0
                 weight = min(1.0, abs(value) / scale) if scale > 0 else 0.0
                 if abs(value) < 0.05:

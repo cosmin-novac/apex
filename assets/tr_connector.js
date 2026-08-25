@@ -332,7 +332,7 @@ window.dash_clientside.trConnector = {
     // Stop polling at phase boundaries. The phone/PIN validation callback
     // rewrites tr-auth-feedback with "" on every keystroke and that dispatch
     // can land after the send click, so only feedback with actual content
-    // (an error) may stop the poll — never an empty rewrite. The "syncing"
+    // (an error) may stop the poll, never an empty rewrite. The "syncing"
     // step is the background fetch running: the poll must KEEP running
     // through it, because the same interval also delivers the sync result.
     stopSyncPoll: function(summary, authFb, otpFb, step) {

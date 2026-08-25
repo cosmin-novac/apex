@@ -17,8 +17,8 @@ The context includes the following functions:
 - current(col): Retrieves the current value of the specified column. The available columns/indicators are '{available_columns_list}'
 
 It also includes these variables:
-- available_cash: The amount of cash available for buying Bitcoin.
-- btc_owned: The amount of Bitcoin currently owned.
+- available_cash: The cash available to buy the asset being backtested.
+- btc_owned: How many units of that asset are currently held. The name is historical and applies to every asset, not only Bitcoin.
 - current_portfolio_value: How much is the current portfolio worth.
 - portfolio_value_over_time: A vector of the portfolio value up to today
 - current_date: the current date as 'YYYY-MM-DD'

@@ -147,12 +147,12 @@ Rechtsgrundlagen sind insbesondere Vertragserfuellung und vorvertragliche Massna
 
 Zur Bereitstellung von Apex setzen wir die folgenden externen Dienste ein. Wir bemuehen uns um vollstaendige Transparenz; dies sind alle Dienste, an die im Rahmen der Nutzung Daten uebermittelt werden koennen:
 
-- **Microsoft Azure (Hosting)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Betrieb der Server- und Anwendungsinfrastruktur (App Service). Verarbeitet technische Zugriffs- und Server-Logdaten. Es werden **keine** Portfolio- oder Zugangsdaten in einem Cloud-Speicher abgelegt.
-- **OpenAI (optionale KI-Funktionen)** — OpenAI, L.L.C., USA (bzw. OpenAI Ireland Ltd.). Verarbeitung Ihrer Eingaben **nur**, wenn Sie KI-Funktionen nutzen und einen OpenAI API-Key hinterlegen.
-- **Yahoo Finance / yfinance (Marktdaten)** — Yahoo. Abruf von Benchmark-, Kurs- und Vergleichsdaten. Dabei koennen technische Anfragen an diesen Anbieter entstehen.
-- **Google Fonts (Schriftarten)** — Google Ireland Limited. Zur einheitlichen Darstellung wird die Schriftart "Inter" von Google-Servern (fonts.googleapis.com, fonts.gstatic.com) geladen; dabei wird Ihre IP-Adresse an Google uebermittelt.
-- **Content-Delivery-Networks (z. B. jsDelivr)** — zum Ausliefern von Stylesheets, Icons und Skripten. Dabei kann Ihre IP-Adresse an den jeweiligen CDN-Anbieter uebermittelt werden.
-- **Trade Republic** — Trade Republic Bank GmbH. Datenabruf ausschliesslich auf Ihre Veranlassung (siehe unten). Apex ist kein Angebot von Trade Republic und steht nicht mit Trade Republic in Verbindung.
+- **Microsoft Azure (Hosting)**: Microsoft Ireland Operations Limited / Microsoft Corporation. Betrieb der Server- und Anwendungsinfrastruktur (App Service). Verarbeitet technische Zugriffs- und Server-Logdaten. Es werden **keine** Portfolio- oder Zugangsdaten in einem Cloud-Speicher abgelegt.
+- **OpenAI (optionale KI-Funktionen)**: OpenAI, L.L.C., USA (bzw. OpenAI Ireland Ltd.). Verarbeitung Ihrer Eingaben **nur**, wenn Sie KI-Funktionen nutzen und einen OpenAI API-Key hinterlegen.
+- **Yahoo Finance / yfinance (Marktdaten)**: Yahoo. Abruf von Benchmark-, Kurs- und Vergleichsdaten. Dabei koennen technische Anfragen an diesen Anbieter entstehen.
+- **Google Fonts (Schriftarten)**: Google Ireland Limited. Zur einheitlichen Darstellung wird die Schriftart "Inter" von Google-Servern (fonts.googleapis.com, fonts.gstatic.com) geladen; dabei wird Ihre IP-Adresse an Google uebermittelt.
+- **Content-Delivery-Networks (z. B. jsDelivr)**: zum Ausliefern von Stylesheets, Icons und Skripten. Dabei kann Ihre IP-Adresse an den jeweiligen CDN-Anbieter uebermittelt werden.
+- **Trade Republic**: Trade Republic Bank GmbH. Datenabruf ausschliesslich auf Ihre Veranlassung (siehe unten). Apex ist kein Angebot von Trade Republic und steht nicht mit Trade Republic in Verbindung.
 
 ## Hosting und Server-Logs
 
@@ -242,12 +242,12 @@ The legal bases include performance of a contract or pre-contractual measures un
 
 To provide Apex, we use the following external services. In the interest of full transparency, these are all services to which data may be transmitted when you use Apex:
 
-- **Microsoft Azure (hosting)** — Microsoft Ireland Operations Limited / Microsoft Corporation. Operates the server and application infrastructure (App Service). Processes technical access and server log data. **No** portfolio or credential data is placed in any cloud storage.
-- **OpenAI (optional AI features)** — OpenAI, L.L.C., USA (or OpenAI Ireland Ltd.). Processes your inputs **only** if you use AI features and provide an OpenAI API key.
-- **Yahoo Finance / yfinance (market data)** — Yahoo. Retrieval of benchmark, price, and comparison data. Technical requests may be sent to this provider.
-- **Google Fonts (web fonts)** — Google Ireland Limited. The "Inter" font is loaded from Google servers (fonts.googleapis.com, fonts.gstatic.com) for consistent rendering; your IP address is transmitted to Google in the process.
-- **Content delivery networks (e.g. jsDelivr)** — to serve stylesheets, icons, and scripts. Your IP address may be transmitted to the respective CDN provider.
-- **Trade Republic** — Trade Republic Bank GmbH. Data is retrieved only on your initiative (see below). Apex is not provided by, affiliated with, or endorsed by Trade Republic.
+- **Microsoft Azure (hosting)**: Microsoft Ireland Operations Limited / Microsoft Corporation. Operates the server and application infrastructure (App Service). Processes technical access and server log data. **No** portfolio or credential data is placed in any cloud storage.
+- **OpenAI (optional AI features)**: OpenAI, L.L.C., USA (or OpenAI Ireland Ltd.). Processes your inputs **only** if you use AI features and provide an OpenAI API key.
+- **Yahoo Finance / yfinance (market data)**: Yahoo. Retrieval of benchmark, price, and comparison data. Technical requests may be sent to this provider.
+- **Google Fonts (web fonts)**: Google Ireland Limited. The "Inter" font is loaded from Google servers (fonts.googleapis.com, fonts.gstatic.com) for consistent rendering; your IP address is transmitted to Google in the process.
+- **Content delivery networks (e.g. jsDelivr)**: to serve stylesheets, icons, and scripts. Your IP address may be transmitted to the respective CDN provider.
+- **Trade Republic**: Trade Republic Bank GmbH. Data is retrieved only on your initiative (see below). Apex is not provided by, affiliated with, or endorsed by Trade Republic.
 
 ## Hosting and server logs
 

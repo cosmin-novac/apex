@@ -551,7 +551,7 @@ def register_callbacks(app):
                     total_sum_spread += total_value_times_probability
                 Z[i, j] = total_sum_spread
 
-        # Create the heatmap — convert numpy types to native Python for plotly
+        # Create the heatmap, convert numpy types to native Python for plotly
         heatmap_fig = go.Figure(data=go.Heatmap(
             z=Z.tolist(),
             x=[int(v) for v in percentage_pushed_values],
