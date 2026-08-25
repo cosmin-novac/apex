@@ -324,22 +324,24 @@ window.dash_clientside.trConnector = {
     // Start polling sync progress the moment a request begins (send code /
     // verify / reconnect / refresh). Click-only inputs so it runs immediately,
     // not deferred behind in-flight server callbacks.
-    enableSyncPoll: function(start, verify, recon, refresh) {
-        if (start || verify || recon || refresh) { return false; }
+    enableSyncPoll: function(start, verify, recon, refresh, headerSync) {
+        if (start || verify || recon || refresh || headerSync) { return false; }
         return window.dash_clientside.no_update;
     },
 
     // Stop polling at phase boundaries. The phone/PIN validation callback
     // rewrites tr-auth-feedback with "" on every keystroke and that dispatch
     // can land after the send click, so only feedback with actual content
-    // (an error) may stop the poll — never an empty rewrite.
+    // (an error) may stop the poll — never an empty rewrite. The "syncing"
+    // step is the background fetch running: the poll must KEEP running
+    // through it, because the same interval also delivers the sync result.
     stopSyncPoll: function(summary, authFb, otpFb, step) {
         const dc = window.dash_clientside;
         const trig = (dc.callback_context.triggered || []).map(t => t.prop_id);
         const any = (id) => trig.some(p => p.indexOf(id) === 0);
         const hasText = (v) => !!(v && (typeof v !== 'string' || v.trim() !== ''));
-        if (any('tr-portfolio-summary')) { return true; }
-        if (any('tr-auth-step')) { return true; }
+        if (any('tr-auth-step')) { return step === 'syncing' ? false : true; }
+        if (any('tr-portfolio-summary')) { return step === 'syncing' ? false : true; }
         if (any('tr-auth-feedback') && hasText(authFb)) { return true; }
         if (any('tr-otp-feedback') && hasText(otpFb)) { return true; }
         return dc.no_update;

@@ -108,7 +108,9 @@ PLAYWRIGHT_BROWSERS_DIR = Path(
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 10 * 60
 TR_LOGIN_INIT_TIMEOUT_SECONDS = 5 * 60
 TR_LOGIN_COMPLETE_TIMEOUT_SECONDS = 2 * 60
-TR_SYNC_TIMEOUT_SECONDS = int(os.environ.get("TR_SYNC_TIMEOUT_SECONDS", str(5 * 60)))
+# The sync runs in a background thread (see start_fetch_async), so this no
+# longer has to fit inside an HTTP request — it only bounds a runaway fetch.
+TR_SYNC_TIMEOUT_SECONDS = int(os.environ.get("TR_SYNC_TIMEOUT_SECONDS", str(15 * 60)))
 _playwright_install_lock = threading.Lock()
 _playwright_install_completed = False
 
@@ -930,22 +932,20 @@ class TRConnection:
 
         log.info(f"Downloading {len(to_download)} logos …")
 
-        for pos in to_download:
+        def _fetch_one(pos):
             isin = pos["isin"]
             name = pos.get("name", isin)
             inst_type = pos.get("instrumentType", "").lower()
 
             # --- Attempt 1: Parqet CDN ---
-            parqet_url = f"{PARQET_BASE}/{isin}"
             try:
-                resp = _requests.get(parqet_url, timeout=8)
+                resp = _requests.get(f"{PARQET_BASE}/{isin}", timeout=6)
                 if resp.status_code == 200 and len(resp.content) > 50:
                     ct = resp.headers.get("Content-Type", "")
                     ext = "svg" if "svg" in ct else "png"
-                    dest = logos_dir / f"{isin}.{ext}"
-                    dest.write_bytes(resp.content)
+                    (logos_dir / f"{isin}.{ext}").write_bytes(resp.content)
                     log.info(f"  ✓ {isin} logo from Parqet ({len(resp.content)}b {ext})")
-                    continue
+                    return
             except Exception:
                 pass
 
@@ -963,16 +963,29 @@ class TRConnection:
                 f"&background={bg}&color=fff&size=64&rounded=true&bold=true&format=png"
             )
             try:
-                resp = _requests.get(avatar_url, timeout=8)
+                resp = _requests.get(avatar_url, timeout=6)
                 if resp.status_code == 200 and len(resp.content) > 50:
-                    dest = logos_dir / f"{isin}.png"
-                    dest.write_bytes(resp.content)
+                    (logos_dir / f"{isin}.png").write_bytes(resp.content)
                     log.info(f"  ✓ {isin} avatar fallback ({len(resp.content)}b)")
-                    continue
+                    return
             except Exception:
                 pass
 
             log.debug(f"  ✗ {isin} – no logo source available")
+
+        # Serial downloads took up to 2×timeout per position — over 10 minutes
+        # for a whole portfolio when a CDN is unreachable. A small pool keeps
+        # the stage under ~30 s; the UI initials fallback covers any misses.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(_fetch_one, pos) for pos in to_download]
+            for i, fut in enumerate(as_completed(futures), 1):
+                try:
+                    fut.result()
+                except Exception:
+                    pass
+                self._write_progress(97, "Finishing",
+                                     f"Logos {i}/{len(to_download)}")
 
     def _load_transactions_cache(self) -> List[Dict]:
         """Load cached transactions (user-scoped)."""
@@ -3579,6 +3592,103 @@ def get_cached_transactions(user_id: str = "_default") -> List[Dict]:
     """Get cached transactions without connecting."""
     conn = get_connection(user_id)
     return conn._load_transactions_cache()
+
+
+# ── Background sync ──────────────────────────────────────────────────────
+# A full sync can run for many minutes (price histories, logos), but Azure's
+# gateway kills any HTTP request after ~230 s with a 504 — the backend keeps
+# working, yet the client never sees the response and the UI hangs on the
+# last progress line forever. So the request that triggers a sync must NOT
+# wait for it: start_fetch_async runs the fetch in a daemon thread and
+# returns immediately; the UI's existing 1 s progress poll watches
+# progress.json while it runs and picks the outcome up from a small result
+# marker file (cross-worker safe — the data itself is already persisted to
+# portfolio_cache.json by the fetch).
+
+_BG_FETCH_THREADS: Dict[str, threading.Thread] = {}
+_BG_FETCH_DATA: Dict[str, Dict[str, Any]] = {}
+_BG_FETCH_LOCK = threading.Lock()
+
+
+def _fetch_result_path(user_id: str) -> Path:
+    return TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "fetch_result.json"
+
+
+def start_fetch_async(user_id: str = "_default", flow: str = "sync") -> bool:
+    """Start fetch_all_data in a background thread; never blocks.
+
+    ``flow`` names the UI flow that triggered the sync ("verify", "refresh",
+    "reconnect") so the delivery callback can restore the right view on
+    errors. Returns True (a fetch is running — freshly started or already).
+    """
+    with _BG_FETCH_LOCK:
+        th = _BG_FETCH_THREADS.get(user_id)
+        if th and th.is_alive():
+            log.info(f"Sync already running for user={user_id} — not starting another")
+            return True
+        # A fresh run owns the result slot.
+        try:
+            _fetch_result_path(user_id).unlink(missing_ok=True)
+        except Exception:
+            pass
+        _BG_FETCH_DATA.pop(user_id, None)
+        conn = get_connection(user_id)
+        conn._write_progress(1, "Sync", "Starting…")
+
+        def _run():
+            try:
+                result = fetch_all_data(user_id=user_id)
+            except Exception as e:
+                log.error(f"Background sync crashed: {e}")
+                result = {"success": False, "error": friendly_tr_error(e)}
+            if result.get("success"):
+                # Same-process handoff for the delivery poll; other workers
+                # fall back to the portfolio cache the fetch just saved.
+                _BG_FETCH_DATA[user_id] = result
+            marker = {
+                "success": bool(result.get("success")),
+                "error": result.get("error"),
+                "flow": flow,
+                "finished_ts": datetime.now().timestamp(),
+            }
+            try:
+                path = _fetch_result_path(user_id)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with open(path, "w") as f:
+                    json.dump(marker, f)
+            except Exception as e:
+                log.error(f"Could not write sync result marker: {e}")
+
+        th = threading.Thread(target=_run, name=f"tr-sync-{user_id}", daemon=True)
+        _BG_FETCH_THREADS[user_id] = th
+        th.start()
+        return True
+
+
+def consume_fetch_result(user_id: str = "_default") -> Optional[Dict[str, Any]]:
+    """Return and clear a finished background sync's outcome marker, if any.
+
+    Markers older than 10 minutes are discarded: they belong to a sync whose
+    browser session is gone (its data already lives in the portfolio cache).
+    """
+    path = _fetch_result_path(user_id)
+    try:
+        if not path.exists():
+            return None
+        with open(path) as f:
+            marker = json.load(f)
+        path.unlink(missing_ok=True)
+        if datetime.now().timestamp() - float(marker.get("finished_ts", 0)) > 600:
+            return None
+        return marker
+    except Exception:
+        return None
+
+
+def take_fetch_data(user_id: str = "_default") -> Optional[Dict[str, Any]]:
+    """Pop the in-process result of the last background sync, if this worker
+    ran it. Cross-worker deliveries read the portfolio cache instead."""
+    return _BG_FETCH_DATA.pop(user_id, None)
 
 
 def reconnect(encrypted_credentials: str = None, user_id: str = "_default") -> Dict[str, Any]:
