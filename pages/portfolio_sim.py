@@ -103,6 +103,9 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
 MC_MAX_SAMPLES = 500
 MC_MAX_YEARS = 100
 
+_SHOW = {"display": "block"}
+_HIDE = {"display": "none"}
+
 
 def monte_carlo_returns(target_rate, volatility, years, samples, seed=7):
     """Draw yearly returns that compound to ``target_rate`` in the long run.
@@ -146,7 +149,57 @@ def simulate_monte_carlo(current_value, annual_growth_rate, withdrawal_type, ann
     paths = [f['Portfolio Value'].tolist() for f in frames]
     average_df = (pd.concat(frames, ignore_index=True)
                   .groupby('Year', as_index=False).mean().round(2))
-    return paths, average_df
+    return paths, average_df, _scenario_outcomes(frames)
+
+
+def _scenario_outcomes(frames):
+    """One row per scenario: how it ended, and whether it ran dry on the way.
+
+    ``ran_dry_year`` is the first year the balance hit zero, or None if the
+    money lasted. A run can hit zero and still recover when contributions
+    keep coming, so surviving to the end is not the same as never running
+    out; the stats report both.
+    """
+    rows = []
+    for f in frames:
+        ending = f['Ending Value']
+        dry = ending[ending <= 0.0]
+        rows.append({
+            'final_value': float(ending.iloc[-1]),
+            'total_withdrawn': float(f['Withdrawals'].sum()),
+            'ran_dry_year': int(f['Year'][dry.index[0]]) if len(dry) else None,
+        })
+    return pd.DataFrame(rows)
+
+
+def monte_carlo_stats(outcomes, years):
+    """Summarise a Monte Carlo run into the numbers worth showing.
+
+    Survival is the headline a withdrawal plan is judged on. The rest
+    describes the spread: the median is the typical outcome, while the mean
+    sits above it because a lognormal tail lets a few runs finish enormous.
+    """
+    n = len(outcomes)
+    if not n:
+        return None
+    final = outcomes['final_value'].to_numpy()
+    dry_years = outcomes['ran_dry_year'].dropna()
+    survived = n - len(dry_years)
+    return {
+        'scenarios': n,
+        'years': years,
+        'survived': survived,
+        'survival_rate': survived / n * 100.0,
+        'ran_dry': len(dry_years),
+        'ran_dry_rate': len(dry_years) / n * 100.0,
+        'median_dry_year': float(dry_years.median()) if len(dry_years) else None,
+        'earliest_dry_year': int(dry_years.min()) if len(dry_years) else None,
+        'final_p10': float(np.percentile(final, 10)),
+        'final_median': float(np.median(final)),
+        'final_p90': float(np.percentile(final, 90)),
+        'final_mean': float(np.mean(final)),
+        'median_withdrawn': float(outcomes['total_withdrawn'].median()),
+    }
 
 
 # ──────────────────────────────  CHART  ──────────────────────────────
@@ -308,6 +361,92 @@ def _make_figure(df, lang="de"):
             hovertemplate="<b>" + name + "</b>  " + eur_hover + "<extra></extra>",
         ))
     return _apply_layout(fig, lang)
+
+
+# Status steps for the survival headline. These are text, not marks, so they
+# are the darker ramp entries that clear WCAG contrast on white (4.8:1 and up);
+# the lighter #10b981/#eda100 the app uses for chart marks sit near 2.2:1 and
+# would fail even as large text. Colour never carries the meaning alone: the
+# tile always shows an icon and a written verdict beside the number.
+_MC_GOOD, _MC_WARN, _MC_BAD = "#047857", "#b45309", "#dc2626"
+
+
+def _mc_verdict(rate, lang):
+    if rate >= 90:
+        return _MC_GOOD, "bi-shield-check", t("ps.mc_verdict_good", lang)
+    if rate >= 75:
+        return _MC_WARN, "bi-exclamation-triangle", t("ps.mc_verdict_ok", lang)
+    return _MC_BAD, "bi-exclamation-octagon", t("ps.mc_verdict_bad", lang)
+
+
+def _stat_tile(label, value, note, value_color=None):
+    return html.Div([
+        html.Div(label, className="mc-tile-label"),
+        html.Div(value, className="mc-tile-value",
+                 style={"color": value_color} if value_color else None),
+        html.Div(note, className="mc-tile-note"),
+    ], className="mc-tile")
+
+
+def _mc_stats_panel(stats, lang):
+    """The Monte Carlo result summary shown in place of the yearly table.
+
+    A distribution is the point of running one, so the year-by-year average
+    says the least about it. What a withdrawal plan is judged on is whether
+    the money lasts, and after that the spread of where it ends up.
+    """
+    if not stats:
+        return html.Div(t("ps.no_data", lang), className="text-muted text-center py-3")
+
+    eur = lambda v: cu.fmt_eur(v, lang, decimals=0)
+    colour, icon, verdict = _mc_verdict(stats['survival_rate'], lang)
+
+    hero = html.Div([
+        html.Div([
+            html.Div(cu.fmt_pct(stats['survival_rate'], lang, decimals=1),
+                     className="mc-hero-value", style={"color": colour}),
+            html.Div([
+                html.Div([html.I(className=f"bi {icon} me-2"), verdict],
+                         className="mc-hero-verdict", style={"color": colour}),
+                html.Div(t("ps.mc_hero_note", lang).format(
+                    n=stats['survived'], total=stats['scenarios'],
+                    years=stats['years']), className="mc-hero-note"),
+            ]),
+        ], className="mc-hero-row"),
+    ], className="mc-hero")
+
+    if stats['ran_dry']:
+        dry_note = t("ps.mc_dry_note", lang).format(
+            median=cu.fmt_num(stats['median_dry_year'], lang, 0),
+            earliest=stats['earliest_dry_year'])
+    else:
+        dry_note = t("ps.mc_dry_none", lang)
+
+    tiles = html.Div([
+        _stat_tile(
+            t("ps.mc_ran_dry", lang),
+            f"{stats['ran_dry']} ({cu.fmt_pct(stats['ran_dry_rate'], lang, decimals=1)})",
+            dry_note,
+            value_color=_MC_BAD if stats['ran_dry'] else None,
+        ),
+        _stat_tile(
+            t("ps.mc_ending_median", lang),
+            eur(stats['final_median']),
+            t("ps.mc_ending_range", lang).format(
+                low=eur(stats['final_p10']), high=eur(stats['final_p90'])),
+        ),
+        _stat_tile(
+            t("ps.mc_withdrawn", lang),
+            eur(stats['median_withdrawn']),
+            t("ps.mc_withdrawn_note", lang).format(years=stats['years']),
+        ),
+    ], className="mc-tiles")
+
+    footnote = html.Div(
+        t("ps.mc_mean_note", lang).format(mean=eur(stats['final_mean'])),
+        className="mc-footnote")
+
+    return html.Div([hero, tiles, footnote], className="mc-stats")
 
 
 # ── Default simulation (computed once at import) ──
@@ -543,9 +682,11 @@ def layout(lang="en"):
                 dbc.Card([
                     dbc.CardHeader([
                         html.I(className="bi bi-table me-2"),
-                        t("ps.breakdown", lang),
+                        html.Span(t("ps.breakdown", lang), id="breakdown-title"),
                     ], className="card-header-modern"),
                     dbc.CardBody([
+                        html.Div(id="mc-stats-panel", style={"display": "none"}),
+                        html.Div(id="breakdown-table-wrap", children=[
                         dash_table.DataTable(
                             id='table',
                             columns=_table_columns(_df_init, lang),
@@ -568,6 +709,7 @@ def layout(lang="en"):
                                 {'if': {'column_id': 'Year'}, 'textAlign': 'center', 'fontWeight': '600'},
                             ],
                         ),
+                        ]),
                     ], className="py-2"),
                 ], className="card-modern"),
             ], md=8),
@@ -621,7 +763,12 @@ def register_callbacks(app):
         [Output('investment-graph', 'figure'),
          Output('table', 'data'),
          Output('table', 'columns'),
-         Output('sim-error-box', 'children')],
+         Output('sim-error-box', 'children'),
+         # Monte Carlo swaps the yearly table for its result summary.
+         Output('mc-stats-panel', 'children'),
+         Output('mc-stats-panel', 'style'),
+         Output('breakdown-table-wrap', 'style'),
+         Output('breakdown-title', 'children')],
         [Input('run-simulation-btn', 'n_clicks'),
          Input('run-simulation-btn-top', 'n_clicks'),
          Input('run-montecarlo-btn', 'n_clicks')],
@@ -685,15 +832,19 @@ def register_callbacks(app):
                     raise ValueError(t("ps.err_volatility", lang))
                 if mc_samples is None or mc_samples < 10 or mc_samples > MC_MAX_SAMPLES:
                     raise ValueError(t("ps.err_samples", lang))
-                paths, df = simulate_monte_carlo(
+                paths, df, outcomes = simulate_monte_carlo(
                     current_value, growth_rate / 100, wtype, withdrawal,
                     int(years), (tax_rate or 0) / 100, tax_method,
                     monthly_deposit=monthly_deposit,
                     volatility=volatility / 100, samples=int(mc_samples),
                 )
                 fig = _make_mc_figure(paths, df, lang)
-                print(f"[Sim] Monte Carlo: {len(paths)} scenarios × {len(df)} years")
-                return fig, df.to_dict('records'), _table_columns(df, lang), ""
+                stats = monte_carlo_stats(outcomes, len(df))
+                print(f"[Sim] Monte Carlo: {len(paths)} scenarios × {len(df)} years, "
+                      f"{stats['survival_rate']:.1f}% survived")
+                return (fig, df.to_dict('records'), _table_columns(df, lang), "",
+                        _mc_stats_panel(stats, lang), _SHOW, _HIDE,
+                        t("ps.mc_results", lang))
 
             if time_frame == 'custom':
                 if not years or years < 1:
@@ -713,7 +864,8 @@ def register_callbacks(app):
             fig = _make_figure(df, lang)
             cols = _table_columns(df, lang)
             print(f"[Sim] Success: {len(df)} years simulated")
-            return fig, df.to_dict('records'), cols, ""
+            return (fig, df.to_dict('records'), cols, "",
+                    None, _HIDE, _SHOW, t("ps.breakdown", lang))
 
         except Exception as e:
             print(f"[Sim] ERROR: {e}")
@@ -728,4 +880,5 @@ def register_callbacks(app):
                 [html.I(className="bi bi-exclamation-triangle me-2"), str(e)],
                 color="danger", className="mb-0 py-2",
             )
-            return no_update, no_update, no_update, error_alert
+            return (no_update, no_update, no_update, error_alert,
+                    no_update, no_update, no_update, no_update)

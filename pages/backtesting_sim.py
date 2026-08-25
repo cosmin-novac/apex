@@ -638,13 +638,13 @@ def layout(lang="en"):
             ], className="card-modern mb-3"),
             
             # Rule Builder
-            create_rule_builder_card(),
+            create_rule_builder_card(lang),
             
             # Modals
-            ai_rule_modal,
+            ai_rule_modal(lang),
             info_modal(lang),
-            save_rules_modal,
-            load_rules_modal,
+            save_rules_modal(lang),
+            load_rules_modal(lang),
             dcc.Store(id="saved-rules-store", storage_type="local"),
             
         ], md=4, className="mb-3"),

@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pages import portfolio_sim
 from pages.portfolio_sim import (
     MC_MAX_SAMPLES,
+    monte_carlo_stats,
     _make_mc_figure,
     monte_carlo_returns,
     simulate_monte_carlo,
@@ -52,7 +53,7 @@ def test_draws_are_reproducible():
 
 
 def test_zero_volatility_reproduces_the_deterministic_run():
-    paths, avg = simulate_monte_carlo(
+    paths, avg, _ = simulate_monte_carlo(
         700_000, 0.07, 'fixed', 30_000, 30, 0.25, 'FIFO',
         monthly_deposit=250, volatility=0.0, samples=5)
     det = simulate_portfolio(700_000, 0.07, 'fixed', 30_000, 30, 0.25, 'FIFO',
@@ -62,7 +63,7 @@ def test_zero_volatility_reproduces_the_deterministic_run():
 
 
 def test_scenarios_pay_withdrawals_and_taxes():
-    _, avg = simulate_monte_carlo(500_000, 0.07, 'fixed', 20_000, 15, 0.25, 'FIFO',
+    _, avg, _ = simulate_monte_carlo(500_000, 0.07, 'fixed', 20_000, 15, 0.25, 'FIFO',
                                   volatility=0.18, samples=40)
     # A scenario pays the full withdrawal until it cannot, never more.
     assert (avg['Withdrawals'] <= 20_000 + 1e-9).all()
@@ -97,7 +98,7 @@ def test_the_ruin_floor_does_not_touch_sustainable_runs():
 
 def test_shapes_and_average_line_up():
     samples, years = 60, 25
-    paths, avg = simulate_monte_carlo(100_000, 0.06, 'percentage', 3, years,
+    paths, avg, _ = simulate_monte_carlo(100_000, 0.06, 'percentage', 3, years,
                                       0.25, 'FIFO', volatility=0.2, samples=samples)
     assert len(paths) == samples and all(len(p) == years for p in paths)
     assert len(avg) == years
@@ -107,7 +108,7 @@ def test_shapes_and_average_line_up():
 
 
 def test_figure_draws_only_the_portfolio_value():
-    paths, avg = simulate_monte_carlo(100_000, 0.07, 'fixed', 0, 10, 0.25, 'FIFO',
+    paths, avg, _ = simulate_monte_carlo(100_000, 0.07, 'fixed', 0, 10, 0.25, 'FIFO',
                                       volatility=0.15, samples=12)
     fig = _make_mc_figure(paths, avg, "en")
     # Exactly two traces: the scenario cloud and its average, no flow series.
@@ -124,7 +125,7 @@ def test_figure_draws_only_the_portfolio_value():
 
 def test_axis_is_not_squashed_by_the_fat_tail():
     """A few runaway scenarios must not flatten the average onto the floor."""
-    paths, avg = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
+    paths, avg, _ = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
                                       'FIFO', volatility=0.18, samples=150)
     biggest = max(max(p) for p in paths)
     avg_peak = avg['Portfolio Value'].max()
@@ -140,7 +141,7 @@ def test_axis_is_not_squashed_by_the_fat_tail():
 def test_no_scenario_ever_goes_below_zero():
     """At the page's own defaults a real share of runs exhausts. They must
     flatline at zero, not dive into debt that then compounds."""
-    paths, avg = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
+    paths, avg, _ = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
                                       'FIFO', volatility=0.15, samples=200)
     lows = [min(p) for p in paths]
     assert min(lows) == 0.0, f"lowest point should be exactly zero, got {min(lows)}"
@@ -154,7 +155,7 @@ def test_no_scenario_ever_goes_below_zero():
 
 
 def test_deep_ruin_flatlines_rather_than_going_negative():
-    paths, avg = simulate_monte_carlo(100_000, 0.07, 'fixed', 200_000, 20, 0.25,
+    paths, avg, _ = simulate_monte_carlo(100_000, 0.07, 'fixed', 200_000, 20, 0.25,
                                       'FIFO', volatility=0.2, samples=30)
     assert all(min(p) == 0.0 for p in paths), "every run here should exhaust"
     assert avg['Portfolio Value'].min() == 0.0
@@ -164,7 +165,7 @@ def test_deep_ruin_flatlines_rather_than_going_negative():
 
 def test_single_year_and_single_scenario_do_not_crash():
     for years, samples in ((1, 10), (30, 1)):
-        paths, avg = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, years,
+        paths, avg, _ = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, years,
                                           0.25, 'FIFO', volatility=0.15,
                                           samples=samples)
         fig = _make_mc_figure(paths, avg, "de")
@@ -195,3 +196,73 @@ def test_replayed_sp500_growth_still_works(monkeypatch):
 
 def test_sample_cap_is_a_real_bound():
     assert MC_MAX_SAMPLES <= 500, "keep one click from becoming a long server job"
+
+
+# ── Result statistics shown in place of the yearly table ──────────────
+
+def test_outcomes_find_the_year_the_money_ran_out():
+    _, _, out = simulate_monte_carlo(100_000, 0.07, 'fixed', 60_000, 10, 0.25,
+                                     'FIFO', volatility=0.0, samples=3)
+    # Deterministic at zero volatility: every run empties in the same year.
+    assert out['ran_dry_year'].nunique() == 1
+    assert int(out['ran_dry_year'].iloc[0]) == 2
+    assert (out['final_value'] == 0).all()
+    # Only what the account could actually pay is counted as withdrawn.
+    assert out['total_withdrawn'].iloc[0] < 2 * 60_000
+
+
+def test_outcomes_leave_the_dry_year_empty_when_the_money_lasts():
+    _, _, out = simulate_monte_carlo(700_000, 0.07, 'fixed', 10_000, 20, 0.25,
+                                     'FIFO', volatility=0.0, samples=3)
+    assert out['ran_dry_year'].isna().all()
+    assert (out['final_value'] > 0).all()
+
+
+def test_stats_report_survival_and_spread():
+    _, _, out = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
+                                     'FIFO', volatility=0.15, samples=200)
+    st = monte_carlo_stats(out, 30)
+    assert st['scenarios'] == 200
+    assert st['survived'] + st['ran_dry'] == 200
+    assert abs(st['survival_rate'] + st['ran_dry_rate'] - 100) < 1e-9
+    assert 0 < st['survival_rate'] < 100, "these defaults should do both"
+    # The spread is ordered, and the mean sits above the median because the
+    # lognormal tail lets a few runs finish enormous.
+    assert st['final_p10'] <= st['final_median'] <= st['final_p90']
+    assert st['final_mean'] > st['final_median']
+    # Ruin timing is reported, and never earlier than the earliest run.
+    assert st['earliest_dry_year'] <= st['median_dry_year'] <= 30
+
+
+def test_stats_on_a_plan_that_never_withdraws():
+    _, _, out = simulate_monte_carlo(50_000, 0.07, 'fixed', 0, 20, 0.25, 'FIFO',
+                                     volatility=0.2, samples=30)
+    st = monte_carlo_stats(out, 20)
+    assert st['survival_rate'] == 100.0 and st['ran_dry'] == 0
+    assert st['median_dry_year'] is None and st['earliest_dry_year'] is None
+    assert st['median_withdrawn'] == 0.0
+
+
+def test_stats_panel_states_the_numbers():
+    from pages.portfolio_sim import _mc_stats_panel, _MC_BAD, _MC_GOOD
+
+    _, _, out = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
+                                     'FIFO', volatility=0.15, samples=200)
+    st = monte_carlo_stats(out, 30)
+    panel = _mc_stats_panel(st, "en")
+    text = str(panel)
+    assert "of 200 scenarios" in text
+    assert "Ran out of money" in text and "Ending value, median" in text
+    assert "Withdrawn in total, median" in text
+    # The verdict is written out, so colour never carries the meaning alone.
+    assert any(w in text for w in ("The money lasts", "Mostly holds up",
+                                   "Runs out too often"))
+    # Status colour is a contrast-safe step, not the light chart green.
+    assert _MC_GOOD == "#047857" and _MC_BAD == "#dc2626"
+    assert "#10b981" not in text and "#eda100" not in text
+
+
+def test_stats_panel_handles_an_empty_run():
+    from pages.portfolio_sim import _mc_stats_panel
+    assert monte_carlo_stats(pd.DataFrame(), 10) is None
+    assert _mc_stats_panel(None, "en") is not None
