@@ -110,9 +110,30 @@ def test_axis_is_not_squashed_by_the_fat_tail():
     assert top < biggest, "extreme runs are expected to leave the frame"
 
 
-def test_ruined_scenarios_stay_visible():
-    """Withdrawals can outrun the portfolio. Those paths must not vanish
-    under a hard zero baseline, or a bust reads as a soft landing."""
+def test_ruined_scenarios_stay_visible_at_the_page_defaults():
+    """Withdrawals can outrun the portfolio. Those runs must not vanish under
+    a hard zero baseline, or a bust reads as a soft landing.
+
+    Uses the simulator's own default inputs on purpose: this is the case a
+    floor keyed to the average curve missed, because the average and the
+    pooled 5th percentile both stay positive while a real share of the
+    individual scenarios goes under.
+    """
+    paths, avg = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30, 0.25,
+                                      'FIFO', volatility=0.15, samples=200)
+    worst_per_path = sorted(min(p) for p in paths)
+    n_negative = sum(1 for m in worst_per_path if m < 0)
+    assert n_negative >= 10, "defaults should still ruin a meaningful share"
+    assert avg['Portfolio Value'].min() > 0, "the average alone hides this"
+
+    low = _make_mc_figure(paths, avg, "en").layout.yaxis.range[0]
+    assert low < 0, f"axis floor {low} hides {n_negative} ruined scenarios"
+    # The bulk of the ruin is visible, not just the single worst path.
+    hidden = sum(1 for m in worst_per_path if m < low)
+    assert hidden <= n_negative // 2, f"{hidden} of {n_negative} ruined runs clipped"
+
+
+def test_deeply_ruined_run_is_shown():
     paths, avg = simulate_monte_carlo(100_000, 0.07, 'fixed', 200_000, 20, 0.25,
                                       'FIFO', volatility=0.2, samples=30)
     worst = avg['Portfolio Value'].min()

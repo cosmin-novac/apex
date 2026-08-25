@@ -260,9 +260,15 @@ def _make_mc_figure(paths, average_df, lang="de"):
         flat = np.concatenate([np.asarray(p, dtype=float) for p in paths])
         y_top = max(float(np.percentile(flat, 95)), max(avg_values or [0])) * 1.08
         # The floor is zero while the portfolio survives, but withdrawals can
-        # outrun it. Ruined scenarios must stay visible instead of vanishing
-        # under a hard zero baseline, so the floor follows them down.
-        y_bottom = min(0.0, float(np.percentile(flat, 5)), min(avg_values or [0])) * 1.08
+        # outrun it. Those are the scenarios a saver most needs to see, and a
+        # hard zero baseline would hide them: at the page's own defaults 21 of
+        # 200 runs go negative while the average and the pooled 5th percentile
+        # both stay well positive. So the floor reads the distribution of the
+        # per-scenario LOW points, which drops as soon as a real share of runs
+        # goes under, without one catastrophic path squashing the rest.
+        worst = np.array([np.min(np.asarray(p, dtype=float)) for p in paths])
+        y_bottom = min(0.0, float(np.percentile(worst, 5)),
+                       min(avg_values or [0])) * 1.08
         fig.update_yaxes(range=[y_bottom, max(y_top, y_bottom + 1.0)])
     return fig
 
@@ -630,7 +636,12 @@ def register_callbacks(app):
         if not n_clicks and not n_clicks_top and not n_clicks_mc:
             raise PreventUpdate
         lang = get_lang(lang_data)
-        monte_carlo = ctx.triggered_id == 'run-montecarlo-btn'
+        # Monte Carlo randomises around a target rate, so it belongs to the
+        # custom-rate mode only. Its whole block is hidden in S&P 500 mode,
+        # but the hidden inputs still submit their stale values, so the mode
+        # is checked here too rather than trusting CSS to gate a run.
+        monte_carlo = (ctx.triggered_id == 'run-montecarlo-btn'
+                       and time_frame == 'custom')
 
         try:
             # Validate inputs
@@ -654,6 +665,12 @@ def register_callbacks(app):
             if monte_carlo:
                 if not years or years < 1 or years > MC_MAX_YEARS:
                     raise ValueError(t("ps.err_years", lang))
+                # Below -100 % a year would wipe out more than the position,
+                # and ln(1 + rate) has no answer for it. The input blocks it,
+                # but a forged value would otherwise surface a raw
+                # "math domain error" in place of a translated message.
+                if growth_rate <= -100:
+                    raise ValueError(t("ps.err_growth", lang))
                 if volatility is None or volatility < 0 or volatility > 100:
                     raise ValueError(t("ps.err_volatility", lang))
                 if mc_samples is None or mc_samples < 10 or mc_samples > MC_MAX_SAMPLES:
@@ -691,8 +708,14 @@ def register_callbacks(app):
         except Exception as e:
             print(f"[Sim] ERROR: {e}")
             traceback.print_exc()
+            # No auto-dismiss. With duration set, the Alert instance is reused
+            # across runs and its first timer closes it for good: the third
+            # bad input in a row rendered nothing at all and the user was left
+            # clicking Run with no feedback. The message now stays until a
+            # successful run clears it, which is what a validation error
+            # should do anyway.
             error_alert = dbc.Alert(
                 [html.I(className="bi bi-exclamation-triangle me-2"), str(e)],
-                color="danger", className="mb-0 py-2", duration=8000,
+                color="danger", className="mb-0 py-2",
             )
             return no_update, no_update, no_update, error_alert
