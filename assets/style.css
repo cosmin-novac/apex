@@ -3797,6 +3797,13 @@ button.btn::-moz-focus-inner {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 12px;
 }
+/* Bottom-align the paired fields: if one label wraps to two lines, both
+   inputs still sit on the same baseline instead of floating apart. */
+.ps-pair > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
 /* Long German labels ("Besteuerungsmethode") fit the half column without a
    dangling wrapped letter. */
 .ps-pair .input-label {
@@ -3885,8 +3892,7 @@ button.btn::-moz-focus-inner {
 }
 .lp-btn-quiet:hover { color: var(--lp-accent); border-bottom-color: var(--lp-accent); }
 .lp-row-arrow { display: inline-block; transition: transform 0.18s ease; }
-.lp-btn-quiet:hover .lp-row-arrow,
-.lp-row-link:hover .lp-row-arrow { transform: translateX(3px); }
+.lp-btn-quiet:hover .lp-row-arrow { transform: translateX(3px); }
 
 /* ── Hero chart ── */
 .lp-chart-card {
@@ -3965,50 +3971,65 @@ button.btn::-moz-focus-inner {
     margin-bottom: 26px;
 }
 
-/* ── Capability rows ── */
-.lp-rows { border-top: 1px solid var(--lp-rule); margin-top: 22px; }
-.lp-row-link { text-decoration: none; display: block; }
-.lp-row {
+/* ── Capability cards ── */
+.lp-cards {
     display: grid;
-    grid-template-columns: 56px 1fr auto;
-    gap: 20px;
-    align-items: baseline;
-    padding: 24px 12px 24px 0;
-    border-bottom: 1px solid var(--lp-rule);
-    transition: background 0.18s ease;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin-top: 22px;
 }
-.lp-row-link:hover .lp-row { background: var(--lp-paper); }
-.lp-row-num {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--lp-muted);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.06em;
+.lp-card-link { text-decoration: none; display: block; height: 100%; }
+.lp-card {
+    position: relative;
+    height: 100%;
+    background: #fff;
+    border: 1px solid var(--lp-rule);
+    border-radius: 10px;
+    /* Extra right padding keeps long titles clear of the corner arrow. */
+    padding: 20px 36px 20px 18px;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
-.lp-row-title {
+.lp-card-link:hover .lp-card {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(22, 26, 31, 0.08);
+    border-color: #d4d9e0;
+}
+.lp-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    margin-bottom: 14px;
+}
+.lp-tint-indigo { background: #eef2ff; color: #4f46e5; }
+.lp-tint-amber  { background: #fef3c7; color: #b45309; }
+.lp-tint-green  { background: #d1fae5; color: #047857; }
+.lp-tint-violet { background: #ede9fe; color: #6d28d9; }
+.lp-tint-cyan   { background: #cffafe; color: #0e7490; }
+.lp-card-title {
     font-family: "Source Serif 4", Georgia, serif;
-    font-size: 1.2rem;
+    font-size: 1.08rem;
     font-weight: 600;
     color: var(--lp-ink);
     margin: 0 0 6px;
 }
-.lp-row-link:hover .lp-row-title { color: var(--lp-accent); }
-.lp-row-desc {
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: var(--lp-body);
-    margin: 0;
-    max-width: 46em;
+.lp-card-link:hover .lp-card-title { color: var(--lp-accent); }
+.lp-card-desc { font-size: 0.88rem; line-height: 1.55; color: var(--lp-body); margin: 0; }
+.lp-card-arrow {
+    position: absolute;
+    top: 18px;
+    right: 16px;
+    color: var(--lp-muted);
+    transition: transform 0.16s ease, color 0.16s ease;
 }
-.lp-row-cta {
-    font-size: 0.875rem;
-    font-weight: 550;
-    color: var(--lp-accent);
-    white-space: nowrap;
-}
+.lp-card-link:hover .lp-card-arrow { transform: translateX(3px); color: var(--lp-accent); }
 
 /* ── Data notes ── */
 .lp-note { padding-top: 18px; border-top: 2px solid var(--lp-ink); }
+.lp-note-icon { font-size: 1.1rem; color: var(--lp-ink); margin-bottom: 6px; }
 .lp-note-title {
     font-size: 1rem;
     font-weight: 600;
@@ -4066,12 +4087,18 @@ button.btn::-moz-focus-inner {
     .lp-chart-card { padding: 14px 14px 12px; }
     .lp-chart-value { font-size: 1.25rem; }
     .lp-fact { padding-top: 12px; padding-bottom: 12px; }
-    .lp-row { grid-template-columns: 1fr; gap: 4px; padding: 16px 4px 16px 0; }
-    .lp-row-num { display: none; }
-    .lp-row-desc { font-size: 0.9rem; }
-    /* The whole row is one tap target — the "open …" label is redundant
-       text on a phone. */
-    .lp-row-cta { display: none; }
+    /* Cards go one per row with the icon on the left, so five of them stay
+       a short, scannable list. */
+    .lp-cards { grid-template-columns: 1fr; gap: 10px; }
+    .lp-card {
+        display: grid;
+        grid-template-columns: 40px 1fr;
+        column-gap: 14px;
+        align-items: start;
+        padding: 14px 32px 14px 14px;
+    }
+    .lp-card-icon { margin-bottom: 0; }
+    .lp-card-arrow { top: 14px; right: 14px; }
     .lp-section { padding-top: 36px; }
     .lp-section-title { font-size: 1.35rem; }
     .lp-colophon { margin-top: 40px; }

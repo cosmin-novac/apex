@@ -20,13 +20,21 @@ INK = "#161a1f"
 ACCENT = "#1d4ed8"
 BENCH = "#b45309"
 
-# (number, title-key, desc-key, link-key, route)
+# (icon, tint, title-key, desc-key, route) — icons match the sidebar so the
+# cards read as previews of the actual pages.
 _CAPABILITIES = [
-    ("01", "landing.c2_title", "landing.c2_desc", "landing.c2_cta", "/backtesting"),
-    ("02", "landing.c4_title", "landing.c4_desc", "landing.c4_cta", "/ranks"),
-    ("03", "landing.c3_title", "landing.c3_desc", "landing.c3_cta", "/portfolio"),
-    ("04", "landing.c1_title", "landing.c1_desc", "landing.c1_cta", "/compare"),
-    ("05", "landing.c5_title", "landing.c5_desc", "landing.c5_cta", "/realcost"),
+    ("bi-graph-up", "indigo", "landing.c2_title", "landing.c2_desc", "/backtesting"),
+    ("bi-trophy", "amber", "landing.c4_title", "landing.c4_desc", "/ranks"),
+    ("bi-wallet2", "green", "landing.c3_title", "landing.c3_desc", "/portfolio"),
+    ("bi-bar-chart-line", "violet", "landing.c1_title", "landing.c1_desc", "/compare"),
+    ("bi-currency-dollar", "cyan", "landing.c5_title", "landing.c5_desc", "/realcost"),
+]
+
+# (icon, title-key, desc-key)
+_DATA_NOTES = [
+    ("bi-shield-lock", "landing.d1_title", "landing.d1_desc"),
+    ("bi-key", "landing.d2_title", "landing.d2_desc"),
+    ("bi-code-slash", "landing.d3_title", "landing.d3_desc"),
 ]
 
 
@@ -61,18 +69,26 @@ def _hero_figure(lang):
     return fig, final
 
 
-def _capability_row(num, title_key, desc_key, cta_key, href, lang):
+def _capability_card(icon, tint, title_key, desc_key, href, lang):
     return dcc.Link(
         html.Div([
-            html.Span(num, className="lp-row-num"),
+            html.Div(html.I(className=f"bi {icon}"), className=f"lp-card-icon lp-tint-{tint}"),
             html.Div([
-                html.H3(t(title_key, lang), className="lp-row-title"),
-                html.P(t(desc_key, lang), className="lp-row-desc"),
-            ], className="lp-row-body"),
-            html.Span([t(cta_key, lang), html.Span(" →", className="lp-row-arrow")], className="lp-row-cta"),
-        ], className="lp-row"),
-        href=href, className="lp-row-link",
+                html.H3(t(title_key, lang), className="lp-card-title"),
+                html.P(t(desc_key, lang), className="lp-card-desc"),
+            ], className="lp-card-body"),
+            html.Span("→", className="lp-card-arrow"),
+        ], className="lp-card"),
+        href=href, className="lp-card-link",
     )
+
+
+def _data_note(icon, title_key, desc_key, lang):
+    return html.Div([
+        html.Div(html.I(className=f"bi {icon}"), className="lp-note-icon"),
+        html.H3(t(title_key, lang), className="lp-note-title"),
+        html.P(t(desc_key, lang), className="lp-note-desc"),
+    ], className="lp-note")
 
 
 def layout(lang="en"):
@@ -121,27 +137,14 @@ def layout(lang="en"):
         # ── What you can do ─────────────────────────────────────────────
         html.Div([
             html.H2(t("landing.section_do", lang), className="lp-section-title"),
-            html.Div([_capability_row(*c, lang) for c in _CAPABILITIES], className="lp-rows"),
+            html.Div([_capability_card(*c, lang) for c in _CAPABILITIES], className="lp-cards"),
         ], className="lp-section"),
 
         # ── Where your data lives ───────────────────────────────────────
         html.Div([
             html.H2(t("landing.section_data", lang), className="lp-section-title"),
             html.P(t("landing.data_intro", lang), className="lp-section-lead"),
-            dbc.Row([
-                dbc.Col(html.Div([
-                    html.H3(t("landing.d1_title", lang), className="lp-note-title"),
-                    html.P(t("landing.d1_desc", lang), className="lp-note-desc"),
-                ], className="lp-note"), md=4),
-                dbc.Col(html.Div([
-                    html.H3(t("landing.d2_title", lang), className="lp-note-title"),
-                    html.P(t("landing.d2_desc", lang), className="lp-note-desc"),
-                ], className="lp-note"), md=4),
-                dbc.Col(html.Div([
-                    html.H3(t("landing.d3_title", lang), className="lp-note-title"),
-                    html.P(t("landing.d3_desc", lang), className="lp-note-desc"),
-                ], className="lp-note"), md=4),
-            ], className="g-4"),
+            dbc.Row([dbc.Col(_data_note(*n, lang), md=4) for n in _DATA_NOTES], className="g-4"),
         ], className="lp-section"),
 
         # ── Colophon ────────────────────────────────────────────────────

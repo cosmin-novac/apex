@@ -219,7 +219,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
                                  "de": "Simuliere langfristiges Portfoliowachstum mit Entnahmen und Steuern"},
     "ps.params":                {"en": "Simulation Parameters",     "de": "Simulationsparameter"},
     "ps.starting_investment":   {"en": "Starting Investment",       "de": "Anfangsinvestition"},
-    "ps.annual_growth":         {"en": "Annual Growth Rate",        "de": "Jährliche Wachstumsrate"},
+    "ps.annual_growth":         {"en": "Growth Rate p.a.",          "de": "Wachstumsrate p. a."},
     "ps.monthly_deposit":       {"en": "Monthly Contribution",      "de": "Monatliche Sparrate"},
     "ps.withdrawal_type":       {"en": "Withdrawal Type",           "de": "Entnahmeart"},
     "ps.fixed_sum":             {"en": " Fixed Sum (€)",            "de": " Fester Betrag (€)"},
