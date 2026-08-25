@@ -1595,8 +1595,9 @@ input.compact-input {
 .chart-container {
     width: 100%;
     min-height: 0;
-    /* Plotly figures using autosize fill this height (see backtesting_sim). */
-    height: 560px;
+    /* Plotly figures using autosize fill this height (see backtesting_sim).
+       Sized so chart + transaction table fit a 1080p screen without scroll. */
+    height: 470px;
 }
 .chart-container .js-plotly-plot,
 .chart-container .plot-container {
@@ -1728,7 +1729,8 @@ input.compact-input {
 
 /* ===== Page Header ===== */
 .page-header {
-    margin-bottom: 24px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
 }
 
 .page-title {
@@ -3790,8 +3792,8 @@ button.btn::-moz-focus-inner {
 }
 
 /* ── Investment Simulator: paired inputs ─────────────────────────────
-   Side by side on phones (short form), stacked in the narrow desktop
-   parameter column. */
+   Side by side at every width, so the form stays short enough to fit a
+   normal screen without scrolling. */
 .ps-pair {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -3808,9 +3810,6 @@ button.btn::-moz-focus-inner {
    dangling wrapped letter. */
 .ps-pair .input-label {
     letter-spacing: 0.02em !important;
-}
-@media (min-width: 768px) {
-    .ps-pair { grid-template-columns: minmax(0, 1fr); column-gap: 0; }
 }
 
 /* ============================================================

@@ -680,7 +680,7 @@ def layout(lang="en"):
                         type="circle",
                         children=dash_table.DataTable(
                             id='backtesting-table',
-                            style_table={'height': '300px', 'overflowY': 'auto', 'overflowX': 'auto'},
+                            style_table={'height': '240px', 'overflowY': 'auto', 'overflowX': 'auto'},
                             style_cell={'textAlign': 'left', 'padding': '8px', 'fontFamily': 'Inter, sans-serif', 'fontSize': '0.85rem', 'whiteSpace': 'nowrap'},
                             style_header={'fontWeight': '600', 'backgroundColor': '#f8fafc'},
                         )

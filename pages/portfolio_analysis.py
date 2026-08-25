@@ -17,6 +17,7 @@ from pathlib import Path
 import json
 import logging
 import math
+import time
 from collections import OrderedDict
 
 _log = logging.getLogger(__name__)
@@ -107,6 +108,19 @@ def _fig_cache_set(key: str, fig_dict: dict):
             _FIG_CACHE.popitem(last=False)
     except Exception:
         pass
+
+
+# Chart series colors: a CVD-validated categorical set (checked with a palette
+# validator; worst adjacent pair ΔE ≥ 9 under CVD simulation). Color follows
+# the entity — the portfolio is always violet, each index keeps its hue.
+_PORTFOLIO_COLOR = "#4a3aa7"
+_BENCHMARK_COLORS = {
+    "^GSPC": "#2a78d6",   # S&P 500 — blue
+    "^IXIC": "#eb6834",   # NASDAQ — orange
+    "URTH": "#1baf7a",    # MSCI World — aqua
+    "^GDAXI": "#eda100",  # DAX — yellow
+    "^STOXX": "#e87ba4",  # STOXX 600 — magenta
+}
 
 
 def fetch_benchmark_data(symbol, start_date, end_date):
@@ -622,41 +636,15 @@ def register_callbacks(app):
             raise PreventUpdate
         return backup, False
 
-    # ── Load initial data on page load (fires once) ──
-    @app.callback(
-        Output("portfolio-data-store", "data", allow_duplicate=True),
-        Input("load-cached-data-interval", "n_intervals"),
-        [State("current-user-store", "data"),
-         State("demo-mode", "data"),
-         State("url", "pathname"),
-         State("local-portfolio-backup", "data")],
-        prevent_initial_call='initial_duplicate'
-    )
-    def load_initial_data(n_intervals, current_user, demo_mode, pathname, local_backup):
-        """Load initial portfolio data once on page load."""
-        uid = auth.current_uid(current_user)
+    # NOTE: there used to be a load-initial-data callback here that filled
+    # portfolio-data-store with demo JSON on a 500 ms one-shot interval. It
+    # raced the vault restore: its response could land AFTER on_vault_settled
+    # had already hydrated real data and set demo-mode=False, leaving demo
+    # data on screen with the demo banner hidden. on_vault_settled covers
+    # every case it handled (locked → demo, restored → real, empty → pytr
+    # cache → demo), each together with a consistent demo-mode value, so the
+    # racer is gone.
 
-        # Logged out, or the user explicitly chose demo → demo
-        if not uid or demo_mode:
-            return _load_demo_json()
-
-        # Prefer the browser-only backup so data stays local.
-        backup = _backup_for_uid(local_backup, uid)
-        if backup:
-            return backup
-
-        # Fall back to the local pytr cache from a previous sync.
-        try:
-            from components.tr_api import get_cached_portfolio
-            cached = get_cached_portfolio(user_id=uid)
-            if cached and cached.get("success"):
-                return json.dumps(cached)
-        except Exception as e:
-            _log.warning("Error loading local cache: %s", e)
-
-        # No cached data yet → show demo until they sync
-        return _load_demo_json()
-    
     # Modal: close on successful sync
     @app.callback(
         Output("tr-connect-modal", "is_open"),
@@ -2029,9 +2017,9 @@ def register_callbacks(app):
                     y=_series_to_number_list(y_data),
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#4338ca', width=2.6),
+                    line=dict(color=_PORTFOLIO_COLOR, width=2.4),
                     fill='tonexty',
-                    fillcolor="rgba(67, 56, 202, 0.08)",
+                    fillcolor="rgba(74, 58, 167, 0.09)",
                     customdata=_make_hover_meta(t("pa.portfolio", lang), "currency", len(x_dates)),
                     hovertemplate=_money_hover(t("pa.portfolio", lang), lang),
                 ))
@@ -2039,19 +2027,19 @@ def register_callbacks(app):
                 if _last_port is not None:
                     fig.add_trace(go.Scatter(
                         x=[x_dates[-1]], y=[_last_port], mode="markers",
-                        marker=dict(color="#4338ca", size=7, line=dict(color="#fff", width=2)),
+                        marker=dict(color=_PORTFOLIO_COLOR, size=7, line=dict(color="#fff", width=2)),
                         showlegend=False, hoverinfo="skip",
                     ))
-                
-                # Add invested/added capital line (shows money added over time)
+
+                # Added capital is a step function (money lands in discrete
+                # deposits), drawn as a quiet slate reference line.
                 if 'invested' in df.columns:
-                    invested_hover = "<b>" + t("pa.added_capital", lang) + "</b><br>%{x|%d %b %Y}<br>€%{y:,.2f}<extra></extra>"
                     fig.add_trace(go.Scatter(
                         x=x_dates,
                         y=_series_to_number_list(df['invested']),
                         mode='lines',
                         name=t("pa.added_capital", lang),
-                        line=dict(color='#f59e0b', width=1.8, dash='dash'),
+                        line=dict(color='#94a3b8', width=1.4, shape='hv'),
                         customdata=_make_hover_meta(t("pa.added_capital", lang), "currency", len(x_dates)),
                         hovertemplate=_money_hover(t("pa.added_capital", lang), lang),
                     ))
@@ -2096,9 +2084,9 @@ def register_callbacks(app):
                     y=y_values,
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    # Same indigo as on the value tab so the portfolio keeps one
+                    # Same violet as on the value tab so the portfolio keeps one
                     # identity; the green/red fills still show above/below zero.
-                    line=dict(color='#4338ca', width=2.6),
+                    line=dict(color=_PORTFOLIO_COLOR, width=2.4),
                     customdata=_make_hover_meta(t("pa.portfolio", lang), "percent", len(x_dates)),
                     hovertemplate="<b>" + t("pa.portfolio", lang) + "</b>  %{y:,.2f}%<extra></extra>",
                 ))
@@ -2110,24 +2098,16 @@ def register_callbacks(app):
                     y=_series_to_number_list(y_data),
                     mode='lines',
                     name=t("pa.portfolio", lang),
-                    line=dict(color='#ef4444', width=2.5),
+                    line=dict(color='#e34948', width=2.4),
                     fill='tozeroy' if fill_color else None,
-                    fillcolor=fill_color,
+                    fillcolor="rgba(227, 73, 72, 0.10)" if fill_color else None,
                     customdata=_make_hover_meta(t("pa.portfolio", lang), "percent", len(x_dates)),
                     hovertemplate="<b>" + t("pa.portfolio", lang) + "</b>  %{y:,.2f}%<extra></extra>",
                 ))
             
             if include_benchmarks and chart_type in ["tab-performance", "tab-value"]:
                 # Add benchmarks (value + performance)
-                # Muted, evenly spaced hues: five benchmarks stay apart
-                # without competing with the portfolio line.
-                benchmark_colors = {
-                    "^GSPC": "#0f766e",
-                    "^GDAXI": "#b45309",
-                    "URTH": "#1d4ed8",
-                    "^IXIC": "#7e22ce",
-                    "^STOXX": "#be123c",
-                }
+                benchmark_colors = _BENCHMARK_COLORS
                 benchmark_names = {
                     "^GSPC": "S&P 500",
                     "^GDAXI": "DAX",
@@ -2172,7 +2152,7 @@ def register_callbacks(app):
                             y=_series_to_number_list(bench_y),
                             mode='lines',
                             name=benchmark_names.get(bench, bench),
-                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.4),
+                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6),
                             customdata=_make_hover_meta(
                                 benchmark_names.get(bench, bench),
                                 "percent" if chart_type == "tab-performance" else "currency",
@@ -2181,7 +2161,13 @@ def register_callbacks(app):
                             hovertemplate=hovertemplate,
                         ))
                     else:
-                        # Fallback: if simulation isn't available, use normalized index data.
+                        # Fallback: if simulation isn't available, use normalized
+                        # index data. Only meaningful on the performance tab —
+                        # scaling an index onto absolute € values without the
+                        # DCA simulation just draws an arbitrary line (in demo
+                        # mode it pinned five flat lines to the x-axis).
+                        if chart_type == "tab-value":
+                            continue
                         bench_data = fetch_benchmark_data(
                             bench,
                             start_date.strftime("%Y-%m-%d"),
@@ -2202,7 +2188,7 @@ def register_callbacks(app):
                             y=_series_to_number_list(bench_y),
                             mode='lines',
                             name=benchmark_names.get(bench, bench),
-                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.4),
+                            line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6),
                             customdata=_make_hover_meta(
                                 benchmark_names.get(bench, bench),
                                 "percent" if chart_type == "tab-performance" else "currency",
@@ -2219,7 +2205,7 @@ def register_callbacks(app):
             fig.update_layout(
                 height=None,
                 separators=cu.plotly_separators(lang),
-                margin=dict(l=8, r=118, t=16, b=28),
+                margin=dict(l=8, r=104, t=12, b=24),
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
                 font=dict(family="Inter, sans-serif", size=11, color="#64748b"),
@@ -2235,7 +2221,7 @@ def register_callbacks(app):
                     tickcolor="rgba(148, 163, 184, 0.35)",
                     zeroline=False,
                     showspikes=True,
-                    spikecolor="rgba(67, 56, 202, 0.35)",
+                    spikecolor="rgba(74, 58, 167, 0.35)",
                     spikethickness=1,
                     spikedash="solid",
                     spikemode="across",
@@ -2243,11 +2229,10 @@ def register_callbacks(app):
                 ),
                 yaxis=dict(
                     showgrid=True,
-                    gridcolor="rgba(148, 163, 184, 0.16)",
-                    griddash="dot",
+                    gridcolor="rgba(148, 163, 184, 0.14)",
                     title="",
                     side="left",
-                    nticks=6,
+                    nticks=5,
                     tickprefix=("€" if lang != "de" else "") if money_axis else "",
                     ticksuffix=(" €" if lang == "de" else "") if money_axis else "%",
                     zeroline=chart_type == "tab-performance",
@@ -2319,7 +2304,8 @@ def register_callbacks(app):
         lang = get_lang(lang_data)
         # Use deposits for benchmark simulation if "cash" is included in asset filter
         use_deposits = "cash" in (asset_class or [])
-        return build_portfolio_chart(
+        t0 = time.perf_counter()
+        fig = build_portfolio_chart(
             data_json,
             chart_type,
             selected_range,
@@ -2330,6 +2316,9 @@ def register_callbacks(app):
             use_deposits=use_deposits,
             lang=lang,
         )
+        _log.info("Portfolio chart (%s, %s) built in %.2fs", chart_type, selected_range,
+                  time.perf_counter() - t0)
+        return fig
 
     # Privacy mode toggle (clientside so it reacts instantly)
     app.clientside_callback(
