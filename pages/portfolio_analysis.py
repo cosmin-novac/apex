@@ -77,6 +77,57 @@ def _backup_for_uid(local_backup, uid):
         return None
 
 
+def bench_trailing_return(bdf, days_ago):
+    """Trailing return of a benchmark over its own last *days_ago* days.
+
+    Anchored to the benchmark's own last close on purpose: the portfolio
+    history always ends today (live prices), while index data ends at the
+    last completed close — usually one day earlier. Anchoring the window at
+    the portfolio's last date would make every benchmark window one day
+    short, and the 1D column exactly 0.00% every day.
+    """
+    if bdf is None or len(bdf) == 0:
+        return None
+    current = bdf['Close'].iloc[-1]
+    target = bdf['Date'].iloc[-1] - timedelta(days=days_ago)
+    if target < bdf['Date'].iloc[0] - timedelta(days=5):
+        return None
+    past = bdf[bdf['Date'] <= target]
+    if len(past) == 0:
+        return None
+    past_val = past['Close'].iloc[-1]
+    return (current - past_val) / past_val * 100 if past_val > 0 else None
+
+
+def classify_activity(title_raw, subtitle_raw, lang):
+    """Return (label, icon, badge_color) for a Trade Republic activity row.
+
+    Order matters: "kauf" is a substring of "verkauf", so sells must be
+    matched before buys or every German sale renders as a purchase.
+    """
+    tl = (title_raw or "").lower()
+    s = (subtitle_raw or "").lower()
+    if "sparplan" in s or "sparplan" in tl:
+        return t("pa.savings_plan", lang), "bi-arrow-repeat", "info"
+    if "verkauf" in s or "verkauf" in tl or "sell" in s or "sell" in tl:
+        return t("pa.sell", lang), "bi-cart-dash", "warning"
+    if "kauf" in s or "kauf" in tl or "buy" in s or "buy" in tl:
+        return t("pa.buy", lang), "bi-cart-plus", "info"
+    if "dividende" in s or "dividend" in tl or "dividende" in tl:
+        return t("pa.dividend", lang), "bi-cash-coin", "success"
+    if "zinsen" in tl or "interest" in tl:
+        return t("pa.interest_activity", lang), "bi-cash-coin", "success"
+    if "einzahlung" in tl or "deposit" in tl:
+        return t("pa.deposit", lang), "bi-box-arrow-in-down", "success"
+    if "auszahlung" in tl or "withdraw" in tl or "gesendet" in s:
+        return t("pa.withdrawal", lang), "bi-box-arrow-up", "danger"
+    if "steuer" in tl or "tax" in tl:
+        return t("pa.tax", lang), "bi-receipt", "secondary"
+    if "gebühr" in tl or "fee" in tl:
+        return t("pa.fee", lang), "bi-receipt", "secondary"
+    return t("pa.activity", lang), "bi-clock-history", "primary"
+
+
 # Timeframe pill-bar constants (shared between layout and callbacks)
 _TF_IDS  = ["tf-1w", "tf-1m", "tf-ytd", "tf-1y", "tf-3y", "tf-5y", "tf-max"]
 _TF_VALS = ["1W",    "1M",    "YTD",    "1Y",    "3Y",    "5Y",    "MAX"]
@@ -1407,30 +1458,6 @@ def register_callbacks(app):
                 except Exception:
                     return None
 
-            def classify_activity(title_raw, subtitle_raw):
-                """Return (label, icon, badge_color) for a transaction."""
-                tl = title_raw.lower()
-                s = subtitle_raw.lower()
-                if "sparplan" in s or "sparplan" in tl:
-                    return t("pa.savings_plan", lang), "bi-arrow-repeat", "info"
-                if "kauf" in s or "buy" in tl or "kauforder" in tl:
-                    return t("pa.buy", lang), "bi-cart-plus", "info"
-                if "verkauf" in s or "sell" in tl or "verkaufsorder" in tl:
-                    return t("pa.sell", lang), "bi-cart-dash", "warning"
-                if "dividende" in s or "dividend" in tl or "dividende" in tl:
-                    return t("pa.dividend", lang), "bi-cash-coin", "success"
-                if "zinsen" in tl or "interest" in tl:
-                    return t("pa.interest_activity", lang), "bi-cash-coin", "success"
-                if "einzahlung" in tl or "deposit" in tl:
-                    return t("pa.deposit", lang), "bi-box-arrow-in-down", "success"
-                if "auszahlung" in tl or "withdraw" in tl or "gesendet" in s:
-                    return t("pa.withdrawal", lang), "bi-box-arrow-up", "danger"
-                if "steuer" in tl or "tax" in tl:
-                    return t("pa.tax", lang), "bi-receipt", "secondary"
-                if "gebühr" in tl or "fee" in tl:
-                    return t("pa.fee", lang), "bi-receipt", "secondary"
-                return t("pa.activity", lang), "bi-clock-history", "primary"
-
             recent_items = []
             for txn in sorted(transactions, key=lambda x: x.get("timestamp", ""), reverse=True)[:8]:
                 title_raw = txn.get("title") or txn.get("subtitle") or "Activity"
@@ -1439,7 +1466,7 @@ def register_callbacks(app):
                 ts = parse_timestamp(txn.get("timestamp"))
                 date_str = ts.strftime("%d %b %Y, %H:%M") if ts else ""
                 amount_str = fmt_eur(amount) if amount else ""
-                label, icon, badge_color = classify_activity(title_raw, subtitle_raw)
+                label, icon, badge_color = classify_activity(title_raw, subtitle_raw, lang)
 
                 recent_items.append(
                     html.Div([
@@ -2466,17 +2493,6 @@ def register_callbacks(app):
                 bdf['Date'] = pd.to_datetime(bdf['Date'])
                 bdf = bdf.sort_values('Date')
                 current_bench = bdf['Close'].iloc[-1]
-                bench_first_date = bdf['Date'].iloc[0].to_pydatetime()
-
-                def bench_return(days_ago, _bdf=bdf, _cur=current_bench, _first=bench_first_date):
-                    target = last_date - timedelta(days=days_ago)
-                    if target < _first - timedelta(days=5):
-                        return None
-                    past = _bdf[_bdf['Date'] <= target]
-                    if len(past) == 0:
-                        return None
-                    past_val = past['Close'].iloc[-1]
-                    return (_cur - past_val) / past_val * 100 if past_val > 0 else None
 
                 ytd_bench = bdf[bdf['Date'] >= datetime(last_date.year, 1, 1)]
                 ytd_b = None
@@ -2495,16 +2511,16 @@ def register_callbacks(app):
                     "asset": benchmark_names.get(bench, bench),
                     "is_portfolio": False,
                     "values": {
-                        "1D": bench_return(1),
-                        "1W": bench_return(7),
-                        "1M": bench_return(30),
-                        "3M": bench_return(90),
+                        "1D": bench_trailing_return(bdf, 1),
+                        "1W": bench_trailing_return(bdf, 7),
+                        "1M": bench_trailing_return(bdf, 30),
+                        "3M": bench_trailing_return(bdf, 90),
                         "YTD": ytd_b,
-                        "1Y": bench_return(365),
-                        "2Y": bench_return(365 * 2),
-                        "3Y": bench_return(365 * 3),
-                        "5Y": bench_return(365 * 5),
-                        "10Y": bench_return(365 * 10),
+                        "1Y": bench_trailing_return(bdf, 365),
+                        "2Y": bench_trailing_return(bdf, 365 * 2),
+                        "3Y": bench_trailing_return(bdf, 365 * 3),
+                        "5Y": bench_trailing_return(bdf, 365 * 5),
+                        "10Y": bench_trailing_return(bdf, 365 * 10),
                         "TOTAL": total_b,
                     },
                 })

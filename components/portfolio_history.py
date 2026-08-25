@@ -17,6 +17,16 @@ import logging
 
 log = logging.getLogger(__name__)
 
+
+def recent_daily_dates(end_date, days: int = 7) -> Set:
+    """Daily grid points for the last *days* days up to *end_date*.
+
+    The history grid is weekly/monthly plus transaction dates, so without
+    these the "previous" point before today can be up to a week old — and a
+    1D/1W trailing window (comparison table) silently measures that longer
+    span instead."""
+    return {end_date - timedelta(days=k) for k in range(days + 1)}
+
 # Cache directory
 CACHE_DIR = Path.home() / ".pytr"
 PRICE_CACHE_FILE = CACHE_DIR / "price_cache.json"  # {isin: {date: price}}
@@ -1255,8 +1265,8 @@ def build_portfolio_history_from_transactions(
         current += timedelta(days=7)
     # Add all transaction dates
     history_dates.update(all_dates)
-    # Add today
-    history_dates.add(end_date)
+    # Add today plus a daily tail so short trailing windows are real
+    history_dates.update(recent_daily_dates(end_date))
     
     sorted_dates = sorted(history_dates)
     date_strs = [d.strftime("%Y-%m-%d") for d in sorted_dates]
@@ -1468,8 +1478,8 @@ def build_portfolio_history(
     
     # Add all transaction dates
     history_dates.update(all_dates)
-    # Add today
-    history_dates.add(end_date)
+    # Add today plus a daily tail so short trailing windows are real
+    history_dates.update(recent_daily_dates(end_date))
     
     sorted_dates = sorted(history_dates)
     
