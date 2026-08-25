@@ -1223,12 +1223,31 @@ input.compact-input {
     align-items: center;
 }
 
+/* Same button language as the rest of the app (sync button, header
+   controls): standard radius, tinted fill + 1px border, solid on hover. */
 .add-rule-btn {
-    padding: 4px 10px;
-    font-size: 0.78rem;
+    padding: 5px 12px;
+    font-size: 0.8rem;
     font-weight: 600;
-    border-radius: 999px;
+    border-radius: var(--radius-md);
     transition: var(--transition);
+}
+
+/* Neutral ghost buttons for Save/Load, matching the colored ones in shape. */
+.rules-io-btn {
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+}
+.rules-io-btn:hover {
+    color: var(--text-primary);
+    background: #f1f5f9;
+    border-color: #cbd5e1;
 }
 
 .add-buy {

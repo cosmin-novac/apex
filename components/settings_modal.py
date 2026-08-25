@@ -35,13 +35,15 @@ settings_modal = dbc.Modal(
         ),
         dbc.ModalBody(
             [
+                # When the server provides the key there is nothing for the
+                # user to configure — hide the whole section (the input stays
+                # in the DOM because callbacks reference it) instead of showing
+                # a confusing "enabled by the server" note.
                 html.Div(
                     [
                         html.Label("OpenAI API Key", className="settings-label"),
                         html.P(
-                            "AI features are enabled by the server."
-                            if _server_has_openai_key()
-                            else "Required for AI-powered rule generation",
+                            "Required for AI-powered rule generation",
                             className="settings-help",
                         ),
                         dbc.Input(
@@ -49,12 +51,13 @@ settings_modal = dbc.Modal(
                             type="password",
                             placeholder="sk-...",
                             className="settings-input",
-                            style={"display": "none"} if _server_has_openai_key() else {},
                         ),
                     ],
                     className="settings-section",
+                    style={"display": "none"} if _server_has_openai_key() else {},
                 ),
-                html.Hr(className="settings-divider"),
+                html.Hr(className="settings-divider",
+                        style={"display": "none"} if _server_has_openai_key() else {}),
                 html.Div(
                     [
                         html.Label("Display Theme", className="settings-label"),
