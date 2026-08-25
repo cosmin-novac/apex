@@ -63,7 +63,7 @@ app = dash.Dash(
 
 # Web fonts load asynchronously (media="print" flip). As a plain stylesheet in
 # external_stylesheets they are render-blocking AND block every Dash script
-# below them, so a slow or blocked fonts.googleapis.com froze the whole app —
+# below them, so a slow or blocked fonts.googleapis.com froze the whole app,
 # which showed up as "the chart takes forever". Text renders in the fallback
 # font immediately and swaps when the webfonts arrive.
 _FONTS_HREF = ("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
@@ -163,7 +163,7 @@ app.layout = dbc.Container([
     dcc.Store(id="vault-restore-state", storage_type="memory"),
     # Drives the vault restore permanently (clientside, no server traffic when
     # idle): the password-derived key arrives asynchronously and a login mid-
-    # session must re-hydrate too — a clientside store write does not reliably
+    # session must re-hydrate too, a clientside store write does not reliably
     # trigger another clientside callback, so the interval is the guaranteed
     # path. restoreBackup returns no_update on every settled tick.
     dcc.Interval(id="vault-restore-interval", interval=500),
@@ -213,7 +213,7 @@ def redirect_to_default(pathname):
 
 # All pages stay mounted; navigation only toggles which wrapper is visible.
 # Swapping page-content.children on every route change (the previous model)
-# re-mounted the page from scratch — every chart and table refetched and the
+# re-mounted the page from scratch, every chart and table refetched and the
 # page state was lost each time the user navigated away and back.
 _PAGES = [
     # (wrapper key, layout factory, pathnames that show it)

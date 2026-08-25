@@ -120,8 +120,8 @@ def _signature_transactions(transactions: List[Dict]) -> str:
 def _load_cache() -> Dict:
     """Load benchmark cache from disk (stale-while-revalidate).
 
-    A stale cache is still LOADED — yesterday's index closes are perfectly
-    good for drawing a chart right now — and a background refresh is kicked
+    A stale cache is still LOADED. Yesterday's index closes are perfectly
+    good for drawing a chart right now, and a background refresh is kicked
     off instead of blocking the first chart render on a network fetch.
     """
     global _benchmark_cache, _cache_loaded
@@ -379,7 +379,7 @@ def simulate_benchmark_investment(
         return []
 
     # Vectorized "price on or before date" lookups. The previous version
-    # filtered the whole price frame per date — O(dates x prices), seconds
+    # filtered the whole price frame per date, O(dates x prices), seconds
     # per benchmark on a multi-year history; searchsorted makes it O(n log n).
     price_dates = prices_df.index.values  # sorted naive datetime64 (midnights)
     price_closes = prices_df["Close"].to_numpy(dtype=float)
@@ -410,12 +410,12 @@ def simulate_benchmark_investment(
                 cumulative_units += amount / price
                 cumulative_invested += amount
             else:
-                # Sell: mirror the real action 1:1 — sell exactly |amount| €
+                # Sell: mirror the real action 1:1, sell exactly |amount| €
                 # worth of the benchmark at that day's close. (Previously this
                 # removed the fraction |amount|/invested of the UNITS, i.e. a
                 # share of the cost basis: with the simulated position in
                 # profit that drained more than the real sale took out, in
-                # loss less — systematically skewing the comparison at every
+                # loss less, systematically skewing the comparison at every
                 # sell.) Capped at liquidation if the simulated position is
                 # worth less than the sale.
                 if cumulative_units > 0:
@@ -427,7 +427,7 @@ def simulate_benchmark_investment(
 
         # Normalized to midnight: the portfolio history counts a trade on its
         # calendar day (change_date.date() <= date), so the mirrored state
-        # must too — with the raw intraday timestamp, every history point ON
+        # must too, with the raw intraday timestamp, every history point ON
         # a trade day missed that day's trade.
         units_timeline_dates.append(np.datetime64(pd.Timestamp(inv_date).normalize()))
         units_arr.append(cumulative_units)

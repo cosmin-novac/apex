@@ -97,7 +97,7 @@
       } catch (e) {
         // A failed persist means the next visit falls back to demo data, so be
         // loud about it (QuotaExceededError = localStorage full).
-        console.error("[apex vault] persist failed — synced data will NOT survive a reload:", e);
+        console.error("[apex vault] persist failed, synced data will NOT survive a reload:", e);
       }
       return NU;
     },

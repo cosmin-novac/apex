@@ -43,7 +43,7 @@ LOGICAL_OPERATORS = [
 
 def _empty_hint():
     """Return the placeholder shown when there are no rules."""
-    return [html.Div("No rules yet — click + Buy or + Sell to add one.",
+    return [html.Div("No rules yet. Click + Buy or + Sell to add one.",
                       className="rules-empty-hint",
                       id="rules-empty-hint")]
 
@@ -61,7 +61,7 @@ def create_rule_pill(rule_type, rule_index, rule_expression):
                 [html.I(className=f"bi {icon} me-1"), rule_type.upper()],
                 className=f"rule-type-badge {'badge-buy' if is_buy else 'badge-sell'}"
             ),
-            # Rule expression (editable) — single-line code input
+            # Rule expression (editable), single-line code input
             dbc.Input(
                 id={"type": f"{rule_type}-rule", "index": rule_index},
                 value=rule_expression,
@@ -115,7 +115,7 @@ def create_rule_builder_card():
         html.Div(
             id="trading-rules-container",
             className="rules-container",
-            children=[html.Div("No rules yet — click + Buy or + Sell to add one.",
+            children=[html.Div("No rules yet. Click + Buy or + Sell to add one.",
                                className="rules-empty-hint",
                                id="rules-empty-hint")],
         ),

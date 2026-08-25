@@ -36,7 +36,7 @@ settings_modal = dbc.Modal(
         dbc.ModalBody(
             [
                 # When the server provides the key there is nothing for the
-                # user to configure — hide the whole section (the input stays
+                # user to configure, hide the whole section (the input stays
                 # in the DOM because callbacks reference it) instead of showing
                 # a confusing "enabled by the server" note.
                 html.Div(

@@ -182,7 +182,7 @@ _PROJ_PALETTE = {
 
 # Opt-in reference lines (legendonly). Ending Value is the same entity as
 # Portfolio Value read at year-end, so it wears the same hue dashed; the cost
-# basis is a neutral dotted reference — introducing two more hues onto the
+# basis is a neutral dotted reference, introducing two more hues onto the
 # shared panel failed the palette validator against the flow colors.
 _REF_LINES = {
     'Ending Value': dict(color='#4a3aa7', width=1.6, dash='dash'),
@@ -259,7 +259,11 @@ def _make_mc_figure(paths, average_df, lang="de"):
     if paths:
         flat = np.concatenate([np.asarray(p, dtype=float) for p in paths])
         y_top = max(float(np.percentile(flat, 95)), max(avg_values or [0])) * 1.08
-        fig.update_yaxes(range=[0, max(y_top, 1.0)])
+        # The floor is zero while the portfolio survives, but withdrawals can
+        # outrun it. Ruined scenarios must stay visible instead of vanishing
+        # under a hard zero baseline, so the floor follows them down.
+        y_bottom = min(0.0, float(np.percentile(flat, 5)), min(avg_values or [0])) * 1.08
+        fig.update_yaxes(range=[y_bottom, max(y_top, y_bottom + 1.0)])
     return fig
 
 
@@ -356,7 +360,7 @@ def layout(lang="en"):
 
                         # Growth source: a custom flat rate over N years, or
                         # replayed historical S&P 500 returns from a start
-                        # year. The rate input only shows in custom mode —
+                        # year. The rate input only shows in custom mode,
                         # with historical returns it would be a lie.
                         html.Label(t("ps.growth_source", lang), className="input-label"),
                         dcc.Dropdown(
@@ -563,7 +567,7 @@ def register_callbacks(app):
     Architecture notes (why the chart was previously always empty):
     • In a multi-page Dash app with suppress_callback_exceptions=True,
       callbacks registered with prevent_initial_call=False fire as soon as
-      the app starts — even though the target components haven't been
+      the app starts, even though the target components haven't been
       rendered yet.  Dash sends None for every Input whose component
       doesn't exist, so the old update_graph_from_table callback received
       table_data=None and returned an empty figure.

@@ -80,7 +80,7 @@ def test_figure_draws_only_the_portfolio_value():
     paths, avg = simulate_monte_carlo(100_000, 0.07, 'fixed', 0, 10, 0.25, 'FIFO',
                                       volatility=0.15, samples=12)
     fig = _make_mc_figure(paths, avg, "en")
-    # Exactly two traces: the scenario cloud and its average — no flow series.
+    # Exactly two traces: the scenario cloud and its average, no flow series.
     assert len(fig.data) == 2
     cloud, average = fig.data
     assert cloud.hoverinfo == 'skip' and 'rgba' in cloud.line.color
@@ -105,6 +105,28 @@ def test_axis_is_not_squashed_by_the_fat_tail():
     # The average should occupy a readable share of the height, not a sliver.
     assert avg_peak / top > 0.4, f"average squashed to {avg_peak / top:.0%} of the axis"
     assert top < biggest, "extreme runs are expected to leave the frame"
+
+
+def test_ruined_scenarios_stay_visible():
+    """Withdrawals can outrun the portfolio. Those paths must not vanish
+    under a hard zero baseline, or a bust reads as a soft landing."""
+    paths, avg = simulate_monte_carlo(100_000, 0.07, 'fixed', 200_000, 20, 0.25,
+                                      'FIFO', volatility=0.2, samples=30)
+    worst = avg['Portfolio Value'].min()
+    assert worst < 0, "test needs a portfolio that actually runs out"
+    low = _make_mc_figure(paths, avg, "en").layout.yaxis.range[0]
+    assert low <= worst, f"axis floor {low} hides the ruin at {worst}"
+
+
+def test_single_year_and_single_scenario_do_not_crash():
+    for years, samples in ((1, 10), (30, 1)):
+        paths, avg = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, years,
+                                          0.25, 'FIFO', volatility=0.15,
+                                          samples=samples)
+        fig = _make_mc_figure(paths, avg, "de")
+        lo, hi = fig.layout.yaxis.range
+        assert len(paths) == samples and len(avg) == years
+        assert hi > lo
 
 
 def test_sample_cap_is_a_real_bound():

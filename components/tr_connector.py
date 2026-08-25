@@ -111,7 +111,7 @@ def create_tr_connector_card():
                 ], id="tr-start-auth-btn", color="primary", className="w-100", size="sm", n_clicks=0),
 
                 # Live status while the code request is in flight (the WAF
-                # browser dance can take a while) — fed by the progress poll.
+                # browser dance can take a while), fed by the progress poll.
                 html.Div(id="tr-initiate-status", className="text-center text-muted small mt-2"),
                 html.Div(id="tr-auth-feedback", className="mt-2"),
             ], id="tr-initial-view"),
@@ -290,7 +290,7 @@ def register_tr_callbacks(app):
     # Instant switch to the syncing view on reconnect. Done via raw DOM with a
     # dummy output on purpose: the server reconnect callback has the exact
     # same single Input, and Dash's duplicate-output ids are hashed from the
-    # input list — declaring these as allow_duplicate Outputs here would
+    # input list, declaring these as allow_duplicate Outputs here would
     # collide with the server callback's and the renderer rejects the app.
     app.clientside_callback(
         """
@@ -432,7 +432,7 @@ def register_tr_callbacks(app):
         stage = prog.get('stage', '')
         detail = prog.get('detail', '')
         ago = max(0, int(datetime.now().timestamp() - float(prog.get('ts', 0))))
-        step_line = stage + (f" — {detail}" if detail else "")
+        step_line = stage + (f": {detail}" if detail else "")
         if ago >= 12:
             elapsed_line = f"⚠ Still working… no update for {ago}s"
         else:
@@ -485,7 +485,7 @@ def register_tr_callbacks(app):
                 no_update, no_update, t("tr.reauth_hint", lang).format(phone=phone))
 
     # Prefill the phone number so an expired session needs only the PIN and a
-    # fresh code — not a full re-entry of the login form.
+    # fresh code, not a full re-entry of the login form.
     @app.callback(
         Output('tr-phone-input', 'value'),
         [Input('tr-connect-modal', 'is_open'),

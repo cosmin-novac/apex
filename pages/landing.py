@@ -20,7 +20,7 @@ INK = "#161a1f"
 ACCENT = "#1d4ed8"
 BENCH = "#b45309"
 
-# (icon, tint, title-key, desc-key, route) — icons match the sidebar so the
+# (icon, tint, title-key, desc-key, route), icons match the sidebar so the
 # cards read as previews of the actual pages.
 _CAPABILITIES = [
     ("bi-graph-up", "indigo", "landing.c2_title", "landing.c2_desc", "/backtesting"),

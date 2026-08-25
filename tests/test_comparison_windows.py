@@ -2,7 +2,7 @@
 
 The portfolio history always ends today (live prices) while benchmark data
 ends at the last completed close. The old code anchored benchmark windows at
-the portfolio's last date, which made every benchmark window one day short —
+the portfolio's last date, which made every benchmark window one day short,
 and the 1D column exactly 0.00% every day.
 """
 

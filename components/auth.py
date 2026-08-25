@@ -43,7 +43,7 @@ def register_auth_callbacks(app):
             // Signing in from a signed-out state only announces the uid. The
             // stores hold nothing another user owns, and wiping here would undo
             // a vault restore that already completed (the async stay-signed-in
-            // unlock makes this poll race the restore on reload — the old wipe
+            // unlock makes this poll race the restore on reload, the old wipe
             // was why a reload sometimes fell back to demo despite stored data).
             // secure_store.js re-runs the restore on this uid change and
             // on_vault_settled then decides demo-vs-real.

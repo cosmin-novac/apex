@@ -46,7 +46,7 @@ def _default_waf_token_method() -> str:
 
 
 # Encryption key from environment (set this in your .env or hosting config).
-# Used to encrypt the browser reconnect token (phone number only — never the PIN).
+# Used to encrypt the browser reconnect token (phone number only, never the PIN).
 ENCRYPTION_KEY = os.environ.get("TR_ENCRYPTION_KEY")
 if not ENCRYPTION_KEY:
     log.warning(
@@ -70,7 +70,7 @@ def merge_execution_and_market_prices(
     """Overlay execution prices on daily market closes, split-safely.
 
     Execution prices are ground truth for what a trade actually cost, so they
-    win on their own dates — unless a same-day market close disagrees by more
+    win on their own dates, unless a same-day market close disagrees by more
     than SPLIT_GUARD_MAX_RATIO in either direction. Market closes are
     split-adjusted, raw execution prices are not: after a stock split (e.g.
     Amazon's 20:1 in 2022) an old execution price is a large multiple of the
@@ -88,7 +88,7 @@ def merge_execution_and_market_prices(
                 log.info(
                     f"  Dropping execution price {exec_price:.2f} on {date_str}"
                     f"{' for ' + label if label else ''}: market close is "
-                    f"{close:.2f} ({ratio:.1f}x apart — likely a stock split)"
+                    f"{close:.2f} ({ratio:.1f}x apart, likely a stock split)"
                 )
                 continue
         merged[date_str] = exec_price
@@ -155,7 +155,7 @@ def encrypt_credentials(phone_no: str, pin: str = None) -> str:
 def decrypt_credentials(encrypted: str) -> Tuple[Optional[str], Optional[str]]:
     """Decrypt the reconnect token from browser storage.
 
-    Returns ``(phone, None)`` — the PIN is never stored, so it is always None.
+    Returns ``(phone, None)``. The PIN is never stored, so it is always None.
     """
     try:
         from cryptography.fernet import Fernet
@@ -192,11 +192,11 @@ def normalize_phone(phone_no: str) -> Optional[str]:
         digits = digits[2:]  # 0049... -> 49...
     if not digits:
         return None
-    # E.164 numbers are 8–15 digits incl. country code.
+    # E.164 numbers are 8-15 digits incl. country code.
     if len(digits) < 8 or len(digits) > 15:
         return None
     if not plus and not cleaned.startswith("+"):
-        # No country code indicated – we can't safely guess one.
+        # No country code indicated, we can't safely guess one.
         return None
     return "+" + digits
 
@@ -401,7 +401,7 @@ class TRConnection:
 
     Each instance is scoped to a *user_id* so that server-side caches
     (portfolio, transactions, instruments) never collide between users.
-    Logos in ``assets/logos/`` are shared – they are keyed by globally-unique
+    Logos in ``assets/logos/`` are shared. They are keyed by globally-unique
     ISIN so sharing is harmless and beneficial.
     """
 
@@ -656,7 +656,7 @@ class TRConnection:
                 api = self._new_api(waf_token=waf_method)
                 countdown = api.initiate_weblogin()
                 self.api = api
-                self._write_progress(95, "Login", "Code sent — check your Trade Republic app")
+                self._write_progress(95, "Login", "Code sent, check your Trade Republic app")
                 return countdown
             except Exception as exc:
                 last_error = exc
@@ -693,7 +693,7 @@ class TRConnection:
     # ── Pending-login handoff (survives process boundaries) ─────────────
     # pytr keeps the in-flight login (processId + session cookies) only in
     # memory. If the verify request is served by a different worker process
-    # than the initiate request — or in-memory state is lost — completing the
+    # than the initiate request, or in-memory state is lost, completing the
     # login failed with "No login in progress" even though the user just
     # received a valid code. Persisting the handoff next to the cookie jar
     # makes the verify step work from any process.
@@ -891,7 +891,7 @@ class TRConnection:
 
         Strategy (in order):
         1. Parqet public CDN: ``https://assets.parqet.com/logos/isin/{ISIN}``
-           – works for most stocks, ETFs and bonds (returns SVG).
+           Works for most stocks, ETFs and bonds (returns SVG).
         2. ui-avatars.com: generates a nice colored-initials PNG as fallback
            for anything Parqet doesn't cover (crypto, exotic small-caps).
         Images already on disk are skipped.
@@ -925,7 +925,7 @@ class TRConnection:
             to_download.append(pos)
 
         if not to_download:
-            log.info("All logos already cached – nothing to download.")
+            log.info("All logos already cached, nothing to download.")
             return
 
         log.info(f"Downloading {len(to_download)} logos …")
@@ -972,7 +972,7 @@ class TRConnection:
             except Exception:
                 pass
 
-            log.debug(f"  ✗ {isin} – no logo source available")
+            log.debug(f"  ✗ {isin}: no logo source available")
 
     def _load_transactions_cache(self) -> List[Dict]:
         """Load cached transactions (user-scoped)."""
@@ -1797,7 +1797,7 @@ class TRConnection:
             except Exception as exc:
                 log.warning(f"  Market prices unavailable for {name}: {exc}")
                 market_prices = {}
-            # Execution prices win on their own dates — unless the same-day
+            # Execution prices win on their own dates, unless the same-day
             # market close says the raw price is from before a stock split.
             merged_prices = merge_execution_and_market_prices(
                 market_prices, known_prices, label=name)
@@ -2502,7 +2502,7 @@ class TRConnection:
         def _forward_walker(series: Dict[str, float]):
             """Step-function reader: value at the nearest date <= the query.
 
-            Queries must arrive in ascending date order (they do — the outer
+            Queries must arrive in ascending date order (they do, the outer
             loop iterates sorted_dates)."""
             items = sorted(series.items())
             state = {'i': 0, 'val': None}
@@ -2955,7 +2955,7 @@ class TRConnection:
             self._strip_waf_cookie_file()
             self.is_connected = True
 
-            # Build the browser reconnect token (phone only — never the PIN).
+            # Build the browser reconnect token (phone only, never the PIN).
             encrypted_creds = None
             if self.phone_no:
                 encrypted_creds = self.get_encrypted_credentials(self.phone_no)
@@ -3455,7 +3455,7 @@ class TRConnection:
             }
 
 
-# Per-user connection pool – keyed by username ("_default" for legacy callers)
+# Per-user connection pool, keyed by username ("_default" for legacy callers)
 _connections: Dict[str, TRConnection] = {}
 _connections_lock = threading.Lock()
 

@@ -298,7 +298,7 @@ def add_historical_indicators(btc_data, is_btc=True):
     btc_data['momentum_14'] = ta.momentum.roc(btc_data['price'], window=14)
     btc_data['percent_change'] = btc_data['price'].pct_change()
 
-    # Indicators that need high/low/volume — guard against missing columns
+    # Indicators that need high/low/volume, guard against missing columns
     has_hlv = all(c in btc_data.columns for c in ('high', 'low', 'volume'))
     has_hl = all(c in btc_data.columns for c in ('high', 'low'))
 
@@ -720,7 +720,7 @@ def _download_asset(asset_ticker):
     or None on failure.
 
     Caching hierarchy:
-      1. In-memory dict (_asset_cache) — instant, per-session.
+      1. In-memory dict (_asset_cache): instant, per-session.
       2. Local runtime CSV file (~/.apex/asset_cache/<TICKER>.csv by default).
          On subsequent calls only the *delta* (new rows since last saved date)
          is fetched from Yahoo Finance and appended to the local file.
@@ -738,7 +738,7 @@ def _download_asset(asset_ticker):
         try:
             local_df = pd.read_csv(csv_path, parse_dates=["Date"], index_col="Date")
             local_df.sort_index(inplace=True)
-            # Fetch only the delta — rows after the last date we already have
+            # Fetch only the delta, rows after the last date we already have
             last_date = local_df.index[-1]
             delta_start = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
             try:
@@ -806,7 +806,7 @@ def _download_asset(asset_ticker):
             _log.warning("[%s] could not save cache: %s", asset_ticker, e)
 
     # --- Common post-processing ---
-    # Map to a 'price' column – prefer adj close (split-adjusted), fall back to close
+    # Map to a 'price' column, prefer adj close (split-adjusted), fall back to close
     col_map = {}
     if 'adj close' in yf_data.columns:
         col_map['adj close'] = 'price'
@@ -957,7 +957,7 @@ def register_callbacks(app):
                 display_name = asset['label']
                 break
 
-        # Only fetch raw price data — no heavy indicator calculations.
+        # Only fetch raw price data, no heavy indicator calculations.
         # _load_asset_data runs add_historical_indicators which is slow
         # and only needed when the user clicks "Run Backtest".
         is_btc = ticker.upper() in ("BTC-USD", "BTC")
@@ -1025,7 +1025,7 @@ def register_callbacks(app):
         lump_sum = lump_sum_and_hold_strategy(data[start_date:], starting_investment)
         dca = monthly_dca_strategy(data[start_date:], starting_investment)
 
-        # Build figure — price trace on left Y-axis (y1)
+        # Build figure, price trace on left Y-axis (y1)
         fig = _price_fig(display_name, data, scale or "linear")
 
         # Strategy value traces on RIGHT Y-axis (y2) so they don't
@@ -1062,7 +1062,7 @@ def register_callbacks(app):
         # Configure the secondary Y-axis
         fig.update_layout(
             separators=plotly_separators(lang),
-            title=dict(text=f"{display_name} — {t('bt.backtest_results', lang)}", font=dict(size=14)),
+            title=dict(text=f"{display_name}: {t('bt.backtest_results', lang)}", font=dict(size=14)),
             yaxis_title=t("bt.price", lang),
             yaxis2=dict(
                 title=t("bt.portfolio_value_usd", lang),
