@@ -33,17 +33,16 @@ def _tr_error_alert(message, color="warning"):
     return dbc.Alert(message or "Trade Republic sync failed. Please try again.", color=color, className="mb-0 small")
 
 
-def _fetch_portfolio_data(uid):
-    """Fetch TR portfolio data and normalize failures into result dictionaries."""
-    try:
-        result = fetch_all_data(user_id=uid)
-    except Exception as e:
-        result = {"success": False, "error": friendly_tr_error(e)}
-    if not isinstance(result, dict):
-        return {"success": False, "error": "Trade Republic returned an unexpected response."}
-    if not result.get("success"):
-        result.setdefault("error", "Trade Republic sync failed. Please try again.")
-    return result
+def _start_background_sync(uid, flow):
+    """Kick off the portfolio sync without blocking this HTTP request.
+
+    The sync can run for many minutes; holding the callback request open for
+    it meant Azure's ~230 s gateway limit killed the response with a 504 and
+    the UI hung in the syncing view forever. The delivery callback below
+    picks the outcome up from the 1 s progress poll instead.
+    """
+    from components.tr_api import start_fetch_async
+    start_fetch_async(user_id=uid, flow=flow)
 
 
 def create_tr_connector_card():
@@ -394,7 +393,10 @@ def register_tr_callbacks(app):
         [Input('tr-start-auth-btn', 'n_clicks'),
          Input('tr-verify-otp-btn', 'n_clicks'),
          Input('tr-reconnect-link', 'n_clicks'),
-         Input('tr-refresh-btn', 'n_clicks')],
+         Input('tr-refresh-btn', 'n_clicks'),
+         # The header Sync button also starts a background sync (its modal
+         # opens straight on the syncing view).
+         Input('sync-tr-data-btn', 'n_clicks')],
         prevent_initial_call=True,
     )
     app.clientside_callback(
@@ -440,6 +442,98 @@ def register_tr_callbacks(app):
         # The same step line also feeds the status under "Send Verification
         # Code", so the long WAF/browser phase is never a silent minute.
         return pct, f"{pct}%", step_line, elapsed_line, step_line
+
+    # ── Background sync delivery ─────────────────────────────────────────
+    # The sync itself runs in a daemon thread (start_fetch_async): holding
+    # the triggering HTTP request open for it meant Azure's ~230 s gateway
+    # limit killed the response with a 504 while the backend kept working,
+    # and the UI hung on the last progress line forever. This callback rides
+    # the same 1 s poll as the progress bar and flips the UI as soon as the
+    # background sync writes its result marker.
+    _sync_poll_misses = {}
+
+    @app.callback(
+        [Output('tr-initial-view', 'style', allow_duplicate=True),
+         Output('tr-otp-view', 'style', allow_duplicate=True),
+         Output('tr-syncing-view', 'style', allow_duplicate=True),
+         Output('tr-connected-view', 'style', allow_duplicate=True),
+         Output('tr-auth-step', 'data', allow_duplicate=True),
+         Output('tr-auth-feedback', 'children', allow_duplicate=True),
+         Output('tr-otp-feedback', 'children', allow_duplicate=True),
+         Output('tr-connection-status', 'className', allow_duplicate=True),
+         Output('tr-status-text', 'children', allow_duplicate=True),
+         Output('tr-session-data', 'data', allow_duplicate=True),
+         Output('tr-portfolio-summary', 'children', allow_duplicate=True),
+         Output('portfolio-data-store', 'data', allow_duplicate=True),
+         Output('demo-mode', 'data', allow_duplicate=True)],
+        Input('tr-sync-progress-interval', 'n_intervals'),
+        [State('tr-auth-step', 'data'),
+         State('current-user-store', 'data'),
+         State('lang-store', 'data')],
+        prevent_initial_call=True,
+    )
+    def deliver_sync_result(_n, step, current_user, lang_data):
+        if step != "syncing":
+            raise PreventUpdate
+        uid = auth.current_uid(current_user)
+        if not uid:
+            raise PreventUpdate
+        from components.tr_api import (consume_fetch_result, get_cached_portfolio,
+                                       get_fetch_progress, take_fetch_data)
+        lang = get_lang(lang_data)
+
+        marker = consume_fetch_result(uid)
+        if marker is None:
+            # Still running (fresh progress), or the worker died and will
+            # never write a marker. Only give up after repeated ticks with
+            # neither progress nor a result.
+            if get_fetch_progress(uid):
+                _sync_poll_misses.pop(uid, None)
+                raise PreventUpdate
+            misses = _sync_poll_misses.get(uid, 0) + 1
+            _sync_poll_misses[uid] = misses
+            if misses < 20:
+                raise PreventUpdate
+            _sync_poll_misses.pop(uid, None)
+            marker = {"success": False,
+                      "error": "The sync stopped unexpectedly. Please try again."}
+        else:
+            _sync_poll_misses.pop(uid, None)
+
+        if marker.get("success"):
+            # Same-worker delivery gets the result in memory; another worker
+            # reads the portfolio cache the fetch just saved.
+            portfolio_data = take_fetch_data(uid) or get_cached_portfolio(uid)
+            if portfolio_data and portfolio_data.get("success"):
+                return (
+                    {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
+                    "connected", "", "",
+                    "connection-status connected", "Connected",
+                    json.dumps(portfolio_data),
+                    create_portfolio_summary(portfolio_data, lang),
+                    json.dumps(portfolio_data),
+                    False,  # Exit demo mode
+                )
+            marker = {"success": False, "flow": marker.get("flow"),
+                      "error": "Sync finished but no data was stored. Please try again."}
+
+        if marker.get("flow") == "refresh":
+            # A failed refresh keeps the (still valid) connected session.
+            return (
+                {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
+                "connected", "", _tr_error_alert(marker.get("error")),
+                "connection-status disconnected", "Sync failed",
+                no_update, no_update, no_update, no_update,
+            )
+
+        return (
+            {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"},
+            "initial",
+            _tr_error_alert(marker.get("error")),
+            "",
+            "connection-status disconnected", "Sync failed",
+            no_update, no_update, no_update, no_update,
+        )
 
     # Saved-credentials guidance. Two flavors:
     #  - server session cookies still exist → one-click silent reconnect link
@@ -542,33 +636,21 @@ def register_tr_callbacks(app):
         result = reconnect(encrypted_creds, user_id=uid)
 
         if result.get("success"):
-            # Fetch full portfolio data including history
-            portfolio_data = _fetch_portfolio_data(uid)
-            if not portfolio_data.get("success"):
-                return (
-                    {"display": "block"},  # show initial
-                    {"display": "none"},  # hide otp
-                    {"display": "none"},  # hide syncing
-                    {"display": "none"},
-                    "initial",
-                    _tr_error_alert(portfolio_data.get("error")),
-                    "connection-status disconnected",
-                    "Sync failed",
-                    no_update,
-                    no_update
-                )
-
+            # The sync runs in the background; deliver_sync_result picks the
+            # outcome up from the progress poll. Returning now keeps this
+            # request well under Azure's ~230 s gateway limit.
+            _start_background_sync(uid, "reconnect")
             return (
-                {"display": "none"},  # hide initial
-                {"display": "none"},  # hide otp
-                {"display": "none"},  # hide syncing
-                {"display": "block"},  # show connected
-                "connected",
+                {"display": "none"},   # hide initial
+                {"display": "none"},   # hide otp
+                {"display": "block"},  # show syncing
+                {"display": "none"},
+                "syncing",
                 "",
-                "connection-status connected",
-                "Connected",
-                json.dumps(portfolio_data),
-                create_portfolio_summary(portfolio_data, lang)
+                "connection-status syncing",
+                "Syncing data...",
+                no_update,
+                no_update
             )
         else:
             error_msg = result.get("error", "Reconnect failed")
@@ -655,34 +737,21 @@ def register_tr_callbacks(app):
                 no_update,
             )
         
-        # Handle refresh
+        # Handle refresh: sync runs in the background (see deliver_sync_result)
         if triggered == 'tr-refresh-btn':
             if not uid:
                 raise PreventUpdate
-            portfolio_data = _fetch_portfolio_data(uid)
-            if not portfolio_data.get("success"):
-                return (
-                    {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
-                    "connected", "", _tr_error_alert(portfolio_data.get("error")),
-                    "connection-status disconnected", "Sync failed",
-                    no_update,
-                    no_update,
-                    no_update,
-                    no_update,
-                    btn_disabled, btn_children,
-                    no_update,
-                )
-            portfolio_data["cached_at"] = datetime.now().isoformat()
+            _start_background_sync(uid, "refresh")
             return (
-                {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
-                "connected", "", "",
-                "connection-status connected", "Connected",
-                json.dumps(portfolio_data),
-                create_portfolio_summary(portfolio_data, lang),
+                {"display": "none"}, {"display": "none"}, {"display": "block"}, {"display": "none"},
+                "syncing", "", "",
+                "connection-status syncing", "Refreshing data...",
+                no_update,
+                no_update,
                 no_update,  # Keep existing creds
-                json.dumps(portfolio_data),
+                no_update,
                 btn_disabled, btn_children,
-                False,  # Exit demo mode
+                no_update,
             )
         
         # Handle start authentication
@@ -769,36 +838,21 @@ def register_tr_callbacks(app):
             
             # Complete login
             result = complete_login(otp, user_id=uid)
-            
-            if result.get("success"):
-                # Fetch full portfolio data including history
-                portfolio_data = _fetch_portfolio_data(uid)
-                encrypted_creds = result.get("encrypted_credentials")
-                if not portfolio_data.get("success"):
-                    return (
-                        {"display": "block"}, {"display": "none"}, {"display": "none"}, {"display": "none"},
-                        "initial",
-                        _tr_error_alert(portfolio_data.get("error")),
-                        "",
-                        "connection-status disconnected", "Sync failed",
-                        no_update, no_update,
-                        encrypted_creds,
-                        no_update,
-                        btn_disabled, btn_children,
-                        no_update,
-                    )
-                portfolio_data["cached_at"] = datetime.now().isoformat()
 
+            if result.get("success"):
+                # Login is done. Store the creds now; the portfolio sync
+                # runs in the background (see deliver_sync_result).
+                encrypted_creds = result.get("encrypted_credentials")
+                _start_background_sync(uid, "verify")
                 return (
-                    {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
-                    "connected", "", "",
-                    "connection-status connected", "Connected",
-                    json.dumps(portfolio_data),
-                    create_portfolio_summary(portfolio_data, lang),
+                    {"display": "none"}, {"display": "none"}, {"display": "block"}, {"display": "none"},
+                    "syncing", "", "",
+                    "connection-status syncing", "Syncing data...",
+                    no_update, no_update,
                     encrypted_creds,  # Store encrypted creds in browser
-                    json.dumps(portfolio_data),
+                    no_update,
                     btn_disabled, btn_children,
-                    False,  # Exit demo mode
+                    no_update,
                 )
             else:
                 return (
