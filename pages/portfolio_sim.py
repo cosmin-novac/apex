@@ -3,7 +3,6 @@ from dash import dcc, html, dash_table, no_update
 from dash.dependencies import Input, Output, State
 import pandas as pd
 import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 from dash.exceptions import PreventUpdate
 import yfinance as yf
 import traceback
@@ -93,62 +92,78 @@ def _table_columns(df, lang):
     return [{"name": t(_COL_KEYS.get(c, c), lang), "id": c} for c in df.columns]
 
 
-# Portfolio level (top panel) vs per-year flows (bottom panel). One shared
-# x-axis, one € scale per panel: the portfolio grows into the hundreds of
-# thousands while the yearly flows stay near zero, so on a single axis the
-# flows were unreadable — and overlaying two scales on one plot (a dual-axis
-# chart) misleads more than it helps.
-_LEVEL_COLS = ('Portfolio Value', 'Ending Value', 'Cost Basis')
+# The flows are plotted as CUMULATIVE sums: over a multi-decade horizon,
+# total deposits/withdrawals/taxes/growth reach the same order of magnitude
+# as the portfolio itself, so everything shares one honest y-axis (the
+# per-year amounts were unreadable flat lines next to the portfolio curve,
+# and a second scale on the same plot misleads). The year-by-year table
+# below the chart keeps the per-year numbers.
+_CUM_COLS = ('Growth', 'Deposits', 'Withdrawals', 'Taxes Paid')
+_CUM_KEYS = {
+    'Growth': 'ps.growth_cum',
+    'Deposits': 'ps.deposits_cum',
+    'Withdrawals': 'ps.withdrawals_cum',
+    'Taxes Paid': 'ps.taxes_cum',
+}
 
-# CVD-validated per panel (adjacent-pair ΔE checks, same palette family as the
-# portfolio-analysis charts).
+# Default-visible series are CVD-validated as a co-visible set (all-pairs ΔE,
+# same palette family as the portfolio-analysis charts).
 _PROJ_PALETTE = {
     'Portfolio Value': '#4a3aa7',
-    'Ending Value': '#eb6834',
-    'Cost Basis': '#0891b2',
     'Growth': '#1baf7a',
     'Deposits': '#2a78d6',
     'Withdrawals': '#eda100',
     'Taxes Paid': '#e34948',
 }
 
+# Opt-in reference lines (legendonly). Ending Value is the same entity as
+# Portfolio Value read at year-end, so it wears the same hue dashed; the cost
+# basis is a neutral dotted reference — introducing two more hues onto the
+# shared panel failed the palette validator against the flow colors.
+_REF_LINES = {
+    'Ending Value': dict(color='#4a3aa7', width=1.6, dash='dash'),
+    'Cost Basis': dict(color='#64748b', width=1.6, dash='dot'),
+}
+
 
 def _make_figure(df, lang="de"):
-    """Build the two-panel projection chart from a simulation DataFrame."""
+    """Build the projection chart (levels + cumulative flows, one axis)."""
     # NOT an f-string: single braces must reach Plotly as the template.
     eur_hover = "%{y:,.0f} €" if lang == "de" else "€%{y:,.0f}"
     year_label = t("ps.year", lang)
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        row_heights=[0.62, 0.38], vertical_spacing=0.08)
+    fig = go.Figure()
     for col in ['Portfolio Value', 'Growth', 'Deposits', 'Withdrawals', 'Taxes Paid', 'Ending Value', 'Cost Basis']:
         if col not in df.columns:
             continue
-        name = t(_COL_KEYS.get(col, col), lang)
+        if col in _CUM_COLS:
+            name = t(_CUM_KEYS[col], lang)
+            y_vals = df[col].cumsum().round(2).tolist()
+        else:
+            name = t(_COL_KEYS.get(col, col), lang)
+            y_vals = df[col].tolist()
         fig.add_trace(go.Scatter(
-            x=df['Year'].tolist(), y=df[col].tolist(),
+            x=df['Year'].tolist(), y=y_vals,
             mode='lines+markers',
             name=name,
-            visible=True if col not in ('Ending Value', 'Cost Basis') else 'legendonly',
-            line=dict(color=_PROJ_PALETTE.get(col, '#888'), width=2),
+            visible='legendonly' if col in _REF_LINES else True,
+            line=dict(color=_PROJ_PALETTE[col], width=2) if col in _PROJ_PALETTE
+                 else dict(**_REF_LINES[col]),
             marker=dict(size=4),
             hovertemplate="<b>" + name + "</b>  " + eur_hover + "<extra></extra>",
-        ), row=1 if col in _LEVEL_COLS else 2, col=1)
+        ))
     fig.update_layout(
         separators=cu.plotly_separators(lang),
         margin=dict(l=10, r=10, t=10, b=10),
         plot_bgcolor='white', paper_bgcolor='white',
         font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font_size=10),
+        xaxis=dict(title=year_label, showgrid=True, gridcolor='#f1f5f9', dtick=5),
+        yaxis=dict(title=t("ps.amount_eur", lang), showgrid=True, gridcolor='#f1f5f9',
+                   tickprefix=('€' if lang != 'de' else ''),
+                   ticksuffix=(' €' if lang == 'de' else ''),
+                   separatethousands=True),
         hovermode='x unified',
     )
-    money_axis = dict(showgrid=True, gridcolor='#f1f5f9',
-                      tickprefix=('€' if lang != 'de' else ''),
-                      ticksuffix=(' €' if lang == 'de' else ''),
-                      separatethousands=True)
-    fig.update_xaxes(showgrid=True, gridcolor='#f1f5f9', dtick=5)
-    fig.update_xaxes(title_text=year_label, row=2, col=1)
-    fig.update_yaxes(title_text=t("ps.portfolio_value", lang), row=1, col=1, **money_axis)
-    fig.update_yaxes(title_text=t("ps.yearly_flows", lang), row=2, col=1, **money_axis)
     return fig
 
 
@@ -191,24 +206,16 @@ def layout(lang="en"):
                         t("ps.params", lang),
                     ], className="card-header-modern"),
                     dbc.CardBody([
-                        # Starting Investment
-                        html.Label(t("ps.starting_investment", lang), className="input-label"),
-                        dbc.InputGroup([
-                            dbc.Input(id="input-current-value", type="number",
-                                      value=_DEFAULTS['value'], min=0, step=1000),
-                            dbc.InputGroupText("€"),
-                        ], size="sm", className="mb-3"),
-
-                        # Growth Rate + Monthly Contribution (.ps-pair: side by
-                        # side on phones so the form stays short, stacked in
-                        # the narrow desktop column)
+                        # Starting Investment + Monthly Contribution (.ps-pair:
+                        # side by side on phones so the form stays short,
+                        # stacked in the narrow desktop column)
                         html.Div([
                             html.Div([
-                                html.Label(t("ps.annual_growth", lang), className="input-label"),
+                                html.Label(t("ps.starting_investment", lang), className="input-label"),
                                 dbc.InputGroup([
-                                    dbc.Input(id="input-annual-growth-rate", type="number",
-                                              value=_DEFAULTS['growth'], min=0, max=100, step=0.5),
-                                    dbc.InputGroupText("%"),
+                                    dbc.Input(id="input-current-value", type="number",
+                                              value=_DEFAULTS['value'], min=0, step=1000),
+                                    dbc.InputGroupText("€"),
                                 ], size="sm", className="mb-3"),
                             ]),
                             html.Div([
@@ -220,6 +227,48 @@ def layout(lang="en"):
                                 ], size="sm", className="mb-3"),
                             ]),
                         ], className="ps-pair"),
+
+                        html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
+
+                        # Growth source: a custom flat rate over N years, or
+                        # replayed historical S&P 500 returns from a start
+                        # year. The rate input only shows in custom mode —
+                        # with historical returns it would be a lie.
+                        html.Label(t("ps.growth_source", lang), className="input-label"),
+                        dcc.Dropdown(
+                            id="simulation-time-frame",
+                            options=[
+                                {'label': t("ps.growth_custom", lang), 'value': 'custom'},
+                                {'label': t("ps.growth_sp500", lang), 'value': 'sp500'},
+                            ],
+                            value='custom', clearable=False, className="mb-2",
+                        ),
+                        html.Div(id="custom-years-input", children=[
+                            html.Div([
+                                html.Div([
+                                    html.Label(t("ps.annual_growth", lang), className="input-label"),
+                                    dbc.InputGroup([
+                                        dbc.Input(id="input-annual-growth-rate", type="number",
+                                                  value=_DEFAULTS['growth'], min=0, max=100, step=0.5),
+                                        dbc.InputGroupText("%"),
+                                    ], size="sm", className="mb-2"),
+                                ]),
+                                html.Div([
+                                    html.Label(t("ps.years_to_simulate", lang), className="input-label"),
+                                    dbc.Input(id="input-years-to-simulate", type="number",
+                                              value=_DEFAULTS['years'], min=1, max=100, size="sm",
+                                              className="mb-2"),
+                                ]),
+                            ], className="ps-pair"),
+                        ]),
+                        html.Div(id="sp500-year-input", style={'display': 'none'}, children=[
+                            html.Label(t("ps.sp500_start_year", lang), className="input-label"),
+                            dcc.Dropdown(
+                                id="input-sp500-start-year",
+                                options=[{'label': str(y), 'value': y} for y in range(1928, 2026)],
+                                value=1970, clearable=False, className="mb-2",
+                            ),
+                        ]),
 
                         html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
 
@@ -240,34 +289,6 @@ def layout(lang="en"):
                                       value=_DEFAULTS['withdrawal'], min=0),
                             dbc.InputGroupText(id="withdrawal-unit", children="€"),
                         ], size="sm", className="mb-3"),
-
-                        html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
-
-                        # Time Frame
-                        html.Label(t("ps.time_frame", lang), className="input-label"),
-                        dcc.Dropdown(
-                            id="simulation-time-frame",
-                            options=[
-                                {'label': t("ps.custom_years", lang), 'value': 'custom'},
-                                {'label': t("ps.sp500_historical", lang), 'value': 'sp500'},
-                            ],
-                            value='custom', clearable=False, className="mb-2",
-                        ),
-
-                        html.Div(id="custom-years-input", children=[
-                            html.Label(t("ps.years_to_simulate", lang), className="input-label"),
-                            dbc.Input(id="input-years-to-simulate", type="number",
-                                      value=_DEFAULTS['years'], min=1, max=100, size="sm",
-                                      className="mb-2"),
-                        ]),
-                        html.Div(id="sp500-year-input", style={'display': 'none'}, children=[
-                            html.Label(t("ps.sp500_start_year", lang), className="input-label"),
-                            dcc.Dropdown(
-                                id="input-sp500-start-year",
-                                options=[{'label': str(y), 'value': y} for y in range(1928, 2026)],
-                                value=1970, clearable=False, className="mb-2",
-                            ),
-                        ]),
 
                         html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
 
