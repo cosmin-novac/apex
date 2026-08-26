@@ -179,9 +179,26 @@ def _scenario_outcomes(frames):
         rows.append({
             'final_value': float(ending.iloc[-1]),
             'total_withdrawn': float(f['Withdrawals'].sum()),
+            'total_taxes': float(f['Taxes Paid'].sum()),
             'ran_dry_year': int(f['Year'][dry.index[0]]) if len(dry) else None,
         })
     return pd.DataFrame(rows)
+
+
+def _spread(values):
+    """The four numbers that describe one column across all scenarios.
+
+    Minimum and maximum are the single worst and best run, so they are noisy
+    by nature; the median and the mean carry the weight. Both are reported
+    because the gap between them is the whole story of a lognormal tail.
+    """
+    arr = np.asarray(values, dtype=float)
+    return {
+        'min': float(np.min(arr)),
+        'median': float(np.median(arr)),
+        'mean': float(np.mean(arr)),
+        'max': float(np.max(arr)),
+    }
 
 
 def monte_carlo_stats(outcomes, years):
@@ -207,10 +224,10 @@ def monte_carlo_stats(outcomes, years):
         'median_dry_year': float(dry_years.median()) if len(dry_years) else None,
         'earliest_dry_year': int(dry_years.min()) if len(dry_years) else None,
         'final_p10': float(np.percentile(final, 10)),
-        'final_median': float(np.median(final)),
         'final_p90': float(np.percentile(final, 90)),
-        'final_mean': float(np.mean(final)),
-        'median_withdrawn': float(outcomes['total_withdrawn'].median()),
+        'final': _spread(final),
+        'withdrawn': _spread(outcomes['total_withdrawn']),
+        'taxes': _spread(outcomes['total_taxes']),
     }
 
 
@@ -274,6 +291,16 @@ _REF_LINES = {
 # colour), separated by ΔE ≈ 30 for normal vision and every CVD type. The
 # legend plus the year-by-year table below name both series in text.
 _MC_PATH_COLOR = 'rgba(148,163,184,0.28)'
+# The runs that ran out of money are tinted red instead, at the same low
+# alpha so they read as a share of the cloud rather than as a foreground
+# series. Colour is not the only cue: they carry their own legend entry with
+# the count, they all end flat on the zero line, and the summary below the
+# chart states how many there were.
+_MC_FAIL_COLOR = 'rgba(227,73,72,0.32)'
+# The median line runs on top of the same cloud as the average, so ΔE alone
+# is not enough separation. It gets a dash pattern as well; the pair passes
+# the palette checker for every CVD type and for contrast on white.
+_MC_MEDIAN_COLOR = '#2a78d6'
 
 
 def _apply_layout(fig, lang):
@@ -294,30 +321,52 @@ def _apply_layout(fig, lang):
     return fig
 
 
-def _make_mc_figure(paths, average_df, lang="de"):
-    """Monte Carlo chart: every scenario in grey, their average on top.
+def _dry_flags(paths, outcomes):
+    """One True/False per scenario: did this run hit zero at some point?
+
+    ``ran_dry_year`` holds ints and Nones, which pandas stores as floats with
+    NaN, so the emptiness is tested rather than the type. Without outcomes
+    (older callers, and the deterministic tests) every run counts as intact.
+    """
+    if outcomes is None or len(outcomes) != len(paths):
+        return [False] * len(paths)
+    return [not pd.isna(v) for v in outcomes['ran_dry_year'].tolist()]
+
+
+def _make_mc_figure(paths, average_df, lang="de", outcomes=None):
+    """Monte Carlo chart: the scenarios behind, their average and median on top.
 
     Only the portfolio value is drawn, because the flow series would be a
-    different number per scenario and add nothing but noise. All scenarios
-    live in ONE trace separated by None gaps: 500 individual traces would
-    crawl in the browser and flood the legend.
+    different number per scenario and add nothing but noise. The scenarios
+    live in TWO traces separated by None gaps, one for the runs that kept
+    their money and one for the runs that ran dry: 500 individual traces
+    would crawl in the browser and flood the legend.
     """
     eur_hover = "%{y:,.0f} €" if lang == "de" else "€%{y:,.0f}"
     years = average_df['Year'].tolist()
-    xs, ys = [], []
-    for path in paths:
-        xs.extend(years)
-        xs.append(None)
-        ys.extend(path)
-        ys.append(None)
+    dry_flags = _dry_flags(paths, outcomes)
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=xs, y=ys, mode='lines',
-        name=f"{t('ps.mc_paths', lang)} ({len(paths)})",
-        line=dict(color=_MC_PATH_COLOR, width=1),
-        hoverinfo='skip',
-    ))
+    for failed, colour, key in ((False, _MC_PATH_COLOR, 'ps.mc_paths'),
+                                (True, _MC_FAIL_COLOR, 'ps.mc_paths_dry')):
+        xs, ys, count = [], [], 0
+        for path, is_dry in zip(paths, dry_flags):
+            if is_dry is not failed:
+                continue
+            count += 1
+            xs.extend(years)
+            xs.append(None)
+            ys.extend(path)
+            ys.append(None)
+        if not count:
+            continue
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode='lines',
+            name=f"{t(key, lang)} ({count})",
+            line=dict(color=colour, width=1),
+            hoverinfo='skip',
+        ))
+
     avg_name = t("ps.mc_average", lang)
     avg_values = average_df['Portfolio Value'].tolist()
     fig.add_trace(go.Scatter(
@@ -327,6 +376,20 @@ def _make_mc_figure(paths, average_df, lang="de"):
         marker=dict(size=4),
         hovertemplate="<b>" + avg_name + "</b>  " + eur_hover + "<extra></extra>",
     ))
+
+    # The median is the year-by-year middle scenario, not one run: half the
+    # cloud sits above this line at every year. It is the honest answer to
+    # "what does a typical run look like", which the average is not.
+    med_values = []
+    if paths:
+        med_values = np.median(np.asarray(paths, dtype=float), axis=0).tolist()
+        med_name = t("ps.mc_median", lang)
+        fig.add_trace(go.Scatter(
+            x=years, y=med_values,
+            mode='lines', name=med_name,
+            line=dict(color=_MC_MEDIAN_COLOR, width=2.5, dash='dash'),
+            hovertemplate="<b>" + med_name + "</b>  " + eur_hover + "<extra></extra>",
+        ))
     _apply_layout(fig, lang)
 
     # A lognormal tail is brutally fat: at 18 % volatility over 30 years a few
@@ -336,13 +399,14 @@ def _make_mc_figure(paths, average_df, lang="de"):
     # let the handful of extreme runs leave the frame (the info text says so).
     if paths:
         flat = np.concatenate([np.asarray(p, dtype=float) for p in paths])
-        y_top = max(float(np.percentile(flat, 95)), max(avg_values or [0])) * 1.08
+        lines = (avg_values or [0]) + (med_values or [])
+        y_top = max(float(np.percentile(flat, 95)), max(lines)) * 1.08
         # Zero is the floor: the engine stops an exhausted portfolio there
         # rather than letting it go negative, so an exhausted scenario shows
         # as a line running flat along the bottom of the chart. The minimum
         # is still read rather than assumed, so the day that guarantee moves
         # the chart follows instead of quietly clipping the failures.
-        worst = min(float(np.min(flat)), min(avg_values or [0]))
+        worst = min(float(np.min(flat)), min(lines))
         y_bottom = min(0.0, worst) * 1.08
         fig.update_yaxes(range=[y_bottom, max(y_top, y_bottom + 1.0)])
     return fig
@@ -391,6 +455,40 @@ def _mc_verdict(rate, lang):
     return _MC_BAD, "bi-exclamation-octagon", t("ps.mc_verdict_bad", lang)
 
 
+def _spread_row(label, spread, eur):
+    return html.Tr([
+        html.Th(label, scope="row"),
+        html.Td(eur(spread['min'])),
+        html.Td(eur(spread['median'])),
+        html.Td(eur(spread['mean'])),
+        html.Td(eur(spread['max'])),
+    ])
+
+
+def _mc_spread_table(stats, lang, eur):
+    """Min, median, average and max of the three amounts that matter.
+
+    A tile per number would be twelve tiles, which is a wall rather than a
+    summary. In a table the reader compares down a column (how wide is the
+    spread) and across a row (how far the mean sits from the median) without
+    having to hold anything in their head.
+    """
+    head = html.Thead(html.Tr([
+        html.Th(t("ps.mc_across", lang), scope="col"),
+        html.Th(t("ps.mc_col_min", lang), scope="col"),
+        html.Th(t("ps.mc_col_median", lang), scope="col"),
+        html.Th(t("ps.mc_col_mean", lang), scope="col"),
+        html.Th(t("ps.mc_col_max", lang), scope="col"),
+    ]))
+    body = html.Tbody([
+        _spread_row(t("ps.mc_row_ending", lang), stats['final'], eur),
+        _spread_row(t("ps.mc_row_withdrawn", lang), stats['withdrawn'], eur),
+        _spread_row(t("ps.mc_row_taxes", lang), stats['taxes'], eur),
+    ])
+    return html.Div(html.Table([head, body], className="mc-table"),
+                    className="mc-table-wrap")
+
+
 def _stat_tile(label, value, note, value_color=None):
     return html.Div([
         html.Div(label, className="mc-tile-label"),
@@ -434,6 +532,9 @@ def _mc_stats_panel(stats, lang):
     else:
         dry_note = t("ps.mc_dry_none", lang)
 
+    # Two tiles, and neither number repeats the table below it: the ruin
+    # count carries timing the table cannot show, and the tenth percentile is
+    # the downside to plan against, steadier than the single worst run.
     tiles = html.Div([
         _stat_tile(
             t("ps.mc_ran_dry", lang),
@@ -442,23 +543,19 @@ def _mc_stats_panel(stats, lang):
             value_color=_MC_BAD if stats['ran_dry'] else None,
         ),
         _stat_tile(
-            t("ps.mc_ending_median", lang),
-            eur(stats['final_median']),
-            t("ps.mc_ending_range", lang).format(
-                low=eur(stats['final_p10']), high=eur(stats['final_p90'])),
+            t("ps.mc_ending_low", lang),
+            eur(stats['final_p10']),
+            t("ps.mc_ending_low_note", lang).format(high=eur(stats['final_p90'])),
         ),
-        _stat_tile(
-            t("ps.mc_withdrawn", lang),
-            eur(stats['median_withdrawn']),
-            t("ps.mc_withdrawn_note", lang).format(years=stats['years']),
-        ),
-    ], className="mc-tiles")
+    ], className="mc-tiles mc-tiles-2")
 
     footnote = html.Div(
-        t("ps.mc_mean_note", lang).format(mean=eur(stats['final_mean'])),
+        t("ps.mc_mean_note", lang).format(
+            mean=eur(stats['final']['mean']), median=eur(stats['final']['median'])),
         className="mc-footnote")
 
-    return html.Div([hero, tiles, footnote], className="mc-stats")
+    return html.Div([hero, tiles, _mc_spread_table(stats, lang, eur), footnote],
+                    className="mc-stats")
 
 
 # ── Default simulation (computed once at import) ──
@@ -875,7 +972,7 @@ def register_callbacks(app):
                     volatility=volatility / 100, samples=int(mc_samples),
                     min_withdrawal=min_withdrawal,
                 )
-                fig = _make_mc_figure(paths, df, lang)
+                fig = _make_mc_figure(paths, df, lang, outcomes)
                 stats = monte_carlo_stats(outcomes, len(df))
                 print(f"[Sim] Monte Carlo: {len(paths)} scenarios × {len(df)} years, "
                       f"{stats['survival_rate']:.1f}% survived")
