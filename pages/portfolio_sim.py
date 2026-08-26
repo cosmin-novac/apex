@@ -16,12 +16,19 @@ from core import utils as cu
 
 def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annual_withdrawal,
                        years_to_simulate, tax_rate=0.25, tax_method='FIFO', sp500_start_year=None,
-                       monthly_deposit=0.0, returns_sequence=None):
+                       monthly_deposit=0.0, returns_sequence=None, min_withdrawal=0.0):
     """Project a portfolio year by year.
 
     ``returns_sequence`` supplies one return per year (used by the Monte
     Carlo mode); without it every year grows at ``annual_growth_rate``, or
     at the replayed S&P 500 return when ``sp500_start_year`` is given.
+
+    ``min_withdrawal`` puts a floor under a percentage withdrawal: take the
+    percentage, but never less than this many euros. It is what someone
+    means by "4 %, but at least 20,000": the percentage keeps spending in
+    step with the portfolio, while the floor keeps a bad run from cutting
+    the income below what the bills actually are. It does nothing for a
+    fixed withdrawal, which is already a flat amount.
     """
     if returns_sequence is not None:
         years_to_simulate = len(returns_sequence)
@@ -56,8 +63,11 @@ def simulate_portfolio(current_value, annual_growth_rate, withdrawal_type, annua
             growth = current_value * growth_rate
             current_value += growth
 
-        requested = (current_value * (annual_withdrawal / 100)
-                     if withdrawal_type == 'percentage' else annual_withdrawal)
+        if withdrawal_type == 'percentage':
+            requested = max(current_value * (annual_withdrawal / 100),
+                            min_withdrawal or 0.0)
+        else:
+            requested = annual_withdrawal
         requested = max(0.0, requested)
 
         total_gain = max(0, current_value - cost_basis)
@@ -129,7 +139,8 @@ def monte_carlo_returns(target_rate, volatility, years, samples, seed=7):
 
 def simulate_monte_carlo(current_value, annual_growth_rate, withdrawal_type, annual_withdrawal,
                          years_to_simulate, tax_rate=0.25, tax_method='FIFO',
-                         monthly_deposit=0.0, volatility=0.15, samples=200, seed=7):
+                         monthly_deposit=0.0, volatility=0.15, samples=200, seed=7,
+                         min_withdrawal=0.0):
     """Run ``samples`` random-return projections of the same portfolio.
 
     Returns ``(paths, average_df)``: one portfolio-value series per scenario,
@@ -143,6 +154,7 @@ def simulate_monte_carlo(current_value, annual_growth_rate, withdrawal_type, ann
             current_value, annual_growth_rate, withdrawal_type, annual_withdrawal,
             years_to_simulate, tax_rate, tax_method,
             monthly_deposit=monthly_deposit, returns_sequence=row.tolist(),
+            min_withdrawal=min_withdrawal,
         )
         for row in draws
     ]
@@ -453,7 +465,7 @@ def _mc_stats_panel(stats, lang):
 _DEFAULTS = dict(
     value=700_000, growth=7, deposit=0, withdrawal=30_000,
     years=30, tax=25, method='FIFO', wtype='fixed',
-    volatility=15, samples=200,
+    volatility=15, samples=200, min_withdrawal=0,
 )
 _df_init = simulate_portfolio(
     _DEFAULTS['value'], _DEFAULTS['growth'] / 100, _DEFAULTS['wtype'],
@@ -572,6 +584,21 @@ def layout(lang="en"):
                                       value=_DEFAULTS['withdrawal'], min=0),
                             dbc.InputGroupText(id="withdrawal-unit", children="€"),
                         ], size="sm", className="mb-3"),
+
+                        # A floor under a percentage withdrawal: take the
+                        # percentage, but never less than this. Meaningless for
+                        # a fixed sum, so it only appears in percentage mode.
+                        html.Div(id="min-withdrawal-wrap", style={"display": "none"},
+                                 children=[
+                            html.Label(t("ps.min_withdrawal", lang), className="input-label"),
+                            dbc.InputGroup([
+                                dbc.Input(id="input-min-withdrawal", type="number",
+                                          value=_DEFAULTS['min_withdrawal'], min=0, step=500),
+                                dbc.InputGroupText("€"),
+                            ], size="sm", className="mb-1"),
+                            html.Div(t("ps.min_withdrawal_hint", lang),
+                                     className="input-hint mb-3"),
+                        ]),
 
                         html.Hr(className="my-3", style={"borderColor": "#e5e7eb"}),
 
@@ -739,11 +766,14 @@ def register_callbacks(app):
     """
 
     @app.callback(
-        Output('withdrawal-unit', 'children'),
+        [Output('withdrawal-unit', 'children'),
+         Output('min-withdrawal-wrap', 'style')],
         Input('withdrawal-type', 'value'),
     )
     def update_withdrawal_unit(wtype):
-        return '€' if wtype == 'fixed' else '%'
+        if wtype == 'percentage':
+            return '%', _SHOW
+        return '€', _HIDE
 
     @app.callback(
         [Output("custom-years-input", "style"),
@@ -777,6 +807,7 @@ def register_callbacks(app):
          State('input-monthly-deposit', 'value'),
          State('withdrawal-type', 'value'),
          State('input-annual-withdrawal', 'value'),
+         State('input-min-withdrawal', 'value'),
          State('simulation-time-frame', 'value'),
          State('input-years-to-simulate', 'value'),
          State('input-sp500-start-year', 'value'),
@@ -788,8 +819,9 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def run_simulation(n_clicks, n_clicks_top, n_clicks_mc, current_value, growth_rate,
-                       monthly_deposit, wtype, withdrawal, time_frame, years, sp500_year,
-                       tax_rate, tax_method, volatility, mc_samples, lang_data):
+                       monthly_deposit, wtype, withdrawal, min_withdrawal, time_frame,
+                       years, sp500_year, tax_rate, tax_method, volatility, mc_samples,
+                       lang_data):
         if not n_clicks and not n_clicks_top and not n_clicks_mc:
             raise PreventUpdate
         lang = get_lang(lang_data)
@@ -808,6 +840,10 @@ def register_callbacks(app):
                 raise ValueError(t("ps.err_growth", lang))
             if withdrawal is None or withdrawal < 0:
                 raise ValueError(t("ps.err_withdrawal", lang))
+            # The floor only applies to a percentage withdrawal.
+            min_withdrawal = 0 if wtype != 'percentage' else (min_withdrawal or 0)
+            if min_withdrawal < 0:
+                raise ValueError(t("ps.err_min_withdrawal", lang))
             if monthly_deposit is None:
                 monthly_deposit = 0
             if monthly_deposit < 0:
@@ -837,6 +873,7 @@ def register_callbacks(app):
                     int(years), (tax_rate or 0) / 100, tax_method,
                     monthly_deposit=monthly_deposit,
                     volatility=volatility / 100, samples=int(mc_samples),
+                    min_withdrawal=min_withdrawal,
                 )
                 fig = _make_mc_figure(paths, df, lang)
                 stats = monte_carlo_stats(outcomes, len(df))
@@ -852,13 +889,13 @@ def register_callbacks(app):
                 df = simulate_portfolio(
                     current_value, growth_rate / 100, wtype, withdrawal,
                     int(years), (tax_rate or 0) / 100, tax_method,
-                    monthly_deposit=monthly_deposit,
+                    monthly_deposit=monthly_deposit, min_withdrawal=min_withdrawal,
                 )
             else:
                 df = simulate_portfolio(
                     current_value, None, wtype, withdrawal,
                     None, (tax_rate or 0) / 100, tax_method, sp500_year,
-                    monthly_deposit=monthly_deposit,
+                    monthly_deposit=monthly_deposit, min_withdrawal=min_withdrawal,
                 )
 
             fig = _make_figure(df, lang)

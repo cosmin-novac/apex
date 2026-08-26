@@ -266,3 +266,55 @@ def test_stats_panel_handles_an_empty_run():
     from pages.portfolio_sim import _mc_stats_panel
     assert monte_carlo_stats(pd.DataFrame(), 10) is None
     assert _mc_stats_panel(None, "en") is not None
+
+
+# ── Percentage withdrawal with a floor ────────────────────────────────
+
+def test_floor_lifts_a_percentage_withdrawal():
+    """4 % of the portfolio, but never below 20,000."""
+    df = simulate_portfolio(300_000, 0.02, 'percentage', 4, 12, 0.25, 'FIFO',
+                            min_withdrawal=20_000)
+    plain = simulate_portfolio(300_000, 0.02, 'percentage', 4, 12, 0.25, 'FIFO')
+    # 4 % of 300k is 12,240 after growth, so the floor is what binds here.
+    assert plain['Withdrawals'].iloc[0] < 20_000
+    paid = df[df['Ending Value'] > 0]['Withdrawals']
+    assert (paid == 20_000).all(), "the floor should hold every year it is affordable"
+
+
+def test_the_percentage_wins_when_it_is_the_larger_of_the_two():
+    df = simulate_portfolio(2_000_000, 0.07, 'percentage', 4, 5, 0.25, 'FIFO',
+                            min_withdrawal=20_000)
+    # 4 % of two million is far above the floor, so the floor never binds.
+    assert (df['Withdrawals'] > 20_000).all()
+    plain = simulate_portfolio(2_000_000, 0.07, 'percentage', 4, 5, 0.25, 'FIFO')
+    assert df.equals(plain), "an unreachable floor must change nothing"
+
+
+def test_floor_is_ignored_for_a_fixed_withdrawal():
+    with_floor = simulate_portfolio(500_000, 0.05, 'fixed', 10_000, 10, 0.25, 'FIFO',
+                                    min_withdrawal=40_000)
+    without = simulate_portfolio(500_000, 0.05, 'fixed', 10_000, 10, 0.25, 'FIFO')
+    assert with_floor.equals(without), "a fixed sum is already a flat amount"
+
+
+def test_floor_still_cannot_outspend_the_portfolio():
+    """The ruin floor wins over the withdrawal floor: you cannot pay out
+    money that is not there."""
+    df = simulate_portfolio(50_000, 0.03, 'percentage', 4, 10, 0.25, 'FIFO',
+                            min_withdrawal=30_000)
+    assert (df['Ending Value'] >= 0).all()
+    assert (df['Withdrawals'] >= 0).all()
+    last_paid = df[df['Withdrawals'] > 0].iloc[-1]
+    assert last_paid['Withdrawals'] <= 30_000
+    assert (df[df['Portfolio Value'] == 0]['Withdrawals'] == 0).all()
+
+
+def test_monte_carlo_carries_the_floor_into_every_scenario():
+    _, avg, out = simulate_monte_carlo(400_000, 0.06, 'percentage', 4, 20, 0.25,
+                                       'FIFO', volatility=0.15, samples=40,
+                                       min_withdrawal=25_000)
+    _, plain_avg, _ = simulate_monte_carlo(400_000, 0.06, 'percentage', 4, 20, 0.25,
+                                           'FIFO', volatility=0.15, samples=40)
+    # The floor raises what gets paid out, which in turn ruins more runs.
+    assert avg['Withdrawals'].iloc[0] > plain_avg['Withdrawals'].iloc[0]
+    assert out['total_withdrawn'].median() > 0
