@@ -3943,6 +3943,14 @@ button.btn::-moz-focus-inner {
     color: #64748b;
 }
 
+/* Small explanatory line under an input, for a setting whose behaviour
+   is not obvious from its label alone. */
+.input-hint {
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: #6b7280;
+}
+
 /* Monte Carlo result summary, shown in place of the yearly table.
    One hero figure and three tiles: the survival rate is what a withdrawal
    plan is judged on, the tiles describe the spread behind it. */

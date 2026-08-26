@@ -416,8 +416,11 @@ def _controls(lang):
             ], className="ml-ctl"),
             html.Div([
                 html.Div(t("ml.ctl_initial", lang), className="ml-label"),
-                dbc.InputGroup([dbc.InputGroupText("$"),
-                                dbc.Input(id="ml-initial", type="number", min=100, step=100, value=DEFAULTS["initial"])],
+                # Affix at the end, so the field's own border is unbroken on
+                # the side you type from, as in the simulator.
+                dbc.InputGroup([dbc.Input(id="ml-initial", type="number", min=100,
+                                          step=100, value=DEFAULTS["initial"]),
+                                dbc.InputGroupText("$")],
                                size="sm"),
             ], className="ml-ctl mb-0"),
         ], id="ml-more", is_open=False),
