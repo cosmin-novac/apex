@@ -88,15 +88,14 @@ def layout(lang="en"):
     # Custom input row
     html.Div([
         dbc.InputGroup([
-            dbc.InputGroupText(html.I(className="bi bi-pencil-fill"), 
-                               className="custom-ig-text"),
             dbc.Input(
                 id="custom-item-name",
                 placeholder=t("rc.item_placeholder", lang),
                 type="text",
                 className="custom-input",
             ),
-            dbc.InputGroupText("€", className="custom-ig-text"),
+            dbc.InputGroupText(html.I(className="bi bi-pencil-fill"),
+                               className="custom-ig-text"),
             dbc.Input(
                 id="custom-item-cost",
                 placeholder=t("rc.cost", lang),
@@ -104,6 +103,7 @@ def layout(lang="en"):
                 min=1,
                 className="custom-input custom-input-cost",
             ),
+            dbc.InputGroupText("€", className="custom-ig-text"),
             dbc.Button(
                 [html.I(className="bi bi-arrow-right-circle-fill me-1"), t("rc.calculate", lang)],
                 id="custom-submit-btn",
@@ -250,9 +250,9 @@ def _build_results(name, cost, age, growth, years_left, future_value, lost, mult
                 dbc.Col([
                     html.Label(t("rc.cash_cost", lang), className="param-label"),
                     dbc.InputGroup([
-                        dbc.InputGroupText("€", className="param-addon"),
                         dbc.Input(id="param-cost-display", type="number",
                                   value=cost, disabled=True, className="param-input"),
+                        dbc.InputGroupText("€", className="param-addon"),
                     ], size="sm"),
                 ], md=3, sm=6, className="mb-2"),
                 dbc.Col([

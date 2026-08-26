@@ -3952,8 +3952,9 @@ button.btn::-moz-focus-inner {
 }
 
 /* Monte Carlo result summary, shown in place of the yearly table.
-   One hero figure and three tiles: the survival rate is what a withdrawal
-   plan is judged on, the tiles describe the spread behind it. */
+   One hero figure, two tiles and a spread table: the survival rate is what a
+   withdrawal plan is judged on, the tiles carry the downside, and the table
+   holds the full range of every amount without turning into a wall of tiles. */
 .mc-stats {
     padding: 4px 2px 2px;
 }
@@ -3986,6 +3987,9 @@ button.btn::-moz-focus-inner {
     gap: 10px;
     margin-top: 16px;
 }
+.mc-tiles-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .mc-tile {
     border: 1px solid #e5e7eb;
     border-radius: var(--radius-md);
@@ -4012,6 +4016,53 @@ button.btn::-moz-focus-inner {
     line-height: 1.45;
     margin-top: 3px;
 }
+/* The spread table. Amounts are right aligned so digits line up down a
+   column, and the row header stays left so the label reads as a label. It
+   scrolls inside its own box rather than pushing the card sideways. */
+.mc-table-wrap {
+    margin-top: 16px;
+    overflow-x: auto;
+}
+.mc-table {
+    width: 100%;
+    min-width: 460px;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+.mc-table thead th {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    text-align: right;
+    padding: 0 8px 6px;
+    border-bottom: 1px solid #e5e7eb;
+    white-space: nowrap;
+}
+.mc-table thead th:first-child {
+    text-align: left;
+    padding-left: 0;
+}
+.mc-table tbody th {
+    font-weight: 500;
+    color: #475569;
+    text-align: left;
+    padding: 7px 8px 7px 0;
+    white-space: nowrap;
+}
+.mc-table tbody td {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: #1e293b;
+    text-align: right;
+    padding: 7px 8px;
+    white-space: nowrap;
+}
+.mc-table tbody tr + tr th,
+.mc-table tbody tr + tr td {
+    border-top: 1px solid #f1f5f9;
+}
 .mc-footnote {
     font-size: 0.78rem;
     color: #64748b;
@@ -4021,7 +4072,7 @@ button.btn::-moz-focus-inner {
     border-top: 1px solid #f1f5f9;
 }
 @media (max-width: 767.98px) {
-    .mc-tiles { grid-template-columns: 1fr; }
+    .mc-tiles, .mc-tiles-2 { grid-template-columns: 1fr; }
     .mc-hero-value { font-size: 2.5rem; }
 }
 

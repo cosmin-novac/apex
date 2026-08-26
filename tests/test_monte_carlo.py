@@ -111,11 +111,13 @@ def test_figure_draws_only_the_portfolio_value():
     paths, avg, _ = simulate_monte_carlo(100_000, 0.07, 'fixed', 0, 10, 0.25, 'FIFO',
                                       volatility=0.15, samples=12)
     fig = _make_mc_figure(paths, avg, "en")
-    # Exactly two traces: the scenario cloud and its average, no flow series.
-    assert len(fig.data) == 2
-    cloud, average = fig.data
+    # Three traces: the scenario cloud plus the average and median drawn on
+    # top of it. No flow series, and every run here survives, so there is no
+    # second (red) cloud.
+    assert len(fig.data) == 3
+    cloud, average, median = fig.data
     assert cloud.hoverinfo == 'skip' and 'rgba' in cloud.line.color
-    assert average.name == "Average"
+    assert average.name == "Average" and median.name == "Median"
     # The cloud is one trace with None gaps between scenarios, not 12 traces.
     assert cloud.y.count(None) == 12
     assert len(cloud.y) == 12 * (10 + 1)
@@ -228,8 +230,16 @@ def test_stats_report_survival_and_spread():
     assert 0 < st['survival_rate'] < 100, "these defaults should do both"
     # The spread is ordered, and the mean sits above the median because the
     # lognormal tail lets a few runs finish enormous.
-    assert st['final_p10'] <= st['final_median'] <= st['final_p90']
-    assert st['final_mean'] > st['final_median']
+    assert st['final_p10'] <= st['final']['median'] <= st['final_p90']
+    assert st['final']['mean'] > st['final']['median']
+    for key in ('final', 'withdrawn', 'taxes'):
+        sp = st[key]
+        assert sp['min'] <= sp['median'] <= sp['max'], key
+        assert sp['min'] <= sp['mean'] <= sp['max'], key
+    # Withdrawals are capped by what the account can pay, so a run that dies
+    # early hands over less than the plan asked for.
+    assert st['withdrawn']['min'] < st['withdrawn']['max']
+    assert st['taxes']['min'] >= 0
     # Ruin timing is reported, and never earlier than the earliest run.
     assert st['earliest_dry_year'] <= st['median_dry_year'] <= 30
 
@@ -240,7 +250,9 @@ def test_stats_on_a_plan_that_never_withdraws():
     st = monte_carlo_stats(out, 20)
     assert st['survival_rate'] == 100.0 and st['ran_dry'] == 0
     assert st['median_dry_year'] is None and st['earliest_dry_year'] is None
-    assert st['median_withdrawn'] == 0.0
+    # Nothing is taken out, so nothing is taxed either.
+    assert st['withdrawn'] == {'min': 0.0, 'median': 0.0, 'mean': 0.0, 'max': 0.0}
+    assert st['taxes'] == {'min': 0.0, 'median': 0.0, 'mean': 0.0, 'max': 0.0}
 
 
 def test_stats_panel_states_the_numbers():
@@ -252,8 +264,14 @@ def test_stats_panel_states_the_numbers():
     panel = _mc_stats_panel(st, "en")
     text = str(panel)
     assert "of 200 scenarios" in text
-    assert "Ran out of money" in text and "Ending value, median" in text
-    assert "Withdrawn in total, median" in text
+    assert "Ran out of money" in text
+    assert "Ending value, weakest tenth" in text
+    # Every amount is reported across its full spread, not as one number.
+    assert "Across all scenarios" in text
+    for label in ("Minimum", "Median", "Average", "Maximum"):
+        assert label in text, label
+    for row in ("Ending value", "Withdrawn in total", "Taxes paid"):
+        assert row in text, row
     # The verdict is written out, so colour never carries the meaning alone.
     assert any(w in text for w in ("The money lasts", "Mostly holds up",
                                    "Runs out too often"))
@@ -318,3 +336,75 @@ def test_monte_carlo_carries_the_floor_into_every_scenario():
     # The floor raises what gets paid out, which in turn ruins more runs.
     assert avg['Withdrawals'].iloc[0] > plain_avg['Withdrawals'].iloc[0]
     assert out['total_withdrawn'].median() > 0
+
+
+# ── The failing scenarios are told apart in the chart ─────────────────
+
+def test_failing_scenarios_get_their_own_red_trace():
+    from pages.portfolio_sim import _MC_FAIL_COLOR, _MC_PATH_COLOR
+
+    paths, avg, out = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30,
+                                           0.25, 'FIFO', volatility=0.15,
+                                           samples=200)
+    dry = int(out['ran_dry_year'].notna().sum())
+    assert 0 < dry < 200, "these defaults should produce both kinds of run"
+
+    fig = _make_mc_figure(paths, avg, "en", out)
+    colours = [tr.line.color for tr in fig.data]
+    assert _MC_PATH_COLOR in colours and _MC_FAIL_COLOR in colours
+    # The count is written into the legend, so colour never carries it alone.
+    names = [tr.name for tr in fig.data]
+    assert any(f"({dry})" in n for n in names)
+    assert any(f"({200 - dry})" in n for n in names)
+
+
+def test_every_scenario_is_drawn_exactly_once():
+    paths, avg, out = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 25,
+                                           0.25, 'FIFO', volatility=0.18,
+                                           samples=60)
+    fig = _make_mc_figure(paths, avg, "en", out)
+    clouds = [tr for tr in fig.data if tr.hoverinfo == 'skip']
+    # Each scenario contributes its years plus one None separator.
+    drawn = sum(len(tr.x) for tr in clouds)
+    assert drawn == 60 * (len(avg) + 1)
+
+
+def test_the_cloud_stays_grey_without_outcomes():
+    from pages.portfolio_sim import _MC_FAIL_COLOR
+
+    paths, avg, _ = simulate_monte_carlo(500_000, 0.07, 'fixed', 5_000, 10,
+                                         0.25, 'FIFO', volatility=0.15,
+                                         samples=20)
+    fig = _make_mc_figure(paths, avg, "en")
+    assert _MC_FAIL_COLOR not in [tr.line.color for tr in fig.data]
+
+
+def test_median_line_is_drawn_and_sits_below_the_average():
+    from pages.portfolio_sim import _MC_MEDIAN_COLOR
+
+    paths, avg, out = simulate_monte_carlo(700_000, 0.07, 'fixed', 30_000, 30,
+                                           0.25, 'FIFO', volatility=0.15,
+                                           samples=200)
+    fig = _make_mc_figure(paths, avg, "en", out)
+    median = next(tr for tr in fig.data if tr.line.color == _MC_MEDIAN_COLOR)
+    # A dash pattern as well as a hue: two lines share a busy grey background.
+    assert median.line.dash == 'dash'
+    assert len(median.y) == len(avg)
+
+    expected = np.median(np.asarray(paths, dtype=float), axis=0)
+    assert np.allclose(median.y, expected)
+    # The lognormal tail pulls the average above the middle scenario.
+    average = next(tr for tr in fig.data if tr.name == "Average")
+    assert median.y[-1] < average.y[-1]
+
+
+def test_median_line_survives_a_run_where_everything_fails():
+    paths, avg, out = simulate_monte_carlo(100_000, 0.07, 'fixed', 200_000, 15,
+                                           0.25, 'FIFO', volatility=0.2,
+                                           samples=25)
+    assert out['ran_dry_year'].notna().all()
+    fig = _make_mc_figure(paths, avg, "de", out)
+    # No surviving runs means no grey trace, and the chart still renders.
+    assert len(fig.data) >= 3
+    low, high = fig.layout.yaxis.range
+    assert low <= 0 <= high and high > low

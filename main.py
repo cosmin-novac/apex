@@ -99,8 +99,8 @@ sidebar = html.Div([
     html.Hr(className="sidebar-divider"),
     dbc.Nav([
         dbc.NavLink([html.I(className="bi bi-bar-chart-line me-2"), html.Span("Portfolio Analysis", id="nav-text-compare")], href="/compare", id="compare-link", className="nav-link-modern"),
-        dbc.NavLink([html.I(className="bi bi-graph-up me-2"), html.Span("Backtesting", id="nav-text-backtesting")], href="/backtesting", id="backtesting-link", className="nav-link-modern"),
         dbc.NavLink([html.I(className="bi bi-wallet2 me-2"), html.Span("Investment Simulator", id="nav-text-portfolio")], href="/portfolio", id="portfolio-link", className="nav-link-modern"),
+        dbc.NavLink([html.I(className="bi bi-graph-up me-2"), html.Span("Backtesting", id="nav-text-backtesting")], href="/backtesting", id="backtesting-link", className="nav-link-modern"),
         # Riskbands stays routed, but is hidden from the menu until the feature is ready.
         # dbc.NavLink([html.I(className="bi bi-shield-check me-2"), html.Span("Exit Strategy Riskbands", id="nav-text-riskbands")], href="/riskbands", id="riskbands-link", className="nav-link-modern"),
         dbc.NavLink([html.I(className="bi bi-currency-dollar me-2"), html.Span("The Real Cost", id="nav-text-realcost")], href="/realcost", id="realcost-link", className="nav-link-modern"),
