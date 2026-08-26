@@ -786,11 +786,6 @@ def layout(lang="en"):
                     dbc.CardHeader([
                         html.I(className="bi bi-graph-up me-2"),
                         t("ps.projection", lang),
-                        dbc.Button([
-                            html.I(className="bi bi-play-fill me-1"),
-                            t("ps.run_sim", lang),
-                        ], id="run-simulation-btn-top", color="primary", size="sm",
-                           className="ms-auto", style={"fontWeight": "600"}),
                     ], className="card-header-modern d-flex align-items-center"),
                     dbc.CardBody([
                         dcc.Graph(
@@ -897,7 +892,6 @@ def register_callbacks(app):
          Output('breakdown-table-wrap', 'style'),
          Output('breakdown-title', 'children')],
         [Input('run-simulation-btn', 'n_clicks'),
-         Input('run-simulation-btn-top', 'n_clicks'),
          Input('run-montecarlo-btn', 'n_clicks')],
         [State('input-current-value', 'value'),
          State('input-annual-growth-rate', 'value'),
@@ -915,11 +909,11 @@ def register_callbacks(app):
          State('lang-store', 'data')],
         prevent_initial_call=True,
     )
-    def run_simulation(n_clicks, n_clicks_top, n_clicks_mc, current_value, growth_rate,
+    def run_simulation(n_clicks, n_clicks_mc, current_value, growth_rate,
                        monthly_deposit, wtype, withdrawal, min_withdrawal, time_frame,
                        years, sp500_year, tax_rate, tax_method, volatility, mc_samples,
                        lang_data):
-        if not n_clicks and not n_clicks_top and not n_clicks_mc:
+        if not n_clicks and not n_clicks_mc:
             raise PreventUpdate
         lang = get_lang(lang_data)
         # Monte Carlo randomises around a target rate, so it belongs to the
