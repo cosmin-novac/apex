@@ -830,8 +830,14 @@ textarea::placeholder {
     .sticky-header .header-divider {
         display: none;
     }
+    /* The pills take a row of their own, so they go last and the actions
+       menu keeps its place at the right of the row above them. */
     .timeframe-pill-bar {
         flex: 1 1 100%;
+        order: 1;
+    }
+    .sticky-header .pa-actions {
+        margin-left: auto;
     }
     .timeframe-btn-group {
         width: 100%;
@@ -2750,10 +2756,11 @@ hr {
     }
 }
 
-/* The phone actions menu. On a phone the header row cannot hold sync, hide
-   values, the demo toggle and a destructive action, so they live behind one
-   button. The real buttons stay in the DOM (Bootstrap display classes, not
-   removal) and the menu items click them. */
+/* The actions menu at the end of the header bar. Sync, hide values, the
+   demo toggle and clearing the stored data live behind one button on every
+   width, which keeps the bar readable on a phone and uncluttered on a
+   desktop. The real buttons stay in the DOM, hidden, and the menu items
+   click them. */
 .pa-menu-item {
     display: flex;
     align-items: center;
@@ -3070,24 +3077,15 @@ hr {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* Re-sync with Trade Republic: a real, labeled button instead of a ghost
-   icon — it is the reconnect/refresh entry point for the whole page. */
-.sticky-header .sync-btn-prominent {
-    color: #c7d2fe !important;
-    border: 1px solid rgba(129, 140, 248, 0.55);
-    background: rgba(99, 102, 241, 0.16);
-    padding: 5px 12px;
-    font-weight: 600;
-    font-size: 0.8rem;
-}
-.sticky-header .sync-btn-prominent:hover {
-    background: rgba(99, 102, 241, 0.4);
-    border-color: rgba(165, 180, 252, 0.8);
-    color: #fff !important;
-}
-
 .sticky-header .header-dropdown-wrapper {
     position: relative;
+}
+
+/* The actions button carries a single icon and no label, so it needs a bit
+   more of it to read as a button. */
+.sticky-header .pa-actions-btn i {
+    font-size: 1.1rem;
+    line-height: 1;
 }
 
 .sticky-header .header-dropdown-btn {
