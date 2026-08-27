@@ -15,7 +15,7 @@ else:
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, ctx, no_update, Input, Output, State
 from flask import send_from_directory
 
 from pages.backtesting_sim import layout as backtesting_layout, register_callbacks as register_backtesting_callbacks
@@ -136,7 +136,41 @@ sidebar = html.Div([
     ], className="sidebar-bottom"),
 ], className="sidebar")
 
-content = html.Div(id="page-content", className="main-content")
+# Every page stays mounted once it has been built; navigation only toggles
+# which wrapper is visible. Swapping page-content.children on every route
+# change (the model before that) re-mounted the page from scratch, so every
+# chart and table refetched and the page state was lost each time the user
+# navigated away and back.
+_PAGES = [
+    # (wrapper key, layout factory, pathnames that show it)
+    ("home",        landing_layout,                          ("/",)),
+    ("compare",     portfolio_analysis_layout,               ("/compare",)),
+    ("backtesting", backtesting_layout,                      ("/backtesting",)),
+    ("psim",        portfolio_sim_layout,                    ("/portfolio",)),
+    ("riskbands",   riskbands_layout,                        ("/riskbands",)),
+    ("realcost",    real_cost_layout,                        ("/realcost",)),
+    ("ranks",       megacap_layout,                          ("/ranks", "/megacap")),
+    ("impressum",   lambda lang: legal_layout("impressum", lang), ("/impressum",)),
+    ("privacy",     lambda lang: legal_layout("privacy", lang),   ("/privacy",)),
+]
+
+
+_PAGE_KEYS = [key for key, _fn, _paths in _PAGES]
+
+
+def _active_page_key(pathname):
+    for key, _fn, paths in _PAGES:
+        if pathname in paths:
+            return key
+    return "home"
+
+
+# The wrappers belong to the shell, not to a callback's output: they have to
+# exist before anything is mounted into them so the clientside route switch
+# finds them on the very first render.
+content = html.Div(
+    [html.Div(id=f"page-wrap-{key}", style={"display": "none"}) for key in _PAGE_KEYS],
+    id="page-content", className="main-content")
 mobile_header = html.Div([
     html.Button(html.I(className="bi bi-list", style={"fontSize": "1.5rem"}), id="mobile-menu-btn", className="mobile-menu-btn", n_clicks=0),
     html.Span("APEX", className="mobile-header-title"),
@@ -177,6 +211,9 @@ app.layout = dbc.Container([
     settings_modal,
     auth_modal,
     dcc.Store(id="mobile-sidebar-dummy"),
+    # Bumped once the page the user asked for is on screen; mount_other_pages
+    # hangs off it. See render_active_page.
+    dcc.Store(id="page-mounted", data=0),
     mobile_header,
     mobile_overlay,
     dbc.Row([
@@ -211,44 +248,45 @@ def redirect_to_default(pathname):
     return dash.no_update
 
 
-# All pages stay mounted; navigation only toggles which wrapper is visible.
-# Swapping page-content.children on every route change (the previous model)
-# re-mounted the page from scratch, every chart and table refetched and the
-# page state was lost each time the user navigated away and back.
-_PAGES = [
-    # (wrapper key, layout factory, pathnames that show it)
-    ("home",        landing_layout,                          ("/",)),
-    ("compare",     portfolio_analysis_layout,               ("/compare",)),
-    ("backtesting", backtesting_layout,                      ("/backtesting",)),
-    ("psim",        portfolio_sim_layout,                    ("/portfolio",)),
-    ("riskbands",   riskbands_layout,                        ("/riskbands",)),
-    ("realcost",    real_cost_layout,                        ("/realcost",)),
-    ("ranks",       megacap_layout,                          ("/ranks", "/megacap")),
-    ("impressum",   lambda lang: legal_layout("impressum", lang), ("/impressum",)),
-    ("privacy",     lambda lang: legal_layout("privacy", lang),   ("/privacy",)),
-]
-
-
-def _active_page_key(pathname):
-    for key, _fn, paths in _PAGES:
-        if pathname in paths:
-            return key
-    return "home"
-
-
-@app.callback(Output("page-content", "children"),
+@app.callback([Output(f"page-wrap-{key}", "children") for key in _PAGE_KEYS]
+              + [Output("page-mounted", "data")],
               Input("lang-store", "data"),
-              State("url", "pathname"))
-def render_page_content(lang_data, pathname):
-    # Renders ALL pages once (re-runs only on language change); the pathname
-    # merely decides which wrapper starts visible.
+              [State("url", "pathname"), State("page-mounted", "data")])
+def render_active_page(lang_data, pathname, mounted):
+    """First response carries only the page the visitor actually asked for.
+
+    Mounting all nine up front cost about 290 kB of layout JSON and six
+    thousand DOM nodes before React attached a single click handler. On a
+    phone that is several seconds during which the landing page is painted
+    but its buttons do nothing, which reads as a broken page rather than a
+    loading one.
+
+    The other eight follow in mount_other_pages, which is chained to this
+    callback's own output so it can never overtake it.
+    """
     lang = get_lang(lang_data)
     active = _active_page_key(pathname)
-    return [
-        html.Div(fn(lang), id=f"page-wrap-{key}",
-                 style={} if key == active else {"display": "none"})
-        for key, fn, _paths in _PAGES
-    ]
+    return ([fn(lang) if key == active else None for key, fn, _p in _PAGES]
+            + [(mounted or 0) + 1])
+
+
+@app.callback([Output(f"page-wrap-{key}", "children", allow_duplicate=True)
+               for key in _PAGE_KEYS],
+              Input("page-mounted", "data"),
+              [State("lang-store", "data"), State("url", "pathname")],
+              prevent_initial_call=True)
+def mount_other_pages(_mounted, lang_data, pathname):
+    """Bring in the pages nobody asked for yet, once the visible one is up.
+
+    They stay mounted from here on, so navigation costs no round trip and a
+    page keeps its state while the user is away on another one. The trigger
+    is render_active_page's output rather than a timer: Dash keeps one
+    in-flight request per callback, so a timer racing the first response
+    would sometimes replace it and leave the visible page blank.
+    """
+    lang = get_lang(lang_data)
+    active = _active_page_key(pathname)
+    return [no_update if key == active else fn(lang) for key, fn, _p in _PAGES]
 
 
 app.clientside_callback(
@@ -262,9 +300,8 @@ app.clientside_callback(
         json.dumps({p: key for key, _fn, paths in _PAGES for p in paths}),
         json.dumps([key for key, _fn, _paths in _PAGES]),
     ),
-    [Output(f"page-wrap-{key}", "style") for key, _fn, _paths in _PAGES],
+    [Output(f"page-wrap-{key}", "style") for key in _PAGE_KEYS],
     Input("url", "pathname"),
-    prevent_initial_call=True,
 )
 
 
