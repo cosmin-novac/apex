@@ -139,3 +139,19 @@ def test_the_deadline_is_configurable_and_short_by_default():
     # Split timeouts so a stalled handshake cannot sit on a worker for the
     # whole stage budget.
     assert connect < read <= 10
+
+
+def test_the_kill_switch_skips_the_stage_outright(monkeypatch, tmp_path):
+    """For a host that cannot reach the CDNs at all: no deadline to wait out."""
+    monkeypatch.setattr(tr_api, "TR_SKIP_LOGOS", True)
+    _isolate(monkeypatch, tmp_path)
+
+    class _Requests:
+        @staticmethod
+        def get(url, timeout=None):
+            raise AssertionError("the stage must not run at all")
+
+    monkeypatch.setitem(sys.modules, "requests", _Requests)
+
+    conn = TRConnection()
+    conn._download_logos(_positions(20))   # returns, or the fake would fire

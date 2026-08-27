@@ -115,6 +115,10 @@ TR_SYNC_TIMEOUT_SECONDS = int(os.environ.get("TR_SYNC_TIMEOUT_SECONDS", str(15 *
 # Logos are decoration. Whatever the CDNs are doing, the stage gets this long
 # in total and then the sync moves on without them.
 LOGO_STAGE_TIMEOUT_SECONDS = int(os.environ.get("LOGO_STAGE_TIMEOUT_SECONDS", "45"))
+# A kill switch for a host that cannot reach the logo CDNs at all: set it and
+# the stage is skipped outright, no deadline to wait out. The UI falls back to
+# coloured initials, which is what a missing logo already looks like.
+TR_SKIP_LOGOS = os.environ.get("TR_SKIP_LOGOS", "").strip().lower() in {"1", "true", "yes"}
 # (connect, read). requests applies these per phase, so a stalled handshake
 # cannot sit on a worker for the whole stage budget.
 LOGO_HTTP_TIMEOUT = (3.05, 5)
@@ -905,6 +909,10 @@ class TRConnection:
            for anything Parqet doesn't cover (crypto, exotic small-caps).
         Images already on disk are skipped.
         """
+        if TR_SKIP_LOGOS:
+            log.info("TR_SKIP_LOGOS is set, skipping the logo stage.")
+            return
+
         import requests as _requests
         from urllib.parse import quote
 
