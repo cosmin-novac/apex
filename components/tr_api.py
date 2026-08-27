@@ -160,8 +160,41 @@ def seed_portfolio(user_id: str, portfolio: Dict[str, Any]) -> bool:
     inner = portfolio.get("data") or {}
     if not inner.get("positions") and not inner.get("cash"):
         return False
+    _rebuild_missing_price_histories(user_id, inner)
     _mem_put(user_id, "portfolio", portfolio)
     return True
+
+
+def _rebuild_missing_price_histories(user_id: str, inner: Dict[str, Any]) -> None:
+    """Put back price histories a copy came back without.
+
+    localStorage is capped at a few megabytes, so a browser that cannot fit
+    the whole portfolio keeps it without the per-position price histories.
+    Everything that measures a position over a window reads those, and with
+    them gone the Securities table has a dash where each P/L belongs.
+
+    They are derived data: the same build the sync runs, from the
+    transactions the copy still carries and the prices already on disk. No
+    request goes out and nothing is downloaded, so this costs a couple of
+    seconds once, rather than another full sync.
+    """
+    if inner.get("positionHistories"):
+        return
+    transactions = inner.get("transactions") or []
+    positions = inner.get("positions") or []
+    if not transactions or not positions:
+        return
+    try:
+        conn = get_connection(user_id)
+        histories = conn._build_position_histories_from_transactions(
+            transactions, positions, market_prices=False, progress=False)
+    except Exception as exc:
+        log.warning("Could not rebuild the price histories: %s", exc)
+        return
+    if histories:
+        inner["positionHistories"] = histories
+        log.info("Rebuilt price histories for %s instruments from the "
+                 "transactions the browser kept", len(histories))
 
 
 def has_portfolio_in_memory(user_id: str = "_default") -> bool:
@@ -1992,7 +2025,7 @@ class TRConnection:
 
     def _build_position_histories_from_transactions(
         self, transactions: List[Dict], positions: List[Dict],
-        market_prices: bool = True,
+        market_prices: bool = True, progress: bool = True,
     ) -> Dict[str, Dict]:
         """Build per-position price histories using TR transaction data.
         
@@ -2104,10 +2137,11 @@ class TRConnection:
                 continue
             # A count, not a name: this line is written to a file, and the
             # instrument someone holds is not something to leave on a disk.
-            self._write_progress(
-                75 + int(9 * (idx + 1) / n_isins), "Price history",
-                f"{idx + 1} of {n_isins}",
-            )
+            if progress:
+                self._write_progress(
+                    75 + int(9 * (idx + 1) / n_isins), "Price history",
+                    f"{idx + 1} of {n_isins}",
+                )
 
             # Interpolate prices for all dates
             prices = interpolate_prices(merged_prices, date_strs)

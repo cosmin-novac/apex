@@ -54,13 +54,37 @@
     return bytes;
   }
 
+  // A portfolio is mostly repeated dates and prices, which gzip takes down by
+  // roughly a factor of ten. localStorage gives an origin a few megabytes, so
+  // compressing before encrypting is what lets a large portfolio be stored
+  // whole instead of losing parts of itself to the size limit. Written as v3;
+  // v2 blobs (uncompressed) still read.
+  async function deflate(bytes) {
+    if (!window.CompressionStream) return null;
+    try {
+      var stream = new Blob([bytes]).stream()
+        .pipeThrough(new CompressionStream("gzip"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function inflate(bytes) {
+    var stream = new Blob([bytes]).stream()
+      .pipeThrough(new DecompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
   async function vaultSet(uid, key, obj) {
     if (!hasCrypto() || !uid || !key) return false;
     var iv = window.crypto.getRandomValues(new Uint8Array(12));
+    var plain = enc.encode(JSON.stringify(obj));
+    var packed = await deflate(plain);
     var ct = await window.crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: iv }, key, enc.encode(JSON.stringify(obj))
+      { name: "AES-GCM", iv: iv }, key, packed || plain
     );
-    var payload = JSON.stringify({ v: 2, iv: toB64(iv), ct: toB64(ct) });
+    var payload = JSON.stringify({ v: packed ? 3 : 2, iv: toB64(iv), ct: toB64(ct) });
     window.localStorage.setItem(KEY_PREFIX + uid, payload);
     return true;
   }
@@ -73,12 +97,15 @@
     var pt = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: fromB64(payload.iv) }, key, fromB64(payload.ct)
     );
-    return JSON.parse(dec.decode(pt));
+    var bytes = new Uint8Array(pt);
+    if (payload.v === 3) bytes = await inflate(bytes);
+    return JSON.parse(dec.decode(bytes));
   }
 
-  // Everything the sync computed for speed, dropped. The server-side cache
-  // still has the complete copy; this is what goes to localStorage when the
-  // complete one does not fit (see persistBackup).
+  // The last resort when even the compressed copy does not fit: everything
+  // the sync computed for speed, dropped. The price histories are the ones
+  // that are missed, so the server rebuilds them from the transactions this
+  // keeps whenever a copy comes back without them.
   function slimBackup(wrapJson) {
     try {
       var wrap = JSON.parse(wrapJson);
@@ -135,27 +162,27 @@
         try {
           await vaultSet(uid, key, blob);
         } catch (quota) {
-          // localStorage is about 5 MB and a synced portfolio can exceed it:
-          // the per-position price histories and the pre-computed chart
-          // series are most of the weight. Written whole it threw, nothing
-          // was stored, and the next load fell back to demo data with only a
-          // console line to show for it. Store what actually identifies the
-          // portfolio instead; the server-side cache keeps the full copy and
-          // is preferred whenever it is there.
+          // Compressed, a portfolio comfortably fits the few megabytes an
+          // origin gets. This is for the cases where it still does not: a
+          // browser without CompressionStream, or a portfolio large enough
+          // to pass the limit either way. Store what identifies the
+          // portfolio rather than nothing at all, and let the server put the
+          // price histories back from the transactions this keeps.
           var slim = slimBackup(blob.portfolio);
           if (slim) {
             blob.portfolio = slim;
             try {
               await vaultSet(uid, key, blob);
               console.warn("[apex vault] portfolio too large for localStorage; " +
-                           "stored without price histories and cached series.");
+                           "stored without price histories and cached series. " +
+                           "They are rebuilt from the transactions on load.");
               return NU;
             } catch (stillTooBig) { /* fall through to creds only */ }
           }
           blob.portfolio = null;
           await vaultSet(uid, key, blob);
           console.error("[apex vault] portfolio does not fit in localStorage; " +
-                        "kept credentials only. It is still on the server.", quota);
+                        "kept credentials only.", quota);
         }
       } catch (e) {
         console.error("[apex vault] persist failed, synced data will NOT survive a reload:", e);
