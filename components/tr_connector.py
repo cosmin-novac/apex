@@ -8,6 +8,7 @@ from dash import html, dcc, Input, Output, State, callback, no_update, ctx, Clie
 import dash_bootstrap_components as dbc
 from dash.exceptions import PreventUpdate
 import json
+import time
 from datetime import datetime
 
 # Import the TR API wrapper
@@ -43,6 +44,58 @@ def _start_background_sync(uid, flow):
     """
     from components.tr_api import start_fetch_async
     start_fetch_async(user_id=uid, flow=flow)
+
+
+# ── What the syncing UI does on each poll tick ───────────────────────────
+# A sync is only declared dead after this long with no progress written and
+# no portfolio cached. Wall clock read off files, not a per worker tick
+# count: gunicorn runs several workers, the poll alternates between them, so
+# each worker saw only a fraction of the ticks and the real deadline was
+# whatever the split happened to be.
+_SYNC_SILENCE_SECONDS = 180
+
+
+def resolve_sync_outcome(uid, silence_seconds=_SYNC_SILENCE_SECONDS):
+    """Decide whether a background sync has landed, and how it went.
+
+    Returns a result marker (``{"success": ..., "error": ..., "flow": ...}``)
+    once the sync is over, or None meaning "still running, keep waiting".
+
+    Every signal here lives on disk, because the poll that reads it can land
+    on a different gunicorn worker than the one running the sync.
+    """
+    from components.tr_api import (consume_fetch_result, fresh_portfolio_since,
+                                   get_fetch_progress, sync_started_ts)
+
+    started = sync_started_ts(uid)
+    marker = consume_fetch_result(uid)
+    if marker is not None:
+        return marker
+
+    if get_fetch_progress(uid):
+        # Still working. Progress outranks anything else on disk: the
+        # portfolio cache is rewritten at the end of a run, but an older one
+        # from a previous sync may be sitting there, and calling that a
+        # result would cut this run short in the UI.
+        return None
+
+    # No marker and no live progress. The marker is a convenience, not the
+    # truth: it is a single file, read once and then deleted, so a second
+    # worker's poll, a restarted sync or a crash between caching the
+    # portfolio and writing the marker all lose it. What a finished sync
+    # really leaves behind is the portfolio it wrote, so that decides the
+    # outcome. Reporting failure while fresh data sits on disk is the bug
+    # this exists to prevent.
+    if fresh_portfolio_since(uid, started):
+        return {"success": True, "flow": "recovered"}
+
+    if started and (time.time() - started) < silence_seconds:
+        # Started, but nothing written yet: login, the WAF challenge, or the
+        # gap between clearing progress and writing the marker. Give it time.
+        return None
+
+    return {"success": False,
+            "error": "The sync stopped without finishing. Please try again."}
 
 
 def create_tr_connector_card():
@@ -448,9 +501,8 @@ def register_tr_callbacks(app):
     # the triggering HTTP request open for it meant Azure's ~230 s gateway
     # limit killed the response with a 504 while the backend kept working,
     # and the UI hung on the last progress line forever. This callback rides
-    # the same 1 s poll as the progress bar and flips the UI as soon as the
-    # background sync writes its result marker.
-    _sync_poll_misses = {}
+    # the same 1 s poll as the progress bar and flips the UI as soon as
+    # resolve_sync_outcome says the background sync has landed.
 
     @app.callback(
         [Output('tr-initial-view', 'style', allow_duplicate=True),
@@ -478,30 +530,15 @@ def register_tr_callbacks(app):
         uid = auth.current_uid(current_user)
         if not uid:
             raise PreventUpdate
-        from components.tr_api import (consume_fetch_result, get_cached_portfolio,
-                                       get_fetch_progress, take_fetch_data)
+        from components.tr_api import get_cached_portfolio, take_fetch_data
         lang = get_lang(lang_data)
 
-        marker = consume_fetch_result(uid)
+        marker = resolve_sync_outcome(uid)
         if marker is None:
-            # Still running (fresh progress), or the worker died and will
-            # never write a marker. Only give up after repeated ticks with
-            # neither progress nor a result.
-            if get_fetch_progress(uid):
-                _sync_poll_misses.pop(uid, None)
-                raise PreventUpdate
-            misses = _sync_poll_misses.get(uid, 0) + 1
-            _sync_poll_misses[uid] = misses
-            if misses < 20:
-                raise PreventUpdate
-            _sync_poll_misses.pop(uid, None)
-            marker = {"success": False,
-                      "error": "The sync stopped unexpectedly. Please try again."}
-        else:
-            _sync_poll_misses.pop(uid, None)
+            raise PreventUpdate
 
         if marker.get("success"):
-            # Same-worker delivery gets the result in memory; another worker
+            # Same-worker delivery gets the result in memory; any other worker
             # reads the portfolio cache the fetch just saved.
             portfolio_data = take_fetch_data(uid) or get_cached_portfolio(uid)
             if portfolio_data and portfolio_data.get("success"):
@@ -514,6 +551,8 @@ def register_tr_callbacks(app):
                     json.dumps(portfolio_data),
                     False,  # Exit demo mode
                 )
+            # The cache is written atomically, so this is a genuinely empty
+            # or unreadable result rather than a read that caught it mid-write.
             marker = {"success": False, "flow": marker.get("flow"),
                       "error": "Sync finished but no data was stored. Please try again."}
 
