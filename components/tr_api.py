@@ -244,8 +244,12 @@ def _tr_http_error_diagnostics(
     return status, error_codes, str(waf_action) if waf_action else None
 
 
-def friendly_tr_error(exc: Exception) -> str:
-    """Translate a raw pytr/requests exception into an actionable message."""
+def friendly_tr_error(exc: Exception, waf_method: Optional[str] = None) -> str:
+    """Translate a raw pytr/requests exception into an actionable message.
+
+    ``waf_method`` is the WAF solver that actually produced this login, so a
+    rejection can name the cause instead of guessing at it.
+    """
     msg = str(exc)
     status, error_codes, waf_action = _tr_http_error_diagnostics(exc)
     low = " ".join([msg, *error_codes, waf_action or ""]).lower()
@@ -269,7 +273,12 @@ def friendly_tr_error(exc: Exception) -> str:
         )
     if "unexpected keyword argument" in low and "waf_token" in low:
         return "The installed pytr package is too old. Install pytr 0.4.9 or newer."
-    if "waf" in low:
+    # A block often carries nothing in the body, and the header NAME never
+    # reaches this text, only its value, so looking for "waf" in the message
+    # alone missed exactly those. Only a refusal counts: a "challenge" action
+    # is the normal path and gets solved, so it must not land here.
+    waf_blocked = (waf_action or "").strip().lower() in {"block", "captcha"}
+    if waf_blocked or "waf" in low:
         return (
             "Trade Republic web login could not pass the server security check. "
             "Please wait a few minutes and try again."
@@ -282,10 +291,23 @@ def friendly_tr_error(exc: Exception) -> str:
             "Trade Republic rejected the portfolio data request because its interface changed. "
             "Please update Apex and try the sync again."
         )
-    if "405" in low or "method not allowed" in low or "not allowed" in low:
+    # Match the status code, never the digits. "405" as a substring also
+    # appears in the login process UUID and in the four-digit code, both of
+    # which are part of the failing request URL and therefore of the message,
+    # so the old check reported a browser-runtime problem for unrelated
+    # failures on those requests.
+    if status == 405 or "method not allowed" in low:
+        if waf_method and waf_method != "playwright":
+            return (
+                "Trade Republic refused the login. This server could not start "
+                "its browser runtime, so the login fell back to a simpler "
+                "security check and Trade Republic rejected it. Installing the "
+                "Playwright browser runtime on the host fixes this for good; "
+                "until then a retry sometimes gets through."
+            )
         return (
-            "Trade Republic rejected the web-login request. The server may still be "
-            "missing the working browser runtime this login flow needs."
+            "Trade Republic rejected the web-login request. Please start the "
+            "login again."
         )
     if "expecting value" in low or "json" in low:
         return (
@@ -431,6 +453,9 @@ class TRConnection:
         self._loop_ready = threading.Event()
         self._op_lock = threading.Lock()
         self._securities_account_number: Optional[str] = None
+        # Which WAF solver produced the current login, so a later rejection
+        # can name the cause instead of guessing at it.
+        self.waf_method_used: Optional[str] = None
 
         # ── Per-user cache directory ────────────────────────────────────
         self._user_cache_dir = TR_CREDENTIALS_DIR / self.user_id
@@ -659,6 +684,7 @@ class TRConnection:
         """Run pytr web login with a narrow fallback for browser launch failures."""
         last_error: Optional[Exception] = None
         playwright_runtime_error: Optional[Exception] = None
+        self.waf_method_used = None
 
         for waf_method in self._login_waf_methods():
             try:
@@ -669,6 +695,10 @@ class TRConnection:
                 api = self._new_api(waf_token=waf_method)
                 countdown = api.initiate_weblogin()
                 self.api = api
+                # Which solver got us in decides what a later rejection means:
+                # the fallback being refused at the verify step is a missing
+                # browser runtime, the same refusal under Playwright is not.
+                self.waf_method_used = waf_method
                 self._write_progress(95, "Login", "Code sent, check your Trade Republic app")
                 return countdown
             except Exception as exc:
@@ -686,10 +716,9 @@ class TRConnection:
                         exc,
                     )
                     continue
+                _status, _codes, _waf = _tr_http_error_diagnostics(exc)
                 if playwright_runtime_error and (
-                    "405" in str(exc).lower()
-                    or "method not allowed" in str(exc).lower()
-                    or "not allowed" in str(exc).lower()
+                    _status == 405 or "method not allowed" in str(exc).lower()
                 ):
                     raise RuntimeError(
                         "Trade Republic web login failed on this server. "
@@ -731,6 +760,7 @@ class TRConnection:
                 "phone": self.phone_no,
                 "ts": datetime.now().timestamp(),
                 "countdown": countdown,
+                "waf_method": self.waf_method_used,
             }), encoding="utf-8")
         except Exception as e:
             log.warning("Could not persist pending TR login for %s: %s", self.user_id, e)
@@ -749,6 +779,7 @@ class TRConnection:
                 return False
             if data.get("phone"):
                 self.phone_no = data["phone"]
+            self.waf_method_used = data.get("waf_method")
             api = self._new_api()
             if self._cookies_path.exists():
                 try:
@@ -2988,7 +3019,7 @@ class TRConnection:
             )
             return {
                 "success": False,
-                "error": friendly_tr_error(e)
+                "error": friendly_tr_error(e, self.waf_method_used)
             }
     
     async def _complete_web_login(self, code: str) -> Dict[str, Any]:
@@ -3029,10 +3060,11 @@ class TRConnection:
                 "encrypted_credentials": encrypted_creds
             }
         except Exception as e:
-            log.error(f"TR login completion failed: {e}")
+            log.error("TR login completion failed (waf_method=%s): %s",
+                      self.waf_method_used or "unknown", e)
             return {
                 "success": False,
-                "error": friendly_tr_error(e)
+                "error": friendly_tr_error(e, self.waf_method_used)
             }
     
     async def _fetch_portfolio(self) -> Dict[str, Any]:
