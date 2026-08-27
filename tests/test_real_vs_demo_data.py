@@ -106,3 +106,39 @@ def test_disk_cache_is_read_for_the_user_and_skips_demo(monkeypatch, tmp_path):
     # A cache file that somehow holds demo data is not the user's portfolio.
     tr_api._atomic_write_json(tr_api._portfolio_cache_path(uid), DEMO)
     assert pa._disk_cached_portfolio(uid) is None
+
+
+# ── Real account with nothing in it ───────────────────────────────────────
+# Switching to the real account when nothing has been synced used to leave
+# the demo portfolio on screen with demo mode off and the banner gone, so
+# demo holdings read as the user's own numbers.
+
+def test_the_no_data_payload_is_not_demo_data():
+    parsed = json.loads(pa.NO_DATA)
+    assert parsed["no_data"] is True
+    assert parsed["success"] is False
+    assert "positions" not in json.dumps(parsed)
+    # And it must never be mistaken for a portfolio worth restoring.
+    assert pa._is_real_portfolio(pa.NO_DATA) is False
+
+
+def test_the_empty_state_replaces_the_dashboard():
+    """The whole dashboard goes away. Half of it showing demo figures under
+    the real account's name is the bug."""
+    SHOWN, HIDDEN = {}, {"display": "none"}
+    real = json.dumps({"success": True, "cached_at": "2026-08-27T10:00:00",
+                       "data": {"positions": [{"isin": "X"}], "cash": 5.0}})
+
+    # Demo mode: the demo portfolio, with the banner saying so.
+    assert pa._dashboard_visibility(pa._load_demo_json(), True) == (SHOWN, HIDDEN)
+    # Real account with real data: the dashboard.
+    assert pa._dashboard_visibility(real, False) == (SHOWN, HIDDEN)
+    # Real account, nothing synced: the empty state, and nothing else.
+    assert pa._dashboard_visibility(pa.NO_DATA, False) == (HIDDEN, SHOWN)
+    # Demo data reaching the store off demo mode is the same thing.
+    assert pa._dashboard_visibility(pa._load_demo_json(), False) == (HIDDEN, SHOWN)
+    # As is an empty payload from a sync that found nothing.
+    assert pa._dashboard_visibility(
+        json.dumps({"success": True, "data": {"positions": [], "cash": 0}}),
+        False) == (HIDDEN, SHOWN)
+    assert pa._dashboard_visibility(None, False) == (HIDDEN, SHOWN)

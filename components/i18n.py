@@ -132,6 +132,15 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "pa.no_bench":              {"en": "No Bench.",                "de": "Kein Bench."},
     "pa.n_bench":               {"en": "{n} Bench.",               "de": "{n} Bench."},
     "pa.not_connected":         {"en": "Not connected",            "de": "Nicht verbunden"},
+    # Real account, nothing synced into it. Says so plainly instead of
+    # leaving the demo portfolio on screen.
+    "pa.no_data_title":         {"en": "No account data yet",
+                                 "de": "Noch keine Kontodaten"},
+    "pa.no_data_body":          {"en": "Nothing has been synced from Trade Republic on this account. Sync to load your holdings.",
+                                 "de": "Für dieses Konto wurde noch nichts von Trade Republic geladen. Synchronisiere, um deine Positionen zu laden."},
+    "pa.no_data_sync":          {"en": "Sync now", "de": "Jetzt synchronisieren"},
+    "pa.no_data_demo":          {"en": "Show the demo portfolio instead",
+                                 "de": "Stattdessen das Demo-Portfolio zeigen"},
     "pa.n_holdings":            {"en": "{n} Holdings in Trade Republic", "de": "{n} Positionen in Trade Republic"},
     "pa.synced_date":           {"en": "Synced {date}",            "de": "Sync {date}"},
     "pa.synced":                {"en": "Synced",                   "de": "Synchronisiert"},
