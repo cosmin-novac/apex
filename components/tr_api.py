@@ -1238,13 +1238,30 @@ class TRConnection:
             pool.shutdown(wait=False, cancel_futures=True)
 
     def _load_transactions_cache(self) -> List[Dict]:
-        """Transactions this process still holds from an earlier sync.
+        """What a sync starts from, so it only fetches what it does not have.
 
-        Only an optimisation: it lets a sync load the timeline as a delta.
-        Empty after a restart, which costs one full timeline read.
+        A timeline entry never changes once it exists, and neither do the
+        share quantities read out of one, so the previous sync's transactions
+        are what let this one stop paging as soon as it recognises an id and
+        skip the detail request for every trade already enriched. On a
+        thousand transactions that is the difference between a sync taking
+        seconds and one taking minutes.
+
+        Held in memory, which a restart empties. The browser's copy does not
+        go away though, and it carries these same transactions inside the
+        portfolio it hands back on every page load, so that is the fallback:
+        after a restart the first sync still starts where the last one ended.
         """
         held = _mem_get(self.user_id, "transactions")
-        return held if isinstance(held, list) else []
+        if isinstance(held, list) and held:
+            return held
+        portfolio = _mem_get(self.user_id, "portfolio") or {}
+        from_browser = (portfolio.get("data") or {}).get("transactions")
+        if isinstance(from_browser, list) and from_browser:
+            log.info("Starting from the %s transactions the browser had",
+                     len(from_browser))
+            return from_browser
+        return []
 
     def _save_transactions_cache(self, transactions: List[Dict]) -> None:
         """Hold the transactions in memory for a later delta load.
@@ -1530,10 +1547,24 @@ class TRConnection:
             log.info(f"  Firing requests for batch {batch_start//batch_size + 1} ({len(batch)} transactions)...")
             
             # Fire all requests in this batch (no awaiting responses yet!)
+            # Each send is bounded. The receive loop below has always had a
+            # timeout; this one did not, so a connection that stopped
+            # accepting sends left the sync hanging here until the fifteen
+            # minute cap on the whole run, with nothing in the log after
+            # "Firing requests". Now it gives up and works with what was
+            # already accepted.
+            stalled = False
             for txn_id in batch:
                 try:
-                    sub_id = await self.api.timeline_detail_v2(txn_id)
+                    sub_id = await asyncio.wait_for(
+                        self.api.timeline_detail_v2(txn_id), timeout=15.0)
                     pending_subscriptions[sub_id] = txn_id
+                except asyncio.TimeoutError:
+                    stalled = True
+                    log.warning("  Trade Republic stopped accepting detail "
+                                "requests; continuing with the %s already sent",
+                                len(pending_subscriptions))
+                    break
                 except Exception as e:
                     log.debug(f"  Failed to request details for {txn_id}: {e}")
             
@@ -1665,6 +1696,10 @@ class TRConnection:
             pending_subscriptions.clear()
             
             log.info(f"  Batch complete: {batch_success} successful enrichments")
+            if stalled:
+                # The connection is not taking requests. Later batches would
+                # only wait out the same timeout each.
+                break
         
         # Report enrichment completeness
         success_rate = (total_success / trade_count * 100) if trade_count > 0 else 100
