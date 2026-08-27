@@ -182,3 +182,17 @@ def test_no_caller_puts_an_instrument_name_in_the_progress_file():
     for start in starts:
         call = source[start:start + 220].split(")\n")[0]
         assert not named.search(call), call.strip()
+
+
+def test_the_port_is_not_held_up_by_the_browser_install():
+    """gunicorn --preload imports this module in the master before it binds
+    the port, and installing Chromium with its OS dependencies takes minutes
+    on a cold container. App Service restarts a container that has not
+    answered on the port in 230 s, so the install cannot be inline."""
+    import re
+    source = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    call = re.search(r"^[^\n#]*ensure_playwright_browser\(\)", source, re.M)
+    assert call, "the startup warm-up moved; this check needs updating"
+    # It has to be inside a function that a thread runs, never at module level.
+    assert call.group(0).startswith("        "), call.group(0)
+    assert "playwright-warmup" in source

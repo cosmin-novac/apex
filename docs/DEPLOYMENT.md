@@ -26,6 +26,48 @@ Git push (main)
 
 The `server = app.server` line in `main.py` exposes the Flask/WSGI server that gunicorn binds to.
 
+### Startup command
+
+The startup command above is set by the pipeline, but a value entered by hand
+in **Azure Portal → App Service → Configuration → General settings → Startup
+Command** is what the site actually runs. If they disagree, the portal wins,
+so it is worth checking that the boot log's `Site's appCommandLine:` line
+matches:
+
+```
+gunicorn --bind=0.0.0.0:8000 --timeout 600 --preload --workers 1 --threads 8 main:server
+```
+
+`--workers 1` is not incidental. A synced portfolio is held in one process's
+memory and never written to disk, so a second worker has to be handed it
+again by the browser. The app logs a note when it sees more than one.
+
+### Container start timeout
+
+App Service restarts a container that has not answered on its port within
+`WEBSITES_CONTAINER_START_TIME_LIMIT` seconds (default 230). A cold start
+spends most of that budget before the app is even imported: Oryx extracts the
+build artifact, which took about 90 s at the last measurement. Nothing slow
+belongs in module scope for that reason, and the two slow warm-ups (the
+Playwright browser install and the benchmark price cache) both run in
+background threads so the port opens immediately.
+
+If a cold start is still tight, raise the limit:
+
+```bash
+az webapp config appsettings set \
+  --resource-group <rg> --name backtesting-ai \
+  --settings WEBSITES_CONTAINER_START_TIME_LIMIT=1800
+```
+
+### "ModuleNotFoundError: No module named 'main'"
+
+The boot log will also show `Could not find build manifest file at
+'/home/site/wwwroot/oryx-manifest.toml'`. That means the deployed application
+is not in `wwwroot`: a deploy is part-way through replacing it, or one
+failed. Check the most recent pipeline run and redeploy; a restart on its own
+will not help while `wwwroot` is empty.
+
 ---
 
 ## Environment Variables

@@ -3,6 +3,7 @@ import json
 import os
 import re
 import logging
+import threading
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -48,10 +49,23 @@ log.info("Starting Apex application")
 # wrote it here, so it goes on the way up.
 purge_persisted_portfolios()
 note_worker_started()
-try:
-    ensure_playwright_browser()
-except Exception as exc:
-    log.warning("Playwright browser bootstrap failed during startup: %s", exc)
+# In a thread, not inline. With --preload gunicorn imports this module in the
+# master before it binds the port, and installing Chromium with its OS
+# dependencies takes minutes on a cold container: App Service gives a
+# container 230 s to answer on the port by default and restarts it otherwise,
+# so a blocking install here can keep an instance from ever coming up. The
+# WAF login path calls ensure_playwright_browser itself right before it needs
+# a browser, and the install is behind a lock, so this is a warm-up and
+# nothing waits on it.
+def _warm_playwright_browser():
+    try:
+        ensure_playwright_browser()
+    except Exception as exc:
+        log.warning("Playwright browser bootstrap failed during startup: %s", exc)
+
+
+threading.Thread(target=_warm_playwright_browser, name="playwright-warmup",
+                 daemon=True).start()
 
 # Warm the benchmark price cache in the background so the first /compare
 # visit draws its chart from disk/memory instead of waiting on Yahoo.
