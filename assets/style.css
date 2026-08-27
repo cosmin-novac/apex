@@ -719,11 +719,34 @@ textarea::placeholder {
         z-index: 1055 !important;
     }
 
-    /* Portfolio metric cards: 2 per row */
-    .portfolio-analysis-page .portfolio-top-summary .metric-card {
-        min-height: 70px;
-        padding: 6px 4px;
+    /* Bootstrap gutters compound with nesting: the metric tiles sit three
+       rows deep, so the default 8px a side ate 24px of a 390px screen
+       before a single number was drawn. Halve them below the top level. */
+    .main-content .row:not(.g-0) .row:not(.g-0) {
+        margin-left: -4px;
+        margin-right: -4px;
     }
+    .main-content .row:not(.g-0) .row:not(.g-0) > .col,
+    .main-content .row:not(.g-0) .row:not(.g-0) > [class*="col-"] {
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+
+    /* Card chrome: 16px of body padding on every card is a lot of the
+       screen when the cards are stacked one per row. */
+    .card-modern .card-body {
+        padding: 12px;
+    }
+    .portfolio-analysis-page .card-modern {
+        margin-bottom: 0;
+    }
+    .portfolio-analysis-page .mb-3 {
+        margin-bottom: 10px !important;
+    }
+    .portfolio-analysis-page .mb-4 {
+        margin-bottom: 12px !important;
+    }
+
     #portfolio-total-value,
     .portfolio-analysis-page .portfolio-top-summary .portfolio-hero-value {
         font-size: clamp(0.85rem, 3vw, 1.4rem);
@@ -761,8 +784,14 @@ textarea::placeholder {
         flex: 1 1 100%;
         order: -1;
     }
+    /* Without a shrink the row keeps its content width, the wrap has
+       nothing to wrap against, and the whole document scrolls sideways
+       far enough to carry the sync button off the left edge. */
     .sticky-header .header-right {
+        flex: 1 1 100%;
         flex-wrap: wrap;
+        justify-content: flex-start;
+        min-width: 0;
         gap: 4px;
     }
     .sticky-header .header-divider {
@@ -774,8 +803,18 @@ textarea::placeholder {
     .timeframe-btn-group {
         width: 100%;
     }
+    /* Seven pills across a phone: flex:1 alone will not shrink a button
+       below the width of its own label, so min-width has to go too. */
     .timeframe-btn-group .tf-pill {
-        flex: 1;
+        flex: 1 1 0;
+        min-width: 0;
+        padding: 4px 2px;
+        font-size: 0.68rem;
+        letter-spacing: 0;
+    }
+    .timeframe-pill-bar {
+        margin-left: 0;
+        min-width: 0;
     }
 
     /* Portfolio top summary: stack donut and metrics vertically */
@@ -2612,6 +2651,70 @@ hr {
     min-width: 92px;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+}
+
+/* Phones. This block sits below the desktop rules on purpose: a media query
+   adds no specificity, so the same selector earlier in the file loses. */
+@media (max-width: 768px) {
+    /* Bootstrap sets word-wrap: break-word on .card, so "PROFIT/LOSS" came
+       out as "PROFIT/LO SS" and "TOTAL RETURN" over three lines, which is
+       what made every tile twice as tall as the number it holds. Labels
+       break at spaces only. */
+    .portfolio-analysis-page .metric-label {
+        overflow-wrap: normal;
+        word-break: keep-all;
+        hyphens: none;
+    }
+    .portfolio-analysis-page .portfolio-top-summary .metric-card {
+        min-height: 0;
+        padding: 6px 4px;
+    }
+    .portfolio-analysis-page .portfolio-top-summary .metric-label {
+        font-size: 0.6rem;
+        letter-spacing: 0.01em;
+        line-height: 1.2;
+        margin-bottom: 2px;
+    }
+    .portfolio-analysis-page .portfolio-top-summary .metric-subtitle {
+        font-size: 0.65rem;
+        line-height: 1.2;
+    }
+    .portfolio-analysis-page .portfolio-top-summary .card-modern .card-body {
+        padding: 8px;
+    }
+
+    /* The donut is the only thing in its card and it was 260px tall. The
+       height is an inline style on the graph, hence the !important. */
+    .portfolio-analysis-page #holdings-donut-chart {
+        height: 190px !important;
+    }
+
+    /* Recent activity: a fixed 180px for the badge and amount left about
+       110px for the name, so "Core MSCI World USD (Acc)" came out over four
+       lines with the date threaded through it. The name gets the room and
+       truncates instead; the full text is already on the row's title. */
+    .recent-activity-row {
+        gap: 8px;
+    }
+    .recent-activity-meta {
+        flex: 0 0 auto;
+        min-width: 0;
+        gap: 6px;
+    }
+    .recent-activity-badge {
+        min-width: 0;
+        padding: 3px 6px;
+        font-size: 0.62rem;
+    }
+    .recent-activity-amount {
+        min-width: 0;
+        font-size: 0.72rem;
+    }
+    .recent-activity-main > div > div {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 }
 
 .chart-hover-details {
