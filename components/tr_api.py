@@ -3362,7 +3362,22 @@ class TRConnection:
             # Persist instrument name cache for next sync.
             if instrument_cache:
                 self._save_instrument_cache(instrument_cache)
-            
+
+            # A sync that found neither a position nor a euro of cash did not
+            # find the account, it failed to read it. Reporting success caches
+            # that emptiness and the UI restores it forever after, showing 0 €
+            # with no holdings and no way back to the demo data.
+            if not enriched_positions and cash <= 0:
+                log.error("Sync returned no positions and no cash for user=%s; "
+                          "treating it as a failed sync rather than an empty "
+                          "portfolio.", self.user_id)
+                return {
+                    "success": False,
+                    "error": ("Trade Republic returned an empty portfolio. "
+                              "Your session may have expired; please connect "
+                              "again and retry the sync."),
+                }
+
             # Save to local cache
             self._save_portfolio_cache(result)
 
