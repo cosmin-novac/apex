@@ -2763,6 +2763,39 @@ hr {
     color: #94a3b8 !important;
 }
 
+/* Phone stand-in for the chart's end labels. Each chip carries its series
+   colour, and the text is the label itself, so colour is never the only cue.
+   Desktop keeps the labels on the lines and this stays empty. */
+.chart-legend:empty { display: none; }
+.chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin: 0 0 4px 2px;
+}
+.chart-chip {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.66rem;
+    font-weight: 600;
+    /* Dark text, coloured swatch, the way Plotly's own legend does it: at
+       10px the lighter series hues (the grey of Added Capital especially)
+       do not clear the contrast floor as text. */
+    color: #475569;
+    white-space: nowrap;
+}
+.chart-chip::before {
+    content: "";
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--chip, #64748b);
+    margin-right: 4px;
+}
+@media (min-width: 768.02px) {
+    .chart-legend { display: none; }
+}
+
 .chart-hover-details {
     min-height: 286px;
     display: flex;

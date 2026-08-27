@@ -17,6 +17,7 @@ import ctypes
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import threading
+import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 # Minimum seconds between Trade Republic syncs.
@@ -111,6 +112,12 @@ TR_LOGIN_COMPLETE_TIMEOUT_SECONDS = 2 * 60
 # The sync runs in a background thread (see start_fetch_async), so this no
 # longer has to fit inside an HTTP request. It only bounds a runaway fetch.
 TR_SYNC_TIMEOUT_SECONDS = int(os.environ.get("TR_SYNC_TIMEOUT_SECONDS", str(15 * 60)))
+# Logos are decoration. Whatever the CDNs are doing, the stage gets this long
+# in total and then the sync moves on without them.
+LOGO_STAGE_TIMEOUT_SECONDS = int(os.environ.get("LOGO_STAGE_TIMEOUT_SECONDS", "45"))
+# (connect, read). requests applies these per phase, so a stalled handshake
+# cannot sit on a worker for the whole stage budget.
+LOGO_HTTP_TIMEOUT = (3.05, 5)
 _playwright_install_lock = threading.Lock()
 _playwright_install_completed = False
 
@@ -939,7 +946,7 @@ class TRConnection:
 
             # --- Attempt 1: Parqet CDN ---
             try:
-                resp = _requests.get(f"{PARQET_BASE}/{isin}", timeout=6)
+                resp = _requests.get(f"{PARQET_BASE}/{isin}", timeout=LOGO_HTTP_TIMEOUT)
                 if resp.status_code == 200 and len(resp.content) > 50:
                     ct = resp.headers.get("Content-Type", "")
                     ext = "svg" if "svg" in ct else "png"
@@ -963,7 +970,7 @@ class TRConnection:
                 f"&background={bg}&color=fff&size=64&rounded=true&bold=true&format=png"
             )
             try:
-                resp = _requests.get(avatar_url, timeout=6)
+                resp = _requests.get(avatar_url, timeout=LOGO_HTTP_TIMEOUT)
                 if resp.status_code == 200 and len(resp.content) > 50:
                     (logos_dir / f"{isin}.png").write_bytes(resp.content)
                     log.info(f"  ✓ {isin} avatar fallback ({len(resp.content)}b)")
@@ -975,17 +982,39 @@ class TRConnection:
 
         # Serial downloads took up to 2×timeout per position, over 10 minutes
         # for a whole portfolio when a CDN is unreachable. A small pool keeps
-        # the stage under ~30 s; the UI initials fallback covers any misses.
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            futures = [pool.submit(_fetch_one, pos) for pos in to_download]
-            for i, fut in enumerate(as_completed(futures), 1):
-                try:
-                    fut.result()
-                except Exception:
-                    pass
+        # the stage short; the UI initials fallback covers any misses.
+        #
+        # The pool is NOT used as a context manager and the wait is NOT
+        # as_completed(): both of those block until every worker returns, and
+        # a request timeout does not bound DNS resolution or a TLS handshake
+        # that never completes. One wedged socket was enough to pin the sync
+        # on "Logos i/n" until the 15 minute sync timeout killed it. Here the
+        # stage gets a deadline of its own, and stragglers are abandoned to
+        # finish or die on their own time while the sync carries on.
+        from concurrent.futures import ThreadPoolExecutor, wait as _wait
+        pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tr-logo")
+        deadline = time.monotonic() + LOGO_STAGE_TIMEOUT_SECONDS
+        try:
+            futures = {pool.submit(_fetch_one, pos): pos for pos in to_download}
+            done = set()
+            while futures.keys() - done:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                finished, _pending = _wait(futures.keys() - done,
+                                           timeout=min(left, 1.0))
+                done |= finished
                 self._write_progress(97, "Finishing",
-                                     f"Logos {i}/{len(to_download)}")
+                                     f"Logos {len(done)}/{len(to_download)}")
+            missed = len(to_download) - len(done)
+            if missed:
+                log.warning("Logo stage hit its %ss deadline with %s of %s "
+                            "still running; continuing without them.",
+                            LOGO_STAGE_TIMEOUT_SECONDS, missed, len(to_download))
+        finally:
+            # cancel_futures drops the queue; anything already running is let
+            # go rather than waited on.
+            pool.shutdown(wait=False, cancel_futures=True)
 
     def _load_transactions_cache(self) -> List[Dict]:
         """Load cached transactions (user-scoped)."""
