@@ -691,8 +691,21 @@ def layout(lang="en"):
             dbc.Card([
                 dbc.CardHeader([
                     html.I(className="bi bi-bar-chart-line me-2"),
-                    t("pa.perf_comparison", lang)
-                ], className="card-header-modern"),
+                    t("pa.perf_comparison", lang),
+                    dbc.Button(html.I(className="bi bi-info-circle"),
+                               id="cmp-info-btn", color="link", size="sm",
+                               className="mc-info-btn"),
+                    dbc.Popover([
+                        dbc.PopoverHeader(t("pa.cmp_info_title", lang)),
+                        dbc.PopoverBody([
+                            html.P(t("pa.cmp_info_1", lang), className="mb-2"),
+                            html.P(t("pa.cmp_info_2", lang), className="mb-2"),
+                            html.P(t("pa.cmp_info_3", lang), className="mb-0"),
+                        ]),
+                    ], id="cmp-info-popover", target="cmp-info-btn",
+                       trigger="legacy", placement="bottom",
+                       className="mc-info-popover"),
+                ], className="card-header-modern d-flex align-items-center"),
                 dbc.CardBody([
                     html.Div(id="comparison-table-container"),
                 ], className="py-2"),

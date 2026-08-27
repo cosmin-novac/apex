@@ -243,7 +243,30 @@ body {
     border-color: var(--primary-color);
 }
 
+/* A dropdown's selected value is a plain span with no width of its own, so a
+   long option ("FIFO (First In, First Out)") spilled its control on a 320px
+   screen. Truncate instead; the full text is still in the open menu. */
+.Select-value-label,
+.Select-placeholder {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
 /* ===== Main Content ===== */
+/* The individual overflow sources are fixed where they are, and asserted at
+   several phone widths. This is the backstop for the ones nobody has measured
+   yet: clip rather than hidden, because hidden makes a scroll container and
+   that breaks the sticky header inside it. */
+@media (max-width: 768px) {
+    .app-container {
+        overflow-x: clip;
+        max-width: 100vw;
+    }
+}
+
 .main-content {
     padding: 32px 40px;
     min-height: 100vh;
@@ -4882,6 +4905,9 @@ button.btn::-moz-focus-inner {
 .ml-switch .form-check-label { font-size: 0.82rem; color: var(--ml-muted); }
 .ml-switch .form-check-input:checked { background-color: var(--ml-accent); border-color: var(--ml-accent); }
 
+/* The holdings table scrolls inside its own box. Unwrapped, its five columns
+   pushed a 360px phone 27px sideways and the whole page panned with it. */
+.ml-table-wrap { overflow-x: auto; }
 .ml-table { width: 100%; font-size: 0.9rem; border-collapse: collapse; }
 .ml-table th {
     font-size: 0.7rem;

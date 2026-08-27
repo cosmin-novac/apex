@@ -225,12 +225,14 @@ def holdings_table(res, lang, limit=40):
     rest = len(ordered) - len(rows)
     return html.Div([
         html.H4(t("ml.holdings_title", lang).format(m=last["month"]), className="ml-h4"),
-        html.Table([
+        # Five columns do not fit a 360px phone, and an unwrapped table drags
+        # the whole page sideways rather than scrolling itself.
+        html.Div(html.Table([
             html.Thead(html.Tr([html.Th("#"), html.Th(t("ml.col_company", lang)), html.Th(t("ml.col_ticker", lang)),
                                 html.Th(t("ml.col_rank", lang), className="text-end"),
                                 html.Th(t("ml.col_weight", lang), className="text-end")])),
             html.Tbody(rows),
-        ], className="ml-table"),
+        ], className="ml-table"), className="ml-table-wrap"),
         html.P(t("ml.holdings_more", lang).format(k=rest), className="text-muted small mt-2") if rest > 0 else None,
     ])
 
