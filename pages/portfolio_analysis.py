@@ -597,6 +597,12 @@ def layout(lang="en"):
                         dbc.Tab(label=t("pa.performance", lang), tab_id="tab-performance"),
                     ], id="chart-tabs", active_tab="tab-value", className="mb-2"),
 
+                    # The series labels live at the right end of each line on
+                    # a desktop. On a phone that gutter is a third of the
+                    # chart, so they move here instead and the plot gets the
+                    # width back. Empty (and hidden) above the breakpoint.
+                    html.Div(id="chart-legend", className="chart-legend"),
+
                     # Downloading a daily price series per security is the
                     # slowest stage of a sync by a wide margin, so a sync no
                     # longer does it. This says what the line is drawn from
@@ -719,6 +725,12 @@ def layout(lang="en"):
     # All three chart figures (value/drawdown/performance), built together on
     # data changes; switching tabs just picks one clientside, no round trip.
     dcc.Store(id="chart-figures-store", storage_type="memory"),
+    # True on a phone-width viewport. A store rather than a matchMedia call
+    # inside the chart callback, because Dash only reruns a callback when an
+    # input changes and the window is not an input: without this a rotation
+    # would leave the chart laid out for the old width.
+    dcc.Store(id="narrow-screen", storage_type="memory", data=False),
+    dcc.Interval(id="viewport-poll", interval=1000),
     # tr-session-data / tr-auth-step / tr-check-creds-trigger live in the TR
     # connector layout (components/tr_connector.py), defining them here too
     # would duplicate their ids in the rendered tree.
@@ -2743,18 +2755,73 @@ def register_callbacks(app):
                   time.perf_counter() - t0)
         return figs
 
+    # The figure the server builds is the desktop one. On a phone it is
+    # narrowed here rather than on the server, because this callback already
+    # runs on every tab switch and every rebuild, so the adjustment can never
+    # be lost to a redraw the way a Plotly.relayout from a loose script can.
     app.clientside_callback(
         """
-        function(tab, figs) {
+        function(tab, figs, narrow) {
             const dc = window.dash_clientside;
-            if (!figs) { return dc.no_update; }
-            return figs[tab] || dc.no_update;
+            if (!figs) { return [dc.no_update, dc.no_update]; }
+            const fig = figs[tab];
+            if (!fig) { return [dc.no_update, dc.no_update]; }
+            if (!narrow) { return [fig, []]; }
+
+            // On a 390px screen the desktop layout spent 104px on the label
+            // gutter and 57px on the y tick labels, leaving 171px out of 332
+            // for the data itself. The end labels move out of the plot and
+            // into HTML chips above it, the y ticks move inside, and the
+            // margins collapse to nothing.
+            const lay = Object.assign({}, fig.layout);
+            const chips = (lay.annotations || []).map(function (a) {
+                return {
+                    namespace: "dash_html_components", type: "Span",
+                    props: {
+                        children: a.text, className: "chart-chip",
+                        style: {"--chip": (a.font && a.font.color) || "#64748b"},
+                    },
+                };
+            });
+            lay.margin = {l: 2, r: 6, t: 8, b: 24, pad: 0, autoexpand: true};
+            lay.annotations = [];
+            // The y tick labels stay outside. Moving them in with
+            // ticklabelposition looks like the obvious win and is a trap:
+            // Plotly then registers a 216px left push under x.automargin and
+            // the plot ends up narrower than it started. Smaller ticks are
+            // what is left, and they cost about 8px of the gutter.
+            lay.yaxis = Object.assign({}, lay.yaxis, {
+                tickfont: Object.assign({}, lay.yaxis && lay.yaxis.tickfont,
+                                        {size: 9}),
+            });
+            // Drag on a touch screen should scroll the page, not zoom or pan
+            // the chart, and there is no modebar to undo a zoom with.
+            lay.dragmode = false;
+            return [{data: fig.data, layout: lay}, chips];
         }
         """,
-        Output("main-portfolio-chart-v2", "figure"),
+        [Output("main-portfolio-chart-v2", "figure"),
+         Output("chart-legend", "children")],
         [Input("chart-tabs", "active_tab"),
-         Input("chart-figures-store", "data")],
+         Input("chart-figures-store", "data"),
+         Input("narrow-screen", "data")],
         prevent_initial_call=True,
+    )
+
+    # Clientside and returning no_update while the width band is unchanged,
+    # so the poll costs nothing but a matchMedia call per second.
+    app.clientside_callback(
+        """
+        function(_n, current) {
+            const narrow = window.matchMedia("(max-width: 768px)").matches;
+            return narrow === Boolean(current)
+                ? window.dash_clientside.no_update : narrow;
+        }
+        """,
+        Output("narrow-screen", "data"),
+        Input("viewport-poll", "n_intervals"),
+        State("narrow-screen", "data"),
+        prevent_initial_call=False,
     )
 
     # The value tab shows absolute € on the y-axis; privacy mode blurs those
