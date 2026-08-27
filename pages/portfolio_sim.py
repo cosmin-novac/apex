@@ -606,7 +606,7 @@ def layout(lang="en"):
                                 html.Label(t("ps.starting_investment", lang), className="input-label"),
                                 dbc.InputGroup([
                                     dbc.Input(id="input-current-value", type="number",
-                                              value=_DEFAULTS['value'], min=0, step=1000),
+                                              value=_DEFAULTS['value'], min=0, step="any"),
                                     dbc.InputGroupText("€"),
                                 ], size="sm", className="mb-3"),
                             ]),
@@ -614,7 +614,7 @@ def layout(lang="en"):
                                 html.Label(t("ps.monthly_deposit", lang), className="input-label"),
                                 dbc.InputGroup([
                                     dbc.Input(id="input-monthly-deposit", type="number",
-                                              value=_DEFAULTS['deposit'], min=0, step=50),
+                                              value=_DEFAULTS['deposit'], min=0, step="any"),
                                     dbc.InputGroupText("€"),
                                 ], size="sm", className="mb-3"),
                             ]),
@@ -641,7 +641,7 @@ def layout(lang="en"):
                                     html.Label(t("ps.annual_growth", lang), className="input-label"),
                                     dbc.InputGroup([
                                         dbc.Input(id="input-annual-growth-rate", type="number",
-                                                  value=_DEFAULTS['growth'], min=0, max=100, step=0.5),
+                                                  value=_DEFAULTS['growth'], min=0, max=100, step="any"),
                                         dbc.InputGroupText("%"),
                                     ], size="sm", className="mb-2"),
                                 ]),
@@ -690,7 +690,7 @@ def layout(lang="en"):
                             html.Label(t("ps.min_withdrawal", lang), className="input-label"),
                             dbc.InputGroup([
                                 dbc.Input(id="input-min-withdrawal", type="number",
-                                          value=_DEFAULTS['min_withdrawal'], min=0, step=500),
+                                          value=_DEFAULTS['min_withdrawal'], min=0, step="any"),
                                 dbc.InputGroupText("€"),
                             ], size="sm", className="mb-1"),
                             html.Div(t("ps.min_withdrawal_hint", lang),
@@ -705,7 +705,7 @@ def layout(lang="en"):
                                 html.Label(t("ps.tax_rate", lang), className="input-label"),
                                 dbc.InputGroup([
                                     dbc.Input(id="input-tax-rate", type="number",
-                                              value=_DEFAULTS['tax'], min=0, max=100, step=0.5),
+                                              value=_DEFAULTS['tax'], min=0, max=100, step="any"),
                                     dbc.InputGroupText("%"),
                                 ], size="sm", className="mb-3"),
                             ]),
@@ -755,7 +755,7 @@ def layout(lang="en"):
                                     dbc.InputGroup([
                                         dbc.Input(id="input-volatility", type="number",
                                                   value=_DEFAULTS['volatility'],
-                                                  min=0, max=100, step=1),
+                                                  min=0, max=100, step="any"),
                                         dbc.InputGroupText("%"),
                                     ], size="sm", className="mb-2"),
                                 ]),
@@ -763,7 +763,7 @@ def layout(lang="en"):
                                     html.Label(t("ps.mc_samples", lang), className="input-label"),
                                     dbc.Input(id="input-mc-samples", type="number",
                                               value=_DEFAULTS['samples'], min=10,
-                                              max=MC_MAX_SAMPLES, step=10, size="sm",
+                                              max=MC_MAX_SAMPLES, step=1, size="sm",
                                               className="mb-2"),
                                 ]),
                             ], className="ps-pair"),
@@ -833,12 +833,62 @@ def layout(lang="en"):
                 ], className="card-modern"),
             ], md=8),
         ]),
+        # The parameters as the visitor last left them. Local storage, so it
+        # is per browser and never leaves it.
+        dcc.Store(id="ps-settings", storage_type="local"),
+        dcc.Interval(id="ps-restore", interval=250, max_intervals=1),
     ])
 
 
 # ──────────────────────────────  CALLBACKS  ──────────────────────────────
 
+# The inputs worth carrying from one visit to the next. Anything derived (the
+# breakdown, the chart) rebuilds itself from these.
+_REMEMBERED = [
+    "input-current-value", "input-monthly-deposit", "simulation-time-frame",
+    "input-annual-growth-rate", "input-years-to-simulate",
+    "input-sp500-start-year", "withdrawal-type", "input-annual-withdrawal",
+    "input-min-withdrawal", "input-tax-rate", "input-tax-method",
+    "input-volatility", "input-mc-samples",
+]
+
+
 def register_callbacks(app):
+    # ── Remember and restore the parameters ──
+    app.clientside_callback(
+        """
+        function() {
+            const vals = Array.prototype.slice.call(arguments);
+            const keys = %s;
+            const out = {};
+            keys.forEach(function (k, i) { out[k] = vals[i]; });
+            return out;
+        }
+        """ % _REMEMBERED,
+        Output("ps-settings", "data"),
+        [Input(cid, "value") for cid in _REMEMBERED],
+        prevent_initial_call=True,
+    )
+
+    app.clientside_callback(
+        """
+        function(_n, saved) {
+            const keys = %s;
+            const nu = window.dash_clientside.no_update;
+            if (!saved) { return keys.map(function () { return nu; }); }
+            // A stored value of undefined means that input was added after
+            // the settings were written; leave it at its default.
+            return keys.map(function (k) {
+                return saved[k] === undefined || saved[k] === null ? nu : saved[k];
+            });
+        }
+        """ % _REMEMBERED,
+        [Output(cid, "value", allow_duplicate=True) for cid in _REMEMBERED],
+        Input("ps-restore", "n_intervals"),
+        State("ps-settings", "data"),
+        prevent_initial_call=True,
+    )
+
     """Register all Investment Simulator callbacks.
 
     Architecture notes (why the chart was previously always empty):

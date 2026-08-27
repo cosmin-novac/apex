@@ -225,12 +225,14 @@ def holdings_table(res, lang, limit=40):
     rest = len(ordered) - len(rows)
     return html.Div([
         html.H4(t("ml.holdings_title", lang).format(m=last["month"]), className="ml-h4"),
-        html.Table([
+        # Five columns do not fit a 360px phone, and an unwrapped table drags
+        # the whole page sideways rather than scrolling itself.
+        html.Div(html.Table([
             html.Thead(html.Tr([html.Th("#"), html.Th(t("ml.col_company", lang)), html.Th(t("ml.col_ticker", lang)),
                                 html.Th(t("ml.col_rank", lang), className="text-end"),
                                 html.Th(t("ml.col_weight", lang), className="text-end")])),
             html.Tbody(rows),
-        ], className="ml-table"),
+        ], className="ml-table"), className="ml-table-wrap"),
         html.P(t("ml.holdings_more", lang).format(k=rest), className="text-muted small mt-2") if rest > 0 else None,
     ])
 
@@ -350,10 +352,20 @@ def _controls(lang):
 
         html.Div([
             _label(t("ml.ctl_corridor", lang), "ml.help_corridor", lang, "ml-tip-corridor"),
-            dcc.RangeSlider(id="ml-corridor", min=5, max=500, step=5, allowCross=False,
+            dcc.RangeSlider(id="ml-corridor", min=1, max=500, step=1, allowCross=False,
                             value=[DEFAULTS["rank_lo"], DEFAULTS["rank_hi"]],
-                            marks={5: "5", 500: "500"},  # value bubbles show the exact ranks
+                            marks={1: "1", 500: "500"},  # value bubbles show the exact ranks
                             tooltip={"placement": "bottom", "always_visible": True}, className="ml-slider"),
+            # A 500-rank range across a phone's screen is about one rank per
+            # 0.7px, so aiming for 425 lands on 415. The numbers are typed
+            # here and the slider follows; both stay in step.
+            html.Div([
+                dbc.Input(id="ml-corridor-lo", type="number", min=1, max=500, step=1,
+                          value=DEFAULTS["rank_lo"], className="ml-num", debounce=True),
+                html.Span("–", className="ml-num-dash"),
+                dbc.Input(id="ml-corridor-hi", type="number", min=1, max=500, step=1,
+                          value=DEFAULTS["rank_hi"], className="ml-num", debounce=True),
+            ], className="ml-num-row"),
             dbc.Checklist(id="ml-hold-graduates", switch=True, value=DEFAULTS["hold_after_graduation"],
                           options=[{"label": t("ml.ctl_hold_graduates", lang), "value": "on"}],
                           className="ml-switch mt-1"),
@@ -419,7 +431,7 @@ def _controls(lang):
                 # Affix at the end, so the field's own border is unbroken on
                 # the side you type from, as in the simulator.
                 dbc.InputGroup([dbc.Input(id="ml-initial", type="number", min=100,
-                                          step=100, value=DEFAULTS["initial"]),
+                                          step="any", value=DEFAULTS["initial"]),
                                 dbc.InputGroupText("$")],
                                size="sm"),
             ], className="ml-ctl mb-0"),
@@ -475,11 +487,90 @@ def layout(lang="en"):
         ], className="g-3"),
         _method_notes(lang),
         dcc.Store(id="ml-lang-holder", data=lang),
+        # The controls as the visitor last left them. Local storage, so it is
+        # per browser and never leaves it.
+        dcc.Store(id="ml-settings", storage_type="local"),
+        dcc.Interval(id="ml-restore", interval=250, max_intervals=1),
     ], className="ml-page")
+
+
+# The controls worth remembering between visits, and worth restoring in the
+# same order. The corridor number boxes are derived from the slider, so they
+# are not stored separately.
+_REMEMBERED = ["ml-mode", "ml-top-n", "ml-corridor", "ml-hold-graduates",
+               "ml-universe", "ml-rebalance", "ml-weighting", "ml-start",
+               "ml-end", "ml-buffer", "ml-max-weight"]
 
 
 def register_callbacks(app):
     _PRESET_IDS = [f"ml-preset-{k}" for k in PRESETS]
+
+    # ── The corridor: slider and boxes are one value ──
+    @app.callback(
+        [Output("ml-corridor", "value", allow_duplicate=True),
+         Output("ml-corridor-lo", "value"), Output("ml-corridor-hi", "value")],
+        [Input("ml-corridor", "value"), Input("ml-corridor-lo", "value"),
+         Input("ml-corridor-hi", "value")],
+        prevent_initial_call=True,
+    )
+    def _sync_corridor(rng, lo, hi):
+        from dash import ctx
+        if ctx.triggered_id == "ml-corridor":
+            if not rng:
+                return no_update, no_update, no_update
+            return no_update, rng[0], rng[1]
+        # Typed. Empty while the field is being cleared, so hold the old value
+        # rather than snapping the slider to a default mid-edit.
+        if lo is None or hi is None:
+            return no_update, no_update, no_update
+        lo = max(1, min(500, int(lo)))
+        hi = max(1, min(500, int(hi)))
+        # The number just typed is the one the user meant, so it stays and the
+        # other end moves out of its way. Swapping them instead would take the
+        # value they typed and put it somewhere they did not ask for, which is
+        # the whole complaint about aiming the slider in the first place.
+        if lo > hi:
+            if ctx.triggered_id == "ml-corridor-hi":
+                lo = max(1, hi - 1)
+            else:
+                lo = min(lo, 499)
+                hi = lo + 1
+        return [lo, hi], lo, hi
+
+    # ── Remember and restore ──
+    app.clientside_callback(
+        """
+        function() {
+            const vals = Array.prototype.slice.call(arguments);
+            const keys = %s;
+            const out = {};
+            keys.forEach(function (k, i) { out[k] = vals[i]; });
+            return out;
+        }
+        """ % _REMEMBERED,
+        Output("ml-settings", "data"),
+        [Input(cid, "value") for cid in _REMEMBERED],
+        prevent_initial_call=True,
+    )
+
+    app.clientside_callback(
+        """
+        function(_n, saved) {
+            const keys = %s;
+            const nu = window.dash_clientside.no_update;
+            if (!saved) { return keys.map(function () { return nu; }); }
+            // A stored value of undefined means that control was added after
+            // the settings were written; leave it at its default.
+            return keys.map(function (k) {
+                return saved[k] === undefined || saved[k] === null ? nu : saved[k];
+            });
+        }
+        """ % _REMEMBERED,
+        [Output(cid, "value", allow_duplicate=True) for cid in _REMEMBERED],
+        Input("ml-restore", "n_intervals"),
+        State("ml-settings", "data"),
+        prevent_initial_call=True,
+    )
 
     @app.callback(
         Output("ml-results", "children"),

@@ -457,18 +457,45 @@ def layout(lang="en"):
             dbc.Button([
                 html.I(className="bi bi-arrow-repeat"),
                 html.Span(t("pa.sync", lang), className="d-none d-md-inline ms-1"),
-            ], id="sync-tr-data-btn", color="link", size="sm", className="header-icon-btn sync-btn-prominent", n_clicks=0, title=t("pa.sync", lang), style={"display": "none"}),
+            ], id="sync-tr-data-btn", color="link", size="sm", className="header-icon-btn sync-btn-prominent d-none d-md-inline-flex", n_clicks=0, title=t("pa.sync", lang), style={"display": "none"}),
 
             # Demo mode toggle (hidden, auto-managed)
             dbc.Button([
                 html.I(className="bi bi-person-badge", id="demo-toggle-icon"),
-            ], id="demo-toggle-btn", color="link", size="sm", className="header-icon-btn", n_clicks=0, title=t("pa.switch_demo", lang), style={"display": "none"}),
+            ], id="demo-toggle-btn", color="link", size="sm", className="header-icon-btn d-none d-md-inline-flex", n_clicks=0, title=t("pa.switch_demo", lang), style={"display": "none"}),
 
             # Privacy toggle
             dbc.Button([
                 html.I(className="bi bi-eye-slash", id="privacy-icon"),
-            ], id="toggle-privacy-btn", color="link", size="sm", className="header-icon-btn", n_clicks=0, title=t("pa.hide", lang)),
-            
+            ], id="toggle-privacy-btn", color="link", size="sm", className="header-icon-btn d-none d-md-inline-flex", n_clicks=0, title=t("pa.hide", lang)),
+
+            # Phones get one menu instead of a row that does not fit. The
+            # items click the real buttons above, which stay in the DOM and
+            # keep every callback they already had.
+            html.Div([
+                dbc.Button(html.I(className="bi bi-three-dots-vertical"),
+                           id="pa-actions-btn", color="link", size="sm",
+                           className="header-icon-btn d-md-none",
+                           n_clicks=0, title=t("pa.actions", lang)),
+                dbc.Popover(dbc.PopoverBody([
+                    html.Button([html.I(className="bi bi-arrow-repeat me-2"),
+                                 t("pa.sync", lang)],
+                                id="pa-menu-sync", className="pa-menu-item", n_clicks=0),
+                    html.Button([html.I(className="bi bi-eye-slash me-2"),
+                                 html.Span(t("pa.hide_values", lang), id="pa-menu-privacy-label")],
+                                id="pa-menu-privacy", className="pa-menu-item", n_clicks=0),
+                    html.Button([html.I(className="bi bi-person-badge me-2"),
+                                 html.Span(t("pa.switch_demo", lang), id="pa-menu-demo-label")],
+                                id="pa-menu-demo", className="pa-menu-item", n_clicks=0),
+                    html.Div(className="pa-menu-sep"),
+                    html.Button([html.I(className="bi bi-trash3 me-2"),
+                                 t("pa.clear_data", lang)],
+                                id="pa-menu-clear", className="pa-menu-item pa-menu-danger",
+                                n_clicks=0),
+                ], className="p-1"), id="pa-actions-popover", target="pa-actions-btn",
+                    trigger="legacy", placement="bottom-end"),
+            ], className="header-dropdown-wrapper d-md-none"),
+
             html.Div(className="header-divider"),
             
             # Asset Class Dropdown Button
@@ -664,8 +691,21 @@ def layout(lang="en"):
             dbc.Card([
                 dbc.CardHeader([
                     html.I(className="bi bi-bar-chart-line me-2"),
-                    t("pa.perf_comparison", lang)
-                ], className="card-header-modern"),
+                    t("pa.perf_comparison", lang),
+                    dbc.Button(html.I(className="bi bi-info-circle"),
+                               id="cmp-info-btn", color="link", size="sm",
+                               className="mc-info-btn"),
+                    dbc.Popover([
+                        dbc.PopoverHeader(t("pa.cmp_info_title", lang)),
+                        dbc.PopoverBody([
+                            html.P(t("pa.cmp_info_1", lang), className="mb-2"),
+                            html.P(t("pa.cmp_info_2", lang), className="mb-2"),
+                            html.P(t("pa.cmp_info_3", lang), className="mb-0"),
+                        ]),
+                    ], id="cmp-info-popover", target="cmp-info-btn",
+                       trigger="legacy", placement="bottom",
+                       className="mc-info-popover"),
+                ], className="card-header-modern d-flex align-items-center"),
                 dbc.CardBody([
                     html.Div(id="comparison-table-container"),
                 ], className="py-2"),
@@ -722,6 +762,21 @@ def layout(lang="en"):
     # TR Connect Modal
     _create_tr_connect_modal(lang),
 
+    # Clearing stored data is not undoable, so it asks first.
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle(t("pa.clear_data", lang)), close_button=True),
+        dbc.ModalBody([
+            html.P(t("pa.clear_data_body", lang), className="mb-2"),
+            html.P(t("pa.clear_data_keep", lang), className="text-muted small mb-0"),
+        ]),
+        dbc.ModalFooter([
+            dbc.Button(t("pa.cancel", lang), id="clear-data-cancel",
+                       color="secondary", outline=True, size="sm", className="me-2"),
+            dbc.Button(t("pa.clear_data_confirm", lang), id="clear-data-confirm",
+                       color="danger", size="sm"),
+        ]),
+    ], id="clear-data-modal", is_open=False),
+
     # Per-security trading history, opened from the securities table
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle(id="sec-history-title"), close_button=True),
@@ -737,6 +792,9 @@ def layout(lang="en"):
     dcc.Store(id="securities-sort", data={"col": "value", "asc": False}),
     dcc.Store(id="securities-data", data=[]),
     dcc.Store(id="privacy-mode", data=False),
+    # Bumped when the user clears their data, so secure_store.js knows to drop
+    # the encrypted vault entry too.
+    dcc.Store(id="clear-data-done", data=0),
     # All three chart figures (value/drawdown/performance), built together on
     # data changes; switching tabs just picks one clientside, no round trip.
     dcc.Store(id="chart-figures-store", storage_type="memory"),
@@ -1066,6 +1124,76 @@ def register_callbacks(app):
                 {"display": "block"}, {"display": "none"},
                 "syncing", "connection-status syncing", "Syncing data...")
     
+    # ── The phone actions menu ──
+    # Each item clicks the real button, which is still in the DOM (hidden by
+    # a Bootstrap display class, not removed), so every existing callback
+    # keeps working and there is one implementation of each action.
+    for _item, _target in (("pa-menu-sync", "sync-tr-data-btn"),
+                           ("pa-menu-privacy", "toggle-privacy-btn"),
+                           ("pa-menu-demo", "demo-toggle-btn")):
+        app.clientside_callback(
+            """
+            function(n) {
+                if (!n) { return window.dash_clientside.no_update; }
+                const b = document.getElementById("%s");
+                if (b) { b.click(); }
+                return false;   // close the menu
+            }
+            """ % _target,
+            Output("pa-actions-popover", "is_open", allow_duplicate=True),
+            Input(_item, "n_clicks"),
+            prevent_initial_call=True,
+        )
+
+    # The menu labels track the same state the buttons do, so the menu never
+    # offers "Hide values" while they are already hidden.
+    @app.callback(
+        [Output("pa-menu-privacy-label", "children"),
+         Output("pa-menu-demo-label", "children")],
+        [Input("privacy-mode", "data"), Input("demo-mode", "data")],
+        State("lang-store", "data"),
+        prevent_initial_call=False,
+    )
+    def update_menu_labels(private, demo_mode, lang_data):
+        lang = get_lang(lang_data)
+        return (t("pa.show" if private else "pa.hide_values", lang),
+                t("pa.switch_real" if demo_mode else "pa.switch_demo", lang))
+
+    # ── Clear stored data ──
+    @app.callback(
+        Output("clear-data-modal", "is_open"),
+        [Input("pa-menu-clear", "n_clicks"),
+         Input("clear-data-cancel", "n_clicks"),
+         Input("clear-data-confirm", "n_clicks")],
+        prevent_initial_call=True,
+    )
+    def toggle_clear_modal(open_click, cancel, confirm):
+        return dash.callback_context.triggered_id == "pa-menu-clear"
+
+    @app.callback(
+        [Output("portfolio-data-store", "data", allow_duplicate=True),
+         Output("demo-mode", "data", allow_duplicate=True),
+         Output("local-portfolio-backup", "data", allow_duplicate=True),
+         Output("tr-encrypted-creds", "data", allow_duplicate=True),
+         Output("clear-data-done", "data")],
+        Input("clear-data-confirm", "n_clicks"),
+        State("current-user-store", "data"),
+        prevent_initial_call=True,
+    )
+    def clear_stored_data(n_clicks, current_user):
+        if not n_clicks:
+            raise PreventUpdate
+        uid = auth.current_uid(current_user)
+        if uid:
+            try:
+                from components.tr_api import clear_user_data
+                clear_user_data(user_id=uid)
+            except Exception as exc:
+                _log.warning("Could not clear server-side data for %s: %s", uid, exc)
+        # Back to demo, with the browser-held copies dropped as well. The
+        # vault entry itself is removed clientside (see assets/secure_store.js).
+        return _load_demo_json(), True, None, None, (n_clicks or 0)
+
     # ── Daily price history: what the chart is drawn from, and the
     #    action that upgrades it. ──
     @app.callback(

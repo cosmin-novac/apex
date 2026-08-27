@@ -76,9 +76,30 @@
     return JSON.parse(dec.decode(pt));
   }
 
-  window.apexVault = { vaultSet: vaultSet, vaultGet: vaultGet };
+  function vaultClear(uid) {
+    if (!window.localStorage || !uid) return false;
+    window.localStorage.removeItem(KEY_PREFIX + uid);
+    // The restore guard remembers it already hydrated this user; without
+    // clearing it the next tick would skip the read and leave the dropped
+    // data on screen until a reload.
+    window.__apexVaultRestoredFor = null;
+    window.__apexVaultLastState = null;
+    return true;
+  }
+
+  window.apexVault = { vaultSet: vaultSet, vaultGet: vaultGet, vaultClear: vaultClear };
 
   window.dash_clientside.apexVault = {
+    // Drop this user's encrypted blob. The server-side caches are cleared by
+    // the callback that triggers this; between them nothing of the synced
+    // portfolio survives. The account and its password are untouched.
+    clearVault: function (_bump, currentUser) {
+      var uid = (currentUser && (currentUser.uid || currentUser.id)) || activeUid();
+      if (!_bump || !uid) return window.dash_clientside.no_update;
+      vaultClear(uid);
+      return _bump;
+    },
+
     // Encrypt the per-user blob whenever the portfolio backup or TR creds change.
     persistBackup: async function (portfolioBackup, trCreds, currentUser) {
       var NU = window.dash_clientside.no_update;
