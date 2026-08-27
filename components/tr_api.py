@@ -3865,6 +3865,58 @@ def consume_fetch_result(user_id: str = "_default") -> Optional[Dict[str, Any]]:
         return None
 
 
+def peek_fetch_result(user_id: str = "_default") -> Optional[Dict[str, Any]]:
+    """Read the outcome marker WITHOUT consuming it.
+
+    The Dash poll owns that marker: it reads it once and deletes it. Anything
+    else that wants to know how a sync went (the watchdog below) has to look
+    without taking, or it would steal the result the browser is waiting for.
+    """
+    path = _fetch_result_path(user_id)
+    try:
+        if not path.exists():
+            return None
+        with open(path) as f:
+            marker = json.load(f)
+        if datetime.now().timestamp() - float(marker.get("finished_ts", 0)) > 600:
+            return None
+        return marker
+    except Exception:
+        return None
+
+
+def sync_state(user_id: str = "_default") -> Dict[str, Any]:
+    """A read-only snapshot of a user's background sync.
+
+    Served to the browser so a page whose Dash callbacks have stopped working
+    can still find out what happened. That is not a hypothetical: on a phone
+    the tab is suspended when the screen locks or the user switches apps, and
+    a callback that was in flight at that moment never settles, which leaves
+    the renderer holding back every later callback that touches the same
+    stores. The sync poll keeps ticking and no request is ever sent, so the
+    modal sits on its last progress line for as long as the user is willing
+    to look at it.
+
+    Nothing here is consumed and no portfolio data is included: it is enough
+    to tell whether a sync is running, and whether one has landed since a
+    moment the caller names.
+    """
+    progress = get_fetch_progress(user_id) or {}
+    marker = peek_fetch_result(user_id)
+    return {
+        "now": datetime.now().timestamp(),
+        "running": bool(progress),
+        "pct": int(progress.get("pct") or 0) if progress else None,
+        "stage": progress.get("stage") or None if progress else None,
+        "detail": progress.get("detail") or None if progress else None,
+        "started": sync_started_ts(user_id),
+        "cached_at": portfolio_cached_ts(user_id),
+        "finished_ts": (marker or {}).get("finished_ts"),
+        "ok": bool(marker.get("success")) if marker else None,
+        "error": (marker or {}).get("error"),
+    }
+
+
 def take_fetch_data(user_id: str = "_default") -> Optional[Dict[str, Any]]:
     """Pop the in-process result of the last background sync, if this worker
     ran it. Cross-worker deliveries read the portfolio cache instead."""

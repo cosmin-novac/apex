@@ -1,6 +1,7 @@
 """Apex - standalone portfolio and backtesting application."""
 import json
 import os
+import re
 import logging
 from dotenv import load_dotenv
 
@@ -16,7 +17,7 @@ else:
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, ctx, no_update, Input, Output, State
-from flask import send_from_directory
+from flask import jsonify, request, send_from_directory
 
 from pages.backtesting_sim import layout as backtesting_layout, register_callbacks as register_backtesting_callbacks
 from pages.portfolio_sim import layout as portfolio_sim_layout, register_callbacks as register_portfolio_sim_callbacks
@@ -464,6 +465,33 @@ server = app.server
 @server.route("/_favicon.ico")
 def _serve_favicon():
     return send_from_directory(os.path.dirname(__file__), "ape.ico", mimetype="image/x-icon")
+
+
+@server.route("/api/sync-state")
+def _sync_state():
+    """Whether this user's background sync is running or has landed.
+
+    A plain HTTP endpoint on purpose. Everything else the syncing modal knows
+    arrives through a Dash callback, and on a phone that channel can stop:
+    when the screen locks or the user switches apps the tab is suspended, and
+    a request that was in flight then never settles, so the renderer holds
+    back every later callback that touches the same stores. The poll keeps
+    ticking, nothing is sent, and the modal sits on its last progress line.
+    assets/sync_watchdog.js reads this with a bare fetch, which nothing in
+    the renderer can hold back, and reloads the page if a finished sync is
+    not being delivered (see the file for why a reload is the right hammer).
+
+    Returns no portfolio data: only timings, and whether a sync is under way.
+    """
+    uid = (request.args.get("uid") or "").strip()
+    # The id names a directory under the cache root, so nothing but the
+    # characters an account id is made of gets through.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", uid or ""):
+        return jsonify({"error": "invalid uid"}), 400
+    from components.tr_api import sync_state
+    resp = jsonify(sync_state(uid))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # robots.txt, sitemap.xml and llms.txt are generated from core/seo.py with the

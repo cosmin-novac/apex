@@ -108,12 +108,18 @@ def _fresher(a, b):
     unconditionally showed the user stale holdings with a fresh sync sitting
     on disk. cached_at is written by the server in ISO form, which sorts
     correctly as a string.
+
+    Call it as _fresher(vault_copy, disk_copy): an exact tie means both come
+    from the same sync, and then the disk copy is the one to take.
     """
     if not a:
         return b
     if not b:
         return a
-    return a if _synced_at(a) >= _synced_at(b) else b
+    # Ties go to b, the server-side cache. Both describe the same sync then,
+    # but the browser copy may have been slimmed down to fit localStorage
+    # (see assets/secure_store.js), so the complete one wins.
+    return a if _synced_at(a) > _synced_at(b) else b
 
 
 def _disk_cached_portfolio(uid):

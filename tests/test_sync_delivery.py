@@ -213,3 +213,101 @@ def test_deadline_is_wall_clock_not_poll_ticks(monkeypatch, tmp_path):
     assert all(tr_connector.resolve_sync_outcome(uid, silence_seconds=180) is None
                for _ in range(50))
     assert tr_connector.resolve_sync_outcome(uid, silence_seconds=30) is not None
+
+
+# ── The watchdog's view of a sync ────────────────────────────────────────
+# A phone suspends the tab when the screen locks, and a Dash callback that
+# was in flight then never settles, which wedges the renderer's queue: the
+# sync poll ticks on and no request is ever sent, so the modal freezes on its
+# last progress line. assets/sync_watchdog.js asks for this snapshot over
+# plain HTTP, which no renderer state can hold back.
+
+def test_sync_state_reports_a_running_sync(monkeypatch, tmp_path):
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+    uid = "watch-running"
+    _stamp_start(uid, time.time() - 20)
+    tr_api.get_connection(uid)._write_progress(80, "Price history", "42 of 79")
+
+    state = tr_api.sync_state(uid)
+    assert state["running"] is True
+    assert state["pct"] == 80
+    assert state["stage"] == "Price history"
+    assert state["detail"] == "42 of 79"
+    assert state["cached_at"] is None
+    assert state["now"] > 0
+
+
+def test_sync_state_reports_a_landed_sync(monkeypatch, tmp_path):
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+    uid = "watch-landed"
+    watching_since = time.time()
+    _stamp_start(uid, watching_since - 60)
+    _write_cache(uid, {"success": True, "data": {"positions": [{"isin": "X"}]}})
+
+    state = tr_api.sync_state(uid)
+    assert state["running"] is False
+    # This is the comparison the watchdog makes: something was cached after
+    # the browser started watching, so the sync it is waiting on has landed.
+    assert state["cached_at"] > watching_since
+
+
+def test_sync_state_does_not_consume_the_marker(monkeypatch, tmp_path):
+    """The Dash poll owns the marker. A watchdog that took it would steal the
+    very result the browser is waiting for."""
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+    uid = "watch-peek"
+    tr_api._atomic_write_json(tr_api._fetch_result_path(uid),
+                              {"success": True, "flow": "refresh",
+                               "finished_ts": time.time()})
+    assert tr_api.sync_state(uid)["ok"] is True
+    assert tr_api.sync_state(uid)["ok"] is True          # still there
+    assert tr_api.consume_fetch_result(uid) is not None  # and still deliverable
+
+
+def test_sync_state_surfaces_a_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+    uid = "watch-failed"
+    tr_api._atomic_write_json(tr_api._fetch_result_path(uid),
+                              {"success": False, "error": "TR said no",
+                               "flow": "refresh", "finished_ts": time.time()})
+    state = tr_api.sync_state(uid)
+    assert state["ok"] is False
+    assert state["error"] == "TR said no"
+
+
+def test_sync_state_ignores_a_marker_from_an_old_sync(monkeypatch, tmp_path):
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+    uid = "watch-stale"
+    tr_api._atomic_write_json(tr_api._fetch_result_path(uid),
+                              {"success": True, "finished_ts": time.time() - 3600})
+    assert tr_api.peek_fetch_result(uid) is None
+    assert tr_api.sync_state(uid)["ok"] is None
+
+
+def test_sync_state_is_quiet_when_nothing_has_happened(monkeypatch, tmp_path):
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+    state = tr_api.sync_state("watch-nothing")
+    assert state["running"] is False
+    assert state["cached_at"] is None and state["finished_ts"] is None
+    assert state["ok"] is None
+
+
+def test_sync_state_endpoint(monkeypatch, tmp_path):
+    """The watchdog's channel: plain HTTP, no Dash, no portfolio data."""
+    import main
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+    uid = "endpointuser"
+    _stamp_start(uid, time.time() - 5)
+    tr_api.get_connection(uid)._write_progress(55, "Transactions", "page 12")
+
+    client = main.server.test_client()
+    body = client.get(f"/api/sync-state?uid={uid}").get_json()
+    assert body["running"] is True and body["pct"] == 55
+    assert body["stage"] == "Transactions"
+    # Timings only: nothing about what the portfolio holds.
+    assert set(body) == {"now", "running", "pct", "stage", "detail", "started",
+                         "cached_at", "finished_ts", "ok", "error"}
+
+    # A user id is a directory name under the cache root, so it is validated.
+    assert client.get("/api/sync-state?uid=../../etc").status_code == 400
+    assert client.get("/api/sync-state").status_code == 400
