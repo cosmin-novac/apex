@@ -5108,3 +5108,42 @@ body.theme-night {
         min-height: 100vh;
     }
 }
+
+/* ── Real account, nothing synced into it ──
+   Replaces the whole dashboard rather than sitting above it: any figure
+   left on screen there would be demo data under the real account's name. */
+.pa-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 55vh;
+    padding: 24px 16px;
+}
+.pa-empty-inner {
+    max-width: 420px;
+    text-align: center;
+}
+.pa-empty-icon {
+    font-size: 2.6rem;
+    color: var(--text-muted, #94a3b8);
+    opacity: 0.7;
+}
+.pa-empty-title {
+    margin-top: 14px;
+    font-weight: 700;
+}
+.pa-empty-body {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.92rem;
+    margin-bottom: 20px;
+}
+.pa-empty-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.85rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.pa-empty-link:hover { color: inherit; }

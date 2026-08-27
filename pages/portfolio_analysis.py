@@ -34,6 +34,27 @@ from core import utils as cu
 # ── Demo account data ────────────────────────────────────────────────
 _DEMO_JSON_PATH = Path(__file__).resolve().parent.parent / "data" / "demo_portfolio.json"
 
+# What goes into portfolio-data-store when the user is on their real account
+# and there is no real data anywhere. Not the demo payload: that is what put
+# demo holdings on the real account in the first place.
+NO_DATA = json.dumps({"success": False, "no_data": True})
+
+
+def _dashboard_visibility(portfolio, demo_mode):
+    """Styles for (dashboard, empty state). Never show numbers that are not
+    the user's own.
+
+    Demo mode shows the demo portfolio and the banner says so. Off demo
+    mode, the only thing worth rendering is real synced data: without it
+    every figure on the dashboard would be demo data wearing the real
+    account's name, so the whole dashboard goes away and the empty state
+    takes its place.
+    """
+    if demo_mode or _is_real_portfolio(portfolio):
+        return {}, {"display": "none"}
+    return {"display": "none"}, {}
+
+
 def _load_demo_json() -> str:
     """Return the demo portfolio JSON string (static file, ~/10 of real data)."""
     try:
@@ -619,204 +640,230 @@ def layout(lang="en"):
         ], className="header-right"),
     ], className="sticky-header"),
     
-    # Unified Top Summary Card (donut + hero + metrics in one card)
-    dbc.Row([
-        # Donut Chart Card
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    # Not `sensitive`: privacy mode keeps the donut visible and
-                    # blurs only its € center annotation (style.css).
-                    dcc.Graph(id="holdings-donut-chart",
-                              config={"displayModeBar": False},
-                              style={"height": "260px"}),
-                ], className="py-0 px-0"),
-            ], className="card-modern h-100"),
-        ], md=3, className="mb-3"),
+    # ── Nothing to show ──
+    # Switching to the real account when nothing has been synced used to
+    # leave the demo portfolio on screen with the banner gone, so the demo
+    # holdings read as the user's own. Say there is no data and offer the
+    # one action that fixes it.
+    html.Div([
+        html.Div([
+            html.I(className="bi bi-inbox pa-empty-icon"),
+            html.H4(t("pa.no_data_title", lang), className="pa-empty-title"),
+            html.P(t("pa.no_data_body", lang), className="pa-empty-body"),
+            dbc.Button([html.I(className="bi bi-arrow-repeat me-2"),
+                        t("pa.no_data_sync", lang)],
+                       id="pa-empty-sync-btn", color="primary", n_clicks=0),
+            html.Div(
+                html.Button(t("pa.no_data_demo", lang), id="pa-empty-demo-btn",
+                            className="pa-empty-link", n_clicks=0),
+                className="mt-3"),
+        ], className="pa-empty-inner"),
+    ], id="pa-no-data", className="pa-empty", style={"display": "none"}),
+
+    # ── The dashboard itself ──
+    # Hidden as a block by show_dashboard_or_empty_state when the real
+    # account has no data behind it.
+    html.Div([
+
+        # Unified Top Summary Card (donut + hero + metrics in one card)
+        dbc.Row([
+            # Donut Chart Card
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        # Not `sensitive`: privacy mode keeps the donut visible and
+                        # blurs only its € center annotation (style.css).
+                        dcc.Graph(id="holdings-donut-chart",
+                                  config={"displayModeBar": False},
+                                  style={"height": "260px"}),
+                    ], className="py-0 px-0"),
+                ], className="card-modern h-100"),
+            ], md=3, className="mb-3"),
         
-        # Portfolio Summary + Metrics
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    dbc.Row([
-                        dbc.Col([
-                            html.Div([
-                                html.Div(t("pa.portfolio_value", lang), className="text-muted small"),
-                                html.Div(id="portfolio-total-value", className="fs-2 fw-bold portfolio-hero-value sensitive sensitive-strong",
-                                         children=cu.fmt_eur(0, lang)),
-                                html.Div(id="portfolio-total-change", className="fs-6 sensitive", children=""),
-                            ], className="py-1"),
-                        ], md=4, className="mb-2"),
-                        dbc.Col([
-                            dbc.Row([
-                                dbc.Col([
-                                    create_metric_card(t("pa.invested", lang), "metric-invested"),
-                                ], width=4, className="mb-2"),
-                                dbc.Col([
-                                    create_metric_card(t("pa.profit_loss", lang), "metric-profit", "metric-profit-pct"),
-                                ], width=4, className="mb-2"),
-                                dbc.Col([
-                                    create_metric_card(t("pa.cash", lang), "metric-cash"),
-                                ], width=4, className="mb-2"),
-                            ]),
-                            dbc.Row([
-                                # Main value is a percentage (stays readable in
-                                # privacy mode); the absolute € subtitle blurs.
-                                dbc.Col([
-                                    create_metric_card(t("pa.1m_return", lang), "metric-1m-return", "metric-1m-abs",
-                                                       value_sensitive=False, subtitle_sensitive=True),
-                                ], width=3),
-                                dbc.Col([
-                                    create_metric_card(t("pa.3m_return", lang), "metric-3m-return", "metric-3m-abs",
-                                                       value_sensitive=False, subtitle_sensitive=True),
-                                ], width=3),
-                                dbc.Col([
-                                    create_metric_card(t("pa.ytd_return", lang), "metric-ytd-return", "metric-ytd-abs",
-                                                       value_sensitive=False, subtitle_sensitive=True),
-                                ], width=3),
-                                dbc.Col([
-                                    create_metric_card(t("pa.total_return", lang), "metric-total-return", "metric-total-abs",
-                                                       value_sensitive=False, subtitle_sensitive=True),
-                                ], width=3),
-                            ]),
-                        ], md=8, className="mb-2"),
-                    ]),
-                ]),
-            ], className="card-modern h-100"),
-        ], md=9, className="mb-3"),
-    ], className="portfolio-top-summary"),
-    
-    # Charts Row (Value/Drawdown + Performance)
-    dbc.Row([
-        # Value / Drawdown Chart
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    dbc.Tabs([
-                        dbc.Tab(label=t("pa.value", lang), tab_id="tab-value"),
-                        dbc.Tab(label=t("pa.drawdown", lang), tab_id="tab-drawdown"),
-                        dbc.Tab(label=t("pa.performance", lang), tab_id="tab-performance"),
-                    ], id="chart-tabs", active_tab="tab-value", className="mb-2"),
-
-                    # The series labels live at the right end of each line on
-                    # a desktop. On a phone that gutter is a third of the
-                    # chart, so they move here instead and the plot gets the
-                    # width back. Empty (and hidden) above the breakpoint.
-                    html.Div(id="chart-legend", className="chart-legend"),
-
-                    # Downloading a daily price series per security is the
-                    # slowest stage of a sync by a wide margin, so a sync no
-                    # longer does it. This says what the line is drawn from
-                    # and offers the download as its own action.
-                    html.Div([
-                        html.Span(id="history-source", className="history-source"),
-                        dbc.Button([
-                            html.I(className="bi bi-calendar3 me-1"),
-                            t("pa.load_history", lang),
-                        ], id="load-history-btn", color="link", size="sm",
-                           className="load-history-btn ms-auto",
-                           title=t("pa.load_history_hint", lang), n_clicks=0),
-                    ], id="history-bar", className="history-bar",
-                       style={"display": "none"}),
-                    
-                    dcc.Loading(
-                        dcc.Graph(
-                            id="main-portfolio-chart-v2",
-                            config={
-                                "displayModeBar": False,
-                                "displaylogo": False,
-                                "scrollZoom": False,
-                                "doubleClick": "reset",
-                                "responsive": True,
-                            },
-                            clear_on_unhover=True,
-                            style={"height": "430px"},
-                            # The chart callback swaps this to "money-axis" on
-                            # the value tab; privacy mode then blurs only the €
-                            # axis ticks and hover, never the chart itself.
-                            className="",
-                        ),
-                        type="circle",
-                        color="#6366f1"
-                    ),
-                ], className="py-2"),
-            ], className="card-modern h-100"),
-        ], md=12, className="mb-3"),
-    ]),
-
-    # Performance Comparison Table
-    dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-bar-chart-line me-2"),
-                    t("pa.perf_comparison", lang),
-                    dbc.Button(html.I(className="bi bi-info-circle"),
-                               id="cmp-info-btn", color="link", size="sm",
-                               className="mc-info-btn"),
-                    dbc.Popover([
-                        dbc.PopoverHeader(t("pa.cmp_info_title", lang)),
-                        dbc.PopoverBody([
-                            html.P(t("pa.cmp_info_1", lang), className="mb-2"),
-                            html.P(t("pa.cmp_info_2", lang), className="mb-2"),
-                            html.P(t("pa.cmp_info_3", lang), className="mb-0"),
+            # Portfolio Summary + Metrics
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div([
+                                    html.Div(t("pa.portfolio_value", lang), className="text-muted small"),
+                                    html.Div(id="portfolio-total-value", className="fs-2 fw-bold portfolio-hero-value sensitive sensitive-strong",
+                                             children=cu.fmt_eur(0, lang)),
+                                    html.Div(id="portfolio-total-change", className="fs-6 sensitive", children=""),
+                                ], className="py-1"),
+                            ], md=4, className="mb-2"),
+                            dbc.Col([
+                                dbc.Row([
+                                    dbc.Col([
+                                        create_metric_card(t("pa.invested", lang), "metric-invested"),
+                                    ], width=4, className="mb-2"),
+                                    dbc.Col([
+                                        create_metric_card(t("pa.profit_loss", lang), "metric-profit", "metric-profit-pct"),
+                                    ], width=4, className="mb-2"),
+                                    dbc.Col([
+                                        create_metric_card(t("pa.cash", lang), "metric-cash"),
+                                    ], width=4, className="mb-2"),
+                                ]),
+                                dbc.Row([
+                                    # Main value is a percentage (stays readable in
+                                    # privacy mode); the absolute € subtitle blurs.
+                                    dbc.Col([
+                                        create_metric_card(t("pa.1m_return", lang), "metric-1m-return", "metric-1m-abs",
+                                                           value_sensitive=False, subtitle_sensitive=True),
+                                    ], width=3),
+                                    dbc.Col([
+                                        create_metric_card(t("pa.3m_return", lang), "metric-3m-return", "metric-3m-abs",
+                                                           value_sensitive=False, subtitle_sensitive=True),
+                                    ], width=3),
+                                    dbc.Col([
+                                        create_metric_card(t("pa.ytd_return", lang), "metric-ytd-return", "metric-ytd-abs",
+                                                           value_sensitive=False, subtitle_sensitive=True),
+                                    ], width=3),
+                                    dbc.Col([
+                                        create_metric_card(t("pa.total_return", lang), "metric-total-return", "metric-total-abs",
+                                                           value_sensitive=False, subtitle_sensitive=True),
+                                    ], width=3),
+                                ]),
+                            ], md=8, className="mb-2"),
                         ]),
-                    ], id="cmp-info-popover", target="cmp-info-btn",
-                       trigger="legacy", placement="bottom",
-                       className="mc-info-popover"),
-                ], className="card-header-modern d-flex align-items-center"),
-                dbc.CardBody([
-                    html.Div(id="comparison-table-container"),
-                ], className="py-2"),
-            ], className="card-modern"),
-        ], md=12, className="mb-3"),
-    ]),
+                    ]),
+                ], className="card-modern h-100"),
+            ], md=9, className="mb-3"),
+        ], className="portfolio-top-summary"),
+    
+        # Charts Row (Value/Drawdown + Performance)
+        dbc.Row([
+            # Value / Drawdown Chart
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardBody([
+                        dbc.Tabs([
+                            dbc.Tab(label=t("pa.value", lang), tab_id="tab-value"),
+                            dbc.Tab(label=t("pa.drawdown", lang), tab_id="tab-drawdown"),
+                            dbc.Tab(label=t("pa.performance", lang), tab_id="tab-performance"),
+                        ], id="chart-tabs", active_tab="tab-value", className="mb-2"),
 
-    # Returns Summary + Recent Activity (two-column)
-    dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-bar-chart me-2"),
-                    t("pa.returns_summary", lang),
-                    # Names the header timeframe the summary is scoped to.
-                    dbc.Badge(id="rendite-range-badge", className="ms-auto",
-                              color="light", text_color="secondary"),
-                ], className="card-header-modern d-flex align-items-center"),
-                dbc.CardBody([
-                    html.Div(id="rendite-breakdown")
-                ], className="py-2"),
-            ], className="card-modern h-100"),
-        ], md=5, className="mb-3"),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-clock-history me-2"),
-                    t("pa.recent_activity", lang)
-                ], className="card-header-modern"),
-                dbc.CardBody([
-                    html.Div(id="recent-activities-list")
-                ], className="py-2"),
-            ], className="card-modern h-100"),
-        ], md=7, className="mb-3"),
-    ]),
+                        # The series labels live at the right end of each line on
+                        # a desktop. On a phone that gutter is a third of the
+                        # chart, so they move here instead and the plot gets the
+                        # width back. Empty (and hidden) above the breakpoint.
+                        html.Div(id="chart-legend", className="chart-legend"),
 
-    # Securities Table (full width, sortable)
-    dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-table me-2"),
-                    t("pa.securities", lang),
-                    dbc.Badge(id="holdings-count", children="0", className="ms-2", color="primary", pill=True),
-                    html.Span(id="winners-losers-badge", className="ms-auto"),
-                ], className="card-header-modern d-flex align-items-center"),
-                dbc.CardBody([
-                    html.Div(id="securities-table-container", style={"overflowX": "auto"})
-                ], className="py-2"),
-            ], className="card-modern"),
-        ], md=12, className="mb-3"),
-    ]),
+                        # Downloading a daily price series per security is the
+                        # slowest stage of a sync by a wide margin, so a sync no
+                        # longer does it. This says what the line is drawn from
+                        # and offers the download as its own action.
+                        html.Div([
+                            html.Span(id="history-source", className="history-source"),
+                            dbc.Button([
+                                html.I(className="bi bi-calendar3 me-1"),
+                                t("pa.load_history", lang),
+                            ], id="load-history-btn", color="link", size="sm",
+                               className="load-history-btn ms-auto",
+                               title=t("pa.load_history_hint", lang), n_clicks=0),
+                        ], id="history-bar", className="history-bar",
+                           style={"display": "none"}),
+                    
+                        dcc.Loading(
+                            dcc.Graph(
+                                id="main-portfolio-chart-v2",
+                                config={
+                                    "displayModeBar": False,
+                                    "displaylogo": False,
+                                    "scrollZoom": False,
+                                    "doubleClick": "reset",
+                                    "responsive": True,
+                                },
+                                clear_on_unhover=True,
+                                style={"height": "430px"},
+                                # The chart callback swaps this to "money-axis" on
+                                # the value tab; privacy mode then blurs only the €
+                                # axis ticks and hover, never the chart itself.
+                                className="",
+                            ),
+                            type="circle",
+                            color="#6366f1"
+                        ),
+                    ], className="py-2"),
+                ], className="card-modern h-100"),
+            ], md=12, className="mb-3"),
+        ]),
+
+        # Performance Comparison Table
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className="bi bi-bar-chart-line me-2"),
+                        t("pa.perf_comparison", lang),
+                        dbc.Button(html.I(className="bi bi-info-circle"),
+                                   id="cmp-info-btn", color="link", size="sm",
+                                   className="mc-info-btn"),
+                        dbc.Popover([
+                            dbc.PopoverHeader(t("pa.cmp_info_title", lang)),
+                            dbc.PopoverBody([
+                                html.P(t("pa.cmp_info_1", lang), className="mb-2"),
+                                html.P(t("pa.cmp_info_2", lang), className="mb-2"),
+                                html.P(t("pa.cmp_info_3", lang), className="mb-0"),
+                            ]),
+                        ], id="cmp-info-popover", target="cmp-info-btn",
+                           trigger="legacy", placement="bottom",
+                           className="mc-info-popover"),
+                    ], className="card-header-modern d-flex align-items-center"),
+                    dbc.CardBody([
+                        html.Div(id="comparison-table-container"),
+                    ], className="py-2"),
+                ], className="card-modern"),
+            ], md=12, className="mb-3"),
+        ]),
+
+        # Returns Summary + Recent Activity (two-column)
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className="bi bi-bar-chart me-2"),
+                        t("pa.returns_summary", lang),
+                        # Names the header timeframe the summary is scoped to.
+                        dbc.Badge(id="rendite-range-badge", className="ms-auto",
+                                  color="light", text_color="secondary"),
+                    ], className="card-header-modern d-flex align-items-center"),
+                    dbc.CardBody([
+                        html.Div(id="rendite-breakdown")
+                    ], className="py-2"),
+                ], className="card-modern h-100"),
+            ], md=5, className="mb-3"),
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className="bi bi-clock-history me-2"),
+                        t("pa.recent_activity", lang)
+                    ], className="card-header-modern"),
+                    dbc.CardBody([
+                        html.Div(id="recent-activities-list")
+                    ], className="py-2"),
+                ], className="card-modern h-100"),
+            ], md=7, className="mb-3"),
+        ]),
+
+        # Securities Table (full width, sortable)
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className="bi bi-table me-2"),
+                        t("pa.securities", lang),
+                        dbc.Badge(id="holdings-count", children="0", className="ms-2", color="primary", pill=True),
+                        html.Span(id="winners-losers-badge", className="ms-auto"),
+                    ], className="card-header-modern d-flex align-items-center"),
+                    dbc.CardBody([
+                        html.Div(id="securities-table-container", style={"overflowX": "auto"})
+                    ], className="py-2"),
+                ], className="card-modern"),
+            ], md=12, className="mb-3"),
+        ]),
+    ], id="pa-dashboard"),
     
     # TR Connect Modal
     _create_tr_connect_modal(lang),
@@ -1065,7 +1112,21 @@ def register_callbacks(app):
             # Back to real: whichever copy of the real portfolio is newer.
             best = _fresher(_backup_for_uid(local_backup, uid),
                             _disk_cached_portfolio(uid))
-            return (False, best) if best else (False, no_update)
+            # Nothing to switch to. This used to return no_update, which left
+            # the demo portfolio on screen with demo mode off and the banner
+            # gone: the demo holdings then read as the user's own account.
+            return (False, best) if best else (False, NO_DATA)
+
+    # ── Dashboard, or an honest empty state ──
+    @app.callback(
+        [Output("pa-dashboard", "style"),
+         Output("pa-no-data", "style")],
+        [Input("portfolio-data-store", "data"),
+         Input("demo-mode", "data")],
+        prevent_initial_call=False,
+    )
+    def show_dashboard_or_empty_state(portfolio, demo_mode):
+        return _dashboard_visibility(portfolio, demo_mode)
 
     # ── Demo banner visibility ──
     @app.callback(
@@ -1086,10 +1147,14 @@ def register_callbacks(app):
         lang = get_lang(lang_data)
         show_demo = demo_mode or not current_user
 
-        # The user "has real data" if their browser holds a real synced
-        # portfolio (the backup is browser-only and never holds demo data).
+        # The user "has real data" if a real synced portfolio exists in the
+        # browser vault or in the server-side cache. Counting only the vault
+        # hid the toggle from anyone whose vault write had failed (it is
+        # capped at a few megabytes) even though their portfolio was sitting
+        # on the server.
         uid = auth.current_uid(current_user)
-        has_real_data = bool(_backup_for_uid(local_backup, uid))
+        has_real_data = bool(_backup_for_uid(local_backup, uid)
+                             or _disk_cached_portfolio(uid))
 
         banner_style = {
             "display": "block" if show_demo else "none",
@@ -1114,7 +1179,10 @@ def register_callbacks(app):
         # every logged-in user (it opens the connect modal when there is no
         # session yet). The demo toggle only makes sense once real data exists.
         sync_visible = {} if uid else {"display": "none"}
-        toggle_visible = {} if has_real_data else {"display": "none"}
+        # Also shown while the user is on their real account with nothing in
+        # it: that is the one state they need it to get back out of.
+        toggle_visible = ({} if (has_real_data or (uid and not show_demo))
+                          else {"display": "none"})
 
         if show_demo:
             return (banner_style, t("pa.switch_real", lang), "bi bi-briefcase-fill",
@@ -1176,6 +1244,24 @@ def register_callbacks(app):
     # Each item clicks the real button, which is still in the DOM (hidden by
     # a Bootstrap display class, not removed), so every existing callback
     # keeps working and there is one implementation of each action.
+    # The empty state's buttons work the same way: they click the real
+    # controls in the header rather than duplicating what those do.
+    for _item, _target in (("pa-empty-sync-btn", "sync-tr-data-btn"),
+                           ("pa-empty-demo-btn", "demo-toggle-btn")):
+        app.clientside_callback(
+            """
+            function(n) {
+                if (!n) { return window.dash_clientside.no_update; }
+                const b = document.getElementById("%s");
+                if (b) { b.click(); }
+                return window.dash_clientside.no_update;
+            }
+            """ % _target,
+            Output(_item, "data-clicked"),
+            Input(_item, "n_clicks"),
+            prevent_initial_call=True,
+        )
+
     for _item, _target in (("pa-menu-sync", "sync-tr-data-btn"),
                            ("pa-menu-privacy", "toggle-privacy-btn"),
                            ("pa-menu-demo", "demo-toggle-btn")):
