@@ -66,6 +66,14 @@ def test_an_empty_portfolio_is_still_not_real():
 
 # ── Which copy wins ──────────────────────────────────────────────────────
 
+def test_a_tie_goes_to_the_server_side_cache():
+    """Same sync on both sides, but the browser copy may have been slimmed to
+    fit localStorage, so the complete one wins."""
+    vault = json.dumps(_real(cached_at="2026-08-27T10:00:00", positions=4))
+    disk = json.dumps(_real(cached_at="2026-08-27T10:00:00", positions=4, cash=101.0))
+    assert pa._fresher(vault, disk) == disk
+
+
 def test_fresher_prefers_the_newer_sync():
     old = json.dumps(_real(cached_at="2026-08-20T08:00:00", positions=2))
     new = json.dumps(_real(cached_at="2026-08-27T09:30:00", positions=5))

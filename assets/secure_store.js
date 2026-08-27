@@ -76,6 +76,24 @@
     return JSON.parse(dec.decode(pt));
   }
 
+  // Everything the sync computed for speed, dropped. The server-side cache
+  // still has the complete copy; this is what goes to localStorage when the
+  // complete one does not fit (see persistBackup).
+  function slimBackup(wrapJson) {
+    try {
+      var wrap = JSON.parse(wrapJson);
+      var portfolio = JSON.parse(wrap.portfolio);
+      if (portfolio && portfolio.data) {
+        delete portfolio.data.positionHistories;
+        delete portfolio.data.cachedSeries;
+      }
+      wrap.portfolio = JSON.stringify(portfolio);
+      return JSON.stringify(wrap);
+    } catch (e) {
+      return null;
+    }
+  }
+
   function vaultClear(uid) {
     if (!window.localStorage || !uid) return false;
     window.localStorage.removeItem(KEY_PREFIX + uid);
@@ -114,10 +132,32 @@
           portfolio: portfolioBackup != null ? portfolioBackup : existing.portfolio || null,
           tr_creds: trCreds != null ? trCreds : existing.tr_creds || null,
         };
-        await vaultSet(uid, key, blob);
+        try {
+          await vaultSet(uid, key, blob);
+        } catch (quota) {
+          // localStorage is about 5 MB and a synced portfolio can exceed it:
+          // the per-position price histories and the pre-computed chart
+          // series are most of the weight. Written whole it threw, nothing
+          // was stored, and the next load fell back to demo data with only a
+          // console line to show for it. Store what actually identifies the
+          // portfolio instead; the server-side cache keeps the full copy and
+          // is preferred whenever it is there.
+          var slim = slimBackup(blob.portfolio);
+          if (slim) {
+            blob.portfolio = slim;
+            try {
+              await vaultSet(uid, key, blob);
+              console.warn("[apex vault] portfolio too large for localStorage; " +
+                           "stored without price histories and cached series.");
+              return NU;
+            } catch (stillTooBig) { /* fall through to creds only */ }
+          }
+          blob.portfolio = null;
+          await vaultSet(uid, key, blob);
+          console.error("[apex vault] portfolio does not fit in localStorage; " +
+                        "kept credentials only. It is still on the server.", quota);
+        }
       } catch (e) {
-        // A failed persist means the next visit falls back to demo data, so be
-        // loud about it (QuotaExceededError = localStorage full).
         console.error("[apex vault] persist failed, synced data will NOT survive a reload:", e);
       }
       return NU;
