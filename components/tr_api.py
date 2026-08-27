@@ -38,6 +38,30 @@ TR_CREDENTIALS_DIR = Path.home() / ".pytr"
 TR_TRANSACTIONS_CACHE = TR_CREDENTIALS_DIR / "transactions_cache.json"
 
 
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    """Write JSON so a concurrent reader never sees a half-written file.
+
+    The portfolio cache is megabytes and takes seconds to serialise. Written
+    in place, a second gunicorn worker reading it mid-write got a truncated
+    document, json.load raised, and a finished sync looked like no data at
+    all. Write beside it and rename: on POSIX the replace is atomic, so a
+    reader sees either the old file or the new one, never a partial one.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(payload, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 def _default_waf_token_method() -> str:
     """Choose the default WAF solver unless the environment overrides it."""
     configured = (os.environ.get("TR_WAF_TOKEN_METHOD") or "").strip()
@@ -3486,8 +3510,7 @@ class TRConnection:
                 data['data']['cachedSeries'] = cached_series
                 log.info(f"Pre-calculated chart series with {len(cached_series.get('dates', []))} data points")
             
-            with open(cache_file, 'w') as f:
-                json.dump(data, f)
+            _atomic_write_json(cache_file, data)
             log.info("Portfolio data cached")
         except Exception as e:
             log.error(f"Failed to cache portfolio: {e}")
@@ -3499,13 +3522,10 @@ class TRConnection:
         request/worker handling the UI poll can read it while the fetch runs.
         """
         try:
-            self._user_cache_dir.mkdir(parents=True, exist_ok=True)
-            with open(self._progress_path, "w") as f:
-                json.dump(
-                    {"pct": int(pct), "stage": stage, "detail": detail,
-                     "ts": datetime.now().timestamp()},
-                    f,
-                )
+            _atomic_write_json(self._progress_path, {
+                "pct": int(pct), "stage": stage, "detail": detail,
+                "ts": datetime.now().timestamp(),
+            })
         except Exception:
             pass
 
@@ -3716,6 +3736,57 @@ def _fetch_result_path(user_id: str) -> Path:
     return TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "fetch_result.json"
 
 
+def _sync_start_path(user_id: str) -> Path:
+    return TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "sync_start.json"
+
+
+def _portfolio_cache_path(user_id: str) -> Path:
+    return TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "portfolio_cache.json"
+
+
+def sync_started_ts(user_id: str = "_default") -> Optional[float]:
+    """When the running (or last) sync was started, or None if never.
+
+    Written to disk rather than kept in memory because the poll that has to
+    reason about it can land on a different gunicorn worker than the one
+    running the sync.
+    """
+    try:
+        with open(_sync_start_path(user_id)) as f:
+            return float(json.load(f).get("ts") or 0) or None
+    except Exception:
+        return None
+
+
+def portfolio_cached_ts(user_id: str = "_default") -> Optional[float]:
+    """When this user's portfolio cache was last written, or None."""
+    try:
+        return _portfolio_cache_path(user_id).stat().st_mtime
+    except Exception:
+        return None
+
+
+def fresh_portfolio_since(user_id: str, since_ts: Optional[float]) -> bool:
+    """True if a portfolio was cached after *since_ts*.
+
+    This is what makes the delivery robust: the sync's real output is the
+    cache on disk, not the one-shot marker file that any of several things
+    can delete or miss. If fresh data is sitting there, the sync worked, and
+    no amount of lost bookkeeping should make the UI say otherwise.
+    """
+    cached = portfolio_cached_ts(user_id)
+    if cached is None:
+        return False
+    if since_ts is None:
+        # No start stamp to compare against (it never got written, or the
+        # user's data was cleared). Only a cache young enough to belong to
+        # the run the UI is waiting on counts; an old one is just old data.
+        return (datetime.now().timestamp() - cached) <= TR_SYNC_TIMEOUT_SECONDS
+    # A second of slack: the stamp and the mtime come from different clocks
+    # (time.time vs the filesystem) and can disagree very slightly.
+    return cached >= since_ts - 1.0
+
+
 def start_fetch_async(user_id: str = "_default", flow: str = "sync",
                       detailed_history: bool = False) -> bool:
     """Start fetch_all_data in a background thread; never blocks.
@@ -3730,11 +3801,18 @@ def start_fetch_async(user_id: str = "_default", flow: str = "sync",
         if th and th.is_alive():
             log.info(f"Sync already running for user={user_id}, not starting another")
             return True
-        # A fresh run owns the result slot.
+        # A fresh run owns the result slot, and stamps its start so the
+        # delivery poll can tell a cache this sync wrote from one left over
+        # from a previous session.
         try:
             _fetch_result_path(user_id).unlink(missing_ok=True)
         except Exception:
             pass
+        try:
+            _atomic_write_json(_sync_start_path(user_id),
+                               {"ts": datetime.now().timestamp(), "flow": flow})
+        except Exception as exc:
+            log.warning("Could not stamp sync start for %s: %s", user_id, exc)
         _BG_FETCH_DATA.pop(user_id, None)
         conn = get_connection(user_id)
         conn._write_progress(1, "Sync", "Starting…")
@@ -3757,10 +3835,7 @@ def start_fetch_async(user_id: str = "_default", flow: str = "sync",
                 "finished_ts": datetime.now().timestamp(),
             }
             try:
-                path = _fetch_result_path(user_id)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                with open(path, "w") as f:
-                    json.dump(marker, f)
+                _atomic_write_json(_fetch_result_path(user_id), marker)
             except Exception as e:
                 log.error(f"Could not write sync result marker: {e}")
 
@@ -3823,7 +3898,7 @@ def clear_user_data(user_id: str = "_default") -> List[str]:
         log.warning("Could not clear credentials for %s: %s", user_id, exc)
     for name in ("portfolio_cache.json", "transactions_cache.json",
                  "instrument_cache.json", "cookies.txt", "progress.json",
-                 "fetch_result.json", "pending_login.json"):
+                 "fetch_result.json", "pending_login.json", "sync_start.json"):
         path = conn._user_cache_dir / name
         try:
             if path.exists():

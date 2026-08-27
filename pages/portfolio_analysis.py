@@ -46,19 +46,32 @@ def _is_real_portfolio(data) -> bool:
     """True if *data* is a successful portfolio JSON string that holds something.
 
     Used to decide whether the browser-only backup or the disk cache holds real
-    synced data we can restore (neither ever stores demo data).
+    synced data we can restore.
 
-    The success flag alone is not enough. A sync whose position fetch came back
-    empty still reports success, and accepting that payload takes the user out
-    of demo mode and leaves the page showing 0 € with no holdings, no banner and
-    no way back: the demo data is gone and the empty payload is what gets
-    restored on every reload. A portfolio with nothing in it is a failed sync,
-    not an empty portfolio, so it has to hold either a position or some cash."""
+    The success flag alone is not enough, for two reasons.
+
+    A sync whose position fetch came back empty still reports success, and
+    accepting that payload takes the user out of demo mode and leaves the page
+    showing 0 € with no holdings, no banner and no way back: the demo data is
+    gone and the empty payload is what gets restored on every reload. A
+    portfolio with nothing in it is a failed sync, not an empty portfolio, so
+    it has to hold either a position or some cash.
+
+    And the demo portfolio is a perfectly well-formed successful payload with
+    39 positions in it, so it passed every other test here. If it ever reached
+    the vault (any moment with demo data in the store and demo-mode already
+    off would do it), it was then restored as "your data" on every load, and
+    the real portfolio sitting in the disk cache was never even looked at:
+    the user saw demo holdings on their real account and no banner saying so.
+    It carries is_demo, and that is disqualifying wherever real data is what
+    is being asked for."""
     if not data:
         return False
     try:
         parsed = json.loads(data) if isinstance(data, str) else data
         if not (isinstance(parsed, dict) and parsed.get("success")):
+            return False
+        if parsed.get("is_demo"):
             return False
         inner = parsed.get("data") or {}
         if inner.get("positions"):
@@ -74,6 +87,46 @@ def _is_real_portfolio(data) -> bool:
 def _wrap_backup(uid: str, portfolio_json) -> str:
     """Wrap a real portfolio with its owner uid for the browser-only backup."""
     return json.dumps({"uid": uid, "portfolio": portfolio_json})
+
+
+def _synced_at(payload) -> str:
+    """The cached_at stamp of a portfolio payload, or "" if it has none."""
+    try:
+        parsed = json.loads(payload) if isinstance(payload, str) else payload
+        return str((parsed or {}).get("cached_at") or "")
+    except Exception:
+        return ""
+
+
+def _fresher(a, b):
+    """Whichever of two real portfolios was synced more recently.
+
+    The browser vault and the server-side cache can disagree: a sync writes
+    the cache on the server and only reaches the vault if its result made it
+    back to the browser. When that hand-off is lost (a worker restart, a
+    dropped response), the vault holds the older copy, and preferring it
+    unconditionally showed the user stale holdings with a fresh sync sitting
+    on disk. cached_at is written by the server in ISO form, which sorts
+    correctly as a string.
+    """
+    if not a:
+        return b
+    if not b:
+        return a
+    return a if _synced_at(a) >= _synced_at(b) else b
+
+
+def _disk_cached_portfolio(uid):
+    """This user's last synced portfolio from the server-side cache, as JSON,
+    or None if there is none worth restoring."""
+    if not uid:
+        return None
+    try:
+        from components.tr_api import get_cached_portfolio
+        cached = get_cached_portfolio(user_id=uid)
+        return json.dumps(cached) if _is_real_portfolio(cached) else None
+    except Exception:
+        return None
 
 
 def _backup_for_uid(local_backup, uid):
@@ -975,20 +1028,14 @@ def register_callbacks(app):
         # State can be a snapshot taken before the restore was committed.
         backup = (_backup_for_uid(restore_state.get("portfolio"), uid)
                   or _backup_for_uid(local_backup, uid))
-        if backup:
-            return False, backup, no_update
+        # The server-side cache is the other copy of the same thing, and it
+        # is the one a sync writes first, so it can be the newer of the two
+        # (or the only one, if the vault is empty or was never written).
+        best = _fresher(backup, _disk_cached_portfolio(uid))
+        if best:
+            return False, best, no_update
 
-        # Vault empty or unreadable: fall back to the local pytr cache from a
-        # previous sync on this machine.
-        try:
-            from components.tr_api import get_cached_portfolio
-            cached = get_cached_portfolio(user_id=uid)
-            if _is_real_portfolio(cached):
-                return False, json.dumps(cached), no_update
-        except Exception:
-            pass
-
-        # No cached data yet, keep demo mode so the banner stays visible
+        # No real data anywhere yet, keep demo mode so the banner stays visible
         return True, _load_demo_json(), no_update
 
     # ── Demo mode toggle (manual button) ──
@@ -1009,15 +1056,10 @@ def register_callbacks(app):
             return True, _load_demo_json()
         else:
             uid = auth.current_uid(current_user)
-            # Back to real: prefer the browser-only backup so data stays local.
-            backup = _backup_for_uid(local_backup, uid)
-            if backup:
-                return False, backup
-            from components.tr_api import get_cached_portfolio
-            cached = get_cached_portfolio(user_id=uid)
-            if _is_real_portfolio(cached):
-                return False, json.dumps(cached)
-            return False, no_update
+            # Back to real: whichever copy of the real portfolio is newer.
+            best = _fresher(_backup_for_uid(local_backup, uid),
+                            _disk_cached_portfolio(uid))
+            return (False, best) if best else (False, no_update)
 
     # ── Demo banner visibility ──
     @app.callback(
