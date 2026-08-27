@@ -1713,7 +1713,8 @@ class TRConnection:
             return []
 
     def _build_position_histories_from_transactions(
-        self, transactions: List[Dict], positions: List[Dict]
+        self, transactions: List[Dict], positions: List[Dict],
+        market_prices: bool = True,
     ) -> Dict[str, Dict]:
         """Build per-position price histories using TR transaction data.
         
@@ -1721,6 +1722,12 @@ class TRConnection:
         - 100% coverage (crypto, bonds, small caps, everything)
         - No external API calls
         - Already in EUR
+
+        With ``market_prices`` off, the daily closes are read from the price
+        cache but never downloaded. The histories still cover every date,
+        they just step between the user's own trades instead of moving day
+        by day. That is the difference between a sync that takes seconds and
+        one that takes minutes on a portfolio with a long history.
         
         Returns:
             Dict of {isin: {history: [{date, price}], quantity, instrumentType, name}}
@@ -1806,14 +1813,15 @@ class TRConnection:
             # …merged with daily EUR market closes (disk-cached, delta-fetched;
             # empty for instruments without external data, e.g. some bonds).
             try:
-                market_prices = get_prices_for_dates(isin, name, weekday_dts)
+                closes = get_prices_for_dates(isin, name, weekday_dts,
+                                              cache_only=not market_prices)
             except Exception as exc:
                 log.warning(f"  Market prices unavailable for {name}: {exc}")
-                market_prices = {}
+                closes = {}
             # Execution prices win on their own dates, unless the same-day
             # market close says the raw price is from before a stock split.
             merged_prices = merge_execution_and_market_prices(
-                market_prices, known_prices, label=name)
+                closes, known_prices, label=name)
             if not merged_prices:
                 continue
             self._write_progress(
@@ -3063,7 +3071,7 @@ class TRConnection:
                 "error": friendly_tr_error(e)
             }
     
-    async def _fetch_all_data(self) -> Dict[str, Any]:
+    async def _fetch_all_data(self, detailed_history: bool = False) -> Dict[str, Any]:
         """Fetch all portfolio data with instrument names. Skip ticker prices (too slow)."""
         try:
             if not self.api or not self.is_connected:
@@ -3231,7 +3239,7 @@ class TRConnection:
             self._write_progress(75, "Price history", "Building price histories…")
             log.info("Building per-position price histories from transaction prices...")
             position_histories = self._build_position_histories_from_transactions(
-                transactions, enriched_positions
+                transactions, enriched_positions, market_prices=detailed_history
             )
             log.info(f"Built position histories for {len(position_histories)} instruments")
             
@@ -3308,6 +3316,9 @@ class TRConnection:
                     ],
                     "history": history,
                     "positionHistories": position_histories,  # Per-position price histories
+                    # Whether this run downloaded the daily market closes, so
+                    # the page can say what the chart is drawn from.
+                    "detailedHistory": bool(detailed_history),
                 }
             }
 
@@ -3540,15 +3551,22 @@ def fetch_portfolio(user_id: str = "_default") -> Dict[str, Any]:
     return conn.run_serialized(conn._fetch_portfolio())
 
 
-def fetch_all_data(user_id: str = "_default") -> Dict[str, Any]:
+def fetch_all_data(user_id: str = "_default",
+                   detailed_history: bool = False) -> Dict[str, Any]:
     """Fetch all portfolio data including history.
     
     This ALWAYS fetches fresh data from TR when called.
     The cache is only used for page loads (via get_cached_portfolio).
+
+    ``detailed_history`` downloads a daily price series for every security.
+    It is off by default because it is far and away the slowest stage of a
+    sync, and the portfolio is perfectly usable without it: the page offers
+    it as a separate action once the numbers are on screen.
     """
     conn = get_connection(user_id)
     try:
-        return conn.run_serialized(conn._fetch_all_data(), timeout=TR_SYNC_TIMEOUT_SECONDS)
+        return conn.run_serialized(conn._fetch_all_data(detailed_history),
+                                   timeout=TR_SYNC_TIMEOUT_SECONDS)
     except FuturesTimeoutError:
         conn.is_connected = False
         conn.api = None
@@ -3614,12 +3632,14 @@ def _fetch_result_path(user_id: str) -> Path:
     return TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "fetch_result.json"
 
 
-def start_fetch_async(user_id: str = "_default", flow: str = "sync") -> bool:
+def start_fetch_async(user_id: str = "_default", flow: str = "sync",
+                      detailed_history: bool = False) -> bool:
     """Start fetch_all_data in a background thread; never blocks.
 
     ``flow`` names the UI flow that triggered the sync ("verify", "refresh",
-    "reconnect") so the delivery callback can restore the right view on
-    errors. Returns True (a fetch is running, freshly started or already).
+    "reconnect", "history") so the delivery callback can restore the right
+    view on errors. ``detailed_history`` is what the "history" flow turns on.
+    Returns True (a fetch is running, freshly started or already).
     """
     with _BG_FETCH_LOCK:
         th = _BG_FETCH_THREADS.get(user_id)
@@ -3637,7 +3657,8 @@ def start_fetch_async(user_id: str = "_default", flow: str = "sync") -> bool:
 
         def _run():
             try:
-                result = fetch_all_data(user_id=user_id)
+                result = fetch_all_data(user_id=user_id,
+                                        detailed_history=detailed_history)
             except Exception as e:
                 log.error(f"Background sync crashed: {e}")
                 result = {"success": False, "error": friendly_tr_error(e)}

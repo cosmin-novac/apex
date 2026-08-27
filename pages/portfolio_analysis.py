@@ -596,6 +596,21 @@ def layout(lang="en"):
                         dbc.Tab(label=t("pa.drawdown", lang), tab_id="tab-drawdown"),
                         dbc.Tab(label=t("pa.performance", lang), tab_id="tab-performance"),
                     ], id="chart-tabs", active_tab="tab-value", className="mb-2"),
+
+                    # Downloading a daily price series per security is the
+                    # slowest stage of a sync by a wide margin, so a sync no
+                    # longer does it. This says what the line is drawn from
+                    # and offers the download as its own action.
+                    html.Div([
+                        html.Span(id="history-source", className="history-source"),
+                        dbc.Button([
+                            html.I(className="bi bi-calendar3 me-1"),
+                            t("pa.load_history", lang),
+                        ], id="load-history-btn", color="link", size="sm",
+                           className="load-history-btn ms-auto",
+                           title=t("pa.load_history_hint", lang), n_clicks=0),
+                    ], id="history-bar", className="history-bar",
+                       style={"display": "none"}),
                     
                     dcc.Loading(
                         dcc.Graph(
@@ -1024,6 +1039,79 @@ def register_callbacks(app):
                 {"display": "block"}, {"display": "none"},
                 "syncing", "connection-status syncing", "Syncing data...")
     
+    # ── Daily price history: what the chart is drawn from, and the
+    #    action that upgrades it. ──
+    @app.callback(
+        [Output("history-bar", "style"),
+         Output("history-source", "children"),
+         Output("load-history-btn", "children")],
+        [Input("portfolio-data-store", "data"),
+         Input("current-user-store", "data")],
+        State("lang-store", "data"),
+        prevent_initial_call=False,
+    )
+    def update_history_bar(data_json, current_user, lang_data):
+        lang = get_lang(lang_data)
+        label = [html.I(className="bi bi-calendar3 me-1"), t("pa.load_history", lang)]
+        # Demo data has no prices to fetch, and neither has a visitor who is
+        # not logged in, so the whole bar stays out of the way.
+        if not auth.current_uid(current_user):
+            return {"display": "none"}, "", label
+        try:
+            data = json.loads(data_json) if isinstance(data_json, str) else data_json
+            portfolio = (data or {}).get("data") or {}
+        except Exception:
+            portfolio = {}
+        if not portfolio.get("positions"):
+            return {"display": "none"}, "", label
+        detailed = bool(portfolio.get("detailedHistory"))
+        source = t("pa.history_daily" if detailed else "pa.history_trades", lang)
+        return {}, source, label
+
+    @app.callback(
+        [Output("load-history-btn", "children", allow_duplicate=True),
+         Output("load-history-btn", "disabled"),
+         Output("tr-connect-modal", "is_open", allow_duplicate=True),
+         Output("tr-initial-view", "style", allow_duplicate=True),
+         Output("tr-otp-view", "style", allow_duplicate=True),
+         Output("tr-syncing-view", "style", allow_duplicate=True),
+         Output("tr-connected-view", "style", allow_duplicate=True),
+         Output("tr-auth-step", "data", allow_duplicate=True),
+         Output("tr-connection-status", "className", allow_duplicate=True),
+         Output("tr-status-text", "children", allow_duplicate=True)],
+        Input("load-history-btn", "n_clicks"),
+        [State("tr-encrypted-creds", "data"),
+         State("current-user-store", "data"),
+         State("lang-store", "data")],
+        prevent_initial_call=True,
+    )
+    def load_daily_history(n_clicks, encrypted_creds, current_user, lang_data):
+        if not n_clicks:
+            raise PreventUpdate
+        lang = get_lang(lang_data)
+        uid = auth.current_uid(current_user)
+
+        from components.tr_api import reconnect, is_connected, start_fetch_async
+
+        if not is_connected(user_id=uid) and encrypted_creds:
+            reconnect(encrypted_creds, user_id=uid)
+        if not is_connected(user_id=uid):
+            # Same fallback as the sync button: no session, so ask for one.
+            return (no_update, False, True, no_update, no_update, no_update,
+                    no_update, no_update, no_update, no_update)
+
+        # Identical machinery to a sync, including the progress poll and
+        # deliver_sync_result; only the flag and the flow name differ.
+        start_fetch_async(user_id=uid, flow="history", detailed_history=True)
+        return (
+            [dbc.Spinner(size="sm", spinner_class_name="me-2"),
+             t("pa.load_history_running", lang)],
+            True, True,
+            {"display": "none"}, {"display": "none"},
+            {"display": "block"}, {"display": "none"},
+            "syncing", "connection-status syncing", "Loading daily prices...",
+        )
+
     # Update metrics when data changes
     @app.callback(
         [Output("portfolio-total-value", "children"),

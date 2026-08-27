@@ -60,7 +60,7 @@ def test_fetch_all_data_returns_timeout_error(monkeypatch):
         is_connected = True
         api = object()
 
-        def _fetch_all_data(self):
+        def _fetch_all_data(self, detailed_history=False):
             return object()
 
         def run_serialized(self, coro, timeout=90):

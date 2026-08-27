@@ -32,7 +32,7 @@ def test_start_returns_immediately_and_delivers_result(monkeypatch, tmp_path):
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     data = {"success": True, "data": {"positions": [{"isin": "X"}]}}
 
-    def slow_fetch(user_id="_default"):
+    def slow_fetch(user_id="_default", detailed_history=False):
         time.sleep(0.4)
         return dict(data)
 
@@ -61,8 +61,8 @@ def test_failed_fetch_reports_error(monkeypatch, tmp_path):
     uid = "synctest-fail"
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     monkeypatch.setattr(tr_api, "fetch_all_data",
-                        lambda user_id="_default": {"success": False,
-                                                    "error": "TR said no"})
+                        lambda user_id="_default", detailed_history=False: {
+                            "success": False, "error": "TR said no"})
 
     assert tr_api.start_fetch_async(uid, flow="refresh")
     assert _wait_for_marker(uid)
@@ -78,7 +78,7 @@ def test_second_start_does_not_double_fetch(monkeypatch, tmp_path):
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     calls = []
 
-    def slow_fetch(user_id="_default"):
+    def slow_fetch(user_id="_default", detailed_history=False):
         calls.append(user_id)
         time.sleep(0.4)
         return {"success": True, "data": {}}
