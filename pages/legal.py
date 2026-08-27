@@ -126,7 +126,7 @@ Apex ist so gestaltet, dass Ihre Portfolio- und Zugangsdaten **ausschliesslich i
 - Ihre synchronisierten Portfolio-Daten und Ihre verschluesselten Trade-Republic-Zugangsdaten werden ausschliesslich lokal in Ihrem Browser (verschluesseltes localStorage) gespeichert.
 - Es erfolgt keine geraeteuebergreifende Speicherung; loeschen Sie Ihren Browser-Speicher, sind diese Daten entfernt.
 
-Unabhaengig davon werden personenbezogene Daten technisch bedingt voruebergehend auf unseren Servern verarbeitet, soweit dies fuer den Betrieb der Anwendung erforderlich ist (siehe "Hosting und Server-Logs" sowie "Trade-Republic-Synchronisierung").
+Eine Synchronisierung laeuft auf unserem Server, weil die Verbindung zu Trade Republic nicht aus Ihrem Browser heraus aufgebaut werden kann. Waehrenddessen haelt der Server die Sitzungsdaten und die abgerufenen Daten im Arbeitsspeicher, und er behaelt danach eine Arbeitskopie im Arbeitsspeicher, damit die aufgerufenen Seiten dargestellt werden koennen, ohne Ihr Portfolio hin- und herzusenden. Nichts davon wird auf die Festplatte des Servers geschrieben, und alles ist nach einem Neustart des Prozesses verschwunden. Die Sitzungs-Cookies liegen nur fuer die Dauer einer Synchronisierung im Arbeitsspeicher-Verzeichnis und werden danach entfernt; die dauerhafte Kopie liegt verschluesselt in Ihrem Browser und wird zu Beginn der naechsten Synchronisierung an den Server zurueckgegeben. Dauerhaft festgehalten wird auf dem Server nur, wie weit eine Synchronisierung gekommen ist, wann sie begann und ob sie erfolgreich war: weder Wertpapiere noch Stueckzahlen oder Betraege kommen darin vor, und dasselbe gilt fuer unsere Server-Logs (siehe "Hosting und Server-Logs" sowie "Trade-Republic-Synchronisierung").
 
 ## Welche Daten wir verarbeiten
 
@@ -257,7 +257,7 @@ Apex is provided via Microsoft Azure. Technical access data (e.g. IP address, ti
 
 If you activate Trade Republic sync, Apex uses the credentials you enter or an existing session to retrieve and evaluate portfolio, position, cash, transaction, and price data. Sync only happens when you trigger it or when a saved session is used to reconnect.
 
-During an active sync, our server temporarily processes the session cookies required for the connection and the retrieved data in order to perform the sync. This server-side processing is technically necessary and transient. Your portfolio and credential data is stored durably only locally in your browser; it is never placed in any cloud storage.
+A sync runs on our server, because the connection to Trade Republic cannot be made from your browser. While it runs, the server holds the session cookies and the retrieved data in memory, and it keeps a working copy in memory afterwards so the pages you open can be rendered without sending your portfolio back and forth. None of it is written to the server's disk, and all of it is gone when the process restarts. The session cookies are kept on RAM-backed storage only for the length of a sync and removed afterwards; the lasting copy is held in your browser, encrypted, and sent back to the server at the start of the next sync. What the server does write down is limited to how far a sync has got, when it started and whether it succeeded: no instrument, quantity or amount appears in it, and the same is true of our server logs. Your portfolio and credential data is stored durably only in your browser; it is never placed in any cloud storage.
 
 ## External market data
 

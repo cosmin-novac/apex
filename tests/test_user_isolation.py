@@ -25,31 +25,29 @@ def test_tr_cache_namespaces_reject_malformed_uids():
         tr_api.get_connection("user/abc")
 
 
-def test_tr_instrument_cache_preserves_structured_values(tmp_path, monkeypatch):
-    from components import tr_api
-    from components.tr_api import TRConnection
-    import json
+def test_tr_instrument_cache_preserves_structured_values(monkeypatch, tmp_path):
+    """Instrument names are held in memory, never written to this machine:
+    the set of ISINs an account holds is the portfolio."""
+    from components import tr_api as tr
+    monkeypatch.setattr(tr, "TR_CREDENTIALS_DIR", tmp_path)
+    conn = tr.TRConnection("instrumentuser")
+    conn._save_instrument_cache({
+        "US0378331005": {
+            "name": "Apple",
+            "typeId": "stock",
+            "imageId": "apple",
+            "exchangeId": "LSX",
+        },
+        "IE00B5BMR087": "Legacy ETF",
+    })
 
-    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
-    tr = TRConnection("cachetest")
-    tr._instrument_cache_path.write_text(
-        json.dumps({
-            "US0378331005": {
-                "name": "Apple",
-                "typeId": "stock",
-                "imageId": "apple",
-                "exchangeId": "LSX",
-            },
-            "IE00B5BMR087": "Legacy ETF",
-        }),
-        encoding="utf-8",
-    )
-
-    loaded = tr._load_instrument_cache()
+    loaded = conn._load_instrument_cache()
 
     assert loaded["US0378331005"]["name"] == "Apple"
     assert loaded["US0378331005"]["exchangeId"] == "LSX"
     assert loaded["IE00B5BMR087"] == {"name": "Legacy ETF"}
+    # And nothing landed on disk for it.
+    assert not list(tmp_path.rglob("instrument_cache.json"))
 
 
 def test_fetch_all_data_returns_timeout_error(monkeypatch):

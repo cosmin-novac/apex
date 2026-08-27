@@ -43,7 +43,7 @@ def test_pending_login_restores_in_fresh_connection(tr):
     conn_a.phone_no = "+491511234567"
     conn_a.api = _fake_api()
     conn_a._save_pending_login(countdown=120)
-    assert conn_a._pending_login_path.exists()
+    assert tr._mem_get("handoffuser", "pending_login")
     assert conn_a.api._websession.cookies.saved
 
     # Process B: fresh connection object, no in-memory state.
@@ -60,11 +60,11 @@ def test_pending_login_restores_in_fresh_connection(tr):
 
 def test_stale_pending_login_is_rejected(tr):
     conn = tr.TRConnection("staleuser")
-    conn._pending_login_path.write_text(json.dumps({
+    tr._mem_put(conn.user_id, "pending_login", {
         "process_id": "proc-old",
         "phone": "+491511234567",
         "ts": 0,  # ancient
-    }), encoding="utf-8")
+    })
     assert conn._restore_pending_login() is False
     assert conn.api is None
 
@@ -74,6 +74,6 @@ def test_completed_login_clears_pending_file(tr):
     conn.phone_no = "+491511234567"
     conn.api = _fake_api()
     conn._save_pending_login(countdown=120)
-    assert conn._pending_login_path.exists()
+    assert tr._mem_get("clearuser", "pending_login")
     conn._clear_pending_login()
-    assert not conn._pending_login_path.exists()
+    assert tr._mem_get("clearuser", "pending_login") is None

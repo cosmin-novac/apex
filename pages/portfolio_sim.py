@@ -10,6 +10,9 @@ import yfinance as yf
 import traceback
 from components.i18n import t, get_lang
 from core import utils as cu
+import logging
+
+_log = logging.getLogger(__name__)
 
 
 # ──────────────────────────────  SIMULATION  ──────────────────────────────
@@ -992,9 +995,10 @@ def register_callbacks(app):
             if tax_rate is None:
                 tax_rate = 0
 
-            print(f"[Sim] Running: €{current_value:,.0f}, {growth_rate}% growth, "
-                  f"€{monthly_deposit:,.0f}/month deposit, "
-                  f"{wtype} withdrawal €{withdrawal:,.0f}, {years}y, {tax_rate}% tax")
+            # No amounts: what someone types into the simulator is their
+            # money too, and this goes to the same server log.
+            _log.info("[Sim] Running: %sy, %s%% growth, %s%% tax, %s withdrawal",
+                      years, growth_rate, tax_rate, wtype)
 
             if monte_carlo:
                 if not years or years < 1 or years > MC_MAX_YEARS:
@@ -1018,8 +1022,8 @@ def register_callbacks(app):
                 )
                 fig = _make_mc_figure(paths, df, lang, outcomes)
                 stats = monte_carlo_stats(outcomes, len(df))
-                print(f"[Sim] Monte Carlo: {len(paths)} scenarios × {len(df)} years, "
-                      f"{stats['survival_rate']:.1f}% survived")
+                _log.info("[Sim] Monte Carlo: %s scenarios x %s years, %.1f%% survived",
+                          len(paths), len(df), stats["survival_rate"])
                 return (fig, df.to_dict('records'), _table_columns(df, lang), "",
                         _mc_stats_panel(stats, lang), _SHOW, _HIDE,
                         t("ps.mc_results", lang))
@@ -1041,13 +1045,13 @@ def register_callbacks(app):
 
             fig = _make_figure(df, lang)
             cols = _table_columns(df, lang)
-            print(f"[Sim] Success: {len(df)} years simulated")
+            _log.info("[Sim] Success: %s years simulated", len(df))
             return (fig, df.to_dict('records'), cols, "",
                     None, _HIDE, _SHOW, t("ps.breakdown", lang))
 
         except Exception as e:
-            print(f"[Sim] ERROR: {e}")
-            traceback.print_exc()
+            _log.error("[Sim] failed: %s", e)
+            _log.debug("simulation traceback", exc_info=True)
             # No auto-dismiss. With duration set, the Alert instance is reused
             # across runs and its first timer closes it for good: the third
             # bad input in a row rendered nothing at all and the user was left
