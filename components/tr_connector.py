@@ -34,6 +34,23 @@ def _tr_error_alert(message, color="warning"):
     return dbc.Alert(message or "Trade Republic sync failed. Please try again.", color=color, className="mb-0 small")
 
 
+def _refreshed_reconnect_token(uid):
+    """The browser's reconnect token, rebuilt around the current session jar.
+
+    Nothing of the session lasts on this machine: the jar sits on RAM-backed
+    storage for the length of a flow and is handed back to the browser, which
+    is the only place it survives.
+    """
+    try:
+        from components.tr_api import get_connection
+        conn = get_connection(uid)
+        if not conn.phone_no:
+            return no_update
+        return conn.get_encrypted_credentials(conn.phone_no)
+    except Exception:
+        return no_update
+
+
 def _start_background_sync(uid, flow):
     """Kick off the portfolio sync without blocking this HTTP request.
 
@@ -65,9 +82,18 @@ def resolve_sync_outcome(uid, silence_seconds=_SYNC_SILENCE_SECONDS):
     on a different gunicorn worker than the one running the sync.
     """
     from components.tr_api import (consume_fetch_result, fresh_portfolio_since,
-                                   get_fetch_progress, sync_started_ts)
+                                   get_fetch_progress, has_portfolio_in_memory,
+                                   peek_fetch_result, sync_started_ts)
 
     started = sync_started_ts(uid)
+    # Look before taking. The portfolio is held in the memory of whichever
+    # worker ran the sync, and nowhere else: a worker that took the marker
+    # without having the data would consume the one signal the right worker
+    # is waiting for and report a finished sync as a failure. Leaving it
+    # alone costs a poll tick, and the poll alternates between workers.
+    pending = peek_fetch_result(uid)
+    if pending and pending.get("success") and not has_portfolio_in_memory(uid):
+        return None
     marker = consume_fetch_result(uid)
     if marker is not None:
         return marker
@@ -81,11 +107,10 @@ def resolve_sync_outcome(uid, silence_seconds=_SYNC_SILENCE_SECONDS):
 
     # No marker and no live progress. The marker is a convenience, not the
     # truth: it is a single file, read once and then deleted, so a second
-    # worker's poll, a restarted sync or a crash between caching the
-    # portfolio and writing the marker all lose it. What a finished sync
-    # really leaves behind is the portfolio it wrote, so that decides the
-    # outcome. Reporting failure while fresh data sits on disk is the bug
-    # this exists to prevent.
+    # worker's poll, a restarted sync or a crash between the portfolio being
+    # ready and the marker being written all lose it. What a finished sync
+    # really leaves behind is the portfolio itself, so that decides the
+    # outcome: a sync that landed is never reported as a failure.
     if fresh_portfolio_since(uid, started):
         return {"success": True, "flow": "recovered"}
 
@@ -517,7 +542,11 @@ def register_tr_callbacks(app):
          Output('tr-session-data', 'data', allow_duplicate=True),
          Output('tr-portfolio-summary', 'children', allow_duplicate=True),
          Output('portfolio-data-store', 'data', allow_duplicate=True),
-         Output('demo-mode', 'data', allow_duplicate=True)],
+         Output('demo-mode', 'data', allow_duplicate=True),
+         # The session jar this sync leaves behind. It lives in the browser
+         # now, so a refreshed one has to get back there or the next
+         # reconnect resumes with a stale session.
+         Output('tr-encrypted-creds', 'data', allow_duplicate=True)],
         Input('tr-sync-progress-interval', 'n_intervals'),
         [State('tr-auth-step', 'data'),
          State('current-user-store', 'data'),
@@ -542,19 +571,26 @@ def register_tr_callbacks(app):
             # reads the portfolio cache the fetch just saved.
             portfolio_data = take_fetch_data(uid) or get_cached_portfolio(uid)
             if portfolio_data and portfolio_data.get("success"):
+                # The browser gets the summary and the positions, not the
+                # bulk: the store's value rides on every callback request
+                # that reads it. The page loads the rest from the cache this
+                # sync just wrote. See pages/portfolio_analysis._lean.
+                from pages.portfolio_analysis import _lean
+                lean = _lean(portfolio_data, uid)
                 return (
                     {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
                     "connected", "", "",
                     "connection-status connected", "Connected",
-                    json.dumps(portfolio_data),
+                    lean,
                     create_portfolio_summary(portfolio_data, lang),
-                    json.dumps(portfolio_data),
+                    lean,
                     False,  # Exit demo mode
+                    _refreshed_reconnect_token(uid),
                 )
             # The cache is written atomically, so this is a genuinely empty
             # or unreadable result rather than a read that caught it mid-write.
             marker = {"success": False, "flow": marker.get("flow"),
-                      "error": "Sync finished but no data was stored. Please try again."}
+                      "error": "Sync finished but no data came back. Please try again."}
 
         if marker.get("flow") in ("refresh", "history"):
             # A failed refresh or price-history load keeps the (still valid)
@@ -563,7 +599,7 @@ def register_tr_callbacks(app):
                 {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
                 "connected", "", _tr_error_alert(marker.get("error")),
                 "connection-status disconnected", "Sync failed",
-                no_update, no_update, no_update, no_update,
+                no_update, no_update, no_update, no_update, no_update,
             )
 
         return (
@@ -572,7 +608,7 @@ def register_tr_callbacks(app):
             _tr_error_alert(marker.get("error")),
             "",
             "connection-status disconnected", "Sync failed",
-            no_update, no_update, no_update, no_update,
+            no_update, no_update, no_update, no_update, no_update,
         )
 
     # Saved-credentials guidance. Two flavors:

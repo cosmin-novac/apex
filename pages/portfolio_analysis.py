@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import json
 import logging
+import threading
 import math
 import time
 from collections import OrderedDict
@@ -39,6 +40,86 @@ _DEMO_JSON_PATH = Path(__file__).resolve().parent.parent / "data" / "demo_portfo
 # demo holdings on the real account in the first place.
 NO_DATA = json.dumps({"success": False, "no_data": True})
 
+_DEMO_LEAN = None
+
+
+# What the browser never needs to carry. The store's value is uploaded with
+# every callback request that reads it and sent back down with every one
+# that writes it, so half a megabyte of transactions, daily history,
+# per-position price series and pre-computed chart series went over the wire
+# ten callbacks deep on every change. On a phone that is the difference
+# between a page that responds and one that looks frozen. The five callbacks
+# that need any of it run on the server, where the same data is already
+# sitting in the cache, so they read it from there instead.
+_BULK_FIELDS = ("transactions", "history", "positionHistories", "cachedSeries")
+
+def _lean(payload, uid=None):
+    """A portfolio payload with the bulk taken out, as JSON, for the store.
+
+    The owning account travels with it so the callbacks that need the bulk
+    can find the cache on their own. Taking the uid from current-user-store
+    instead would have been the obvious thing, and it is a trap: that store
+    is written by a one second poll, and naming it as State makes Dash hold
+    every one of these callbacks back behind that poll, every second.
+    """
+    try:
+        parsed = json.loads(payload) if isinstance(payload, str) else payload
+    except Exception:
+        return payload
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("data"), dict):
+        return payload if isinstance(payload, str) else json.dumps(parsed)
+    slim = dict(parsed)
+    slim["data"] = {k: v for k, v in parsed["data"].items() if k not in _BULK_FIELDS}
+    slim["data"]["lean"] = True
+    if uid:
+        slim["uid"] = uid
+    return json.dumps(slim)
+
+
+def _full_portfolio(store_json):
+    """The complete portfolio behind a (lean) store value.
+
+    Demo payloads come back from the demo file, real ones from the cache of
+    the account the payload names: the same copy the sync wrote, which is
+    where the bulk lives. Returns an empty dict rather than None so the
+    callers can go straight on reading fields off it.
+    """
+    try:
+        parsed = json.loads(store_json) if isinstance(store_json, str) else store_json
+    except Exception:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    if not parsed.get("data", {}).get("lean"):
+        return parsed                       # already whole (or not a portfolio)
+    if parsed.get("is_demo"):
+        try:
+            return json.loads(_load_demo_json())
+        except Exception:
+            return parsed
+    return _cached_portfolio_parsed(parsed.get("uid")) or parsed
+
+
+def _cached_portfolio_parsed(uid):
+    """The whole portfolio this process is holding for *uid*, or None."""
+    if not uid:
+        return None
+    try:
+        from components.tr_api import get_cached_portfolio
+        held = get_cached_portfolio(user_id=uid)
+    except Exception:
+        return None
+    return held if isinstance(held, dict) else None
+
+
+def _is_demo_payload(payload) -> bool:
+    """Whether this is the demo portfolio, in whatever shape it arrives."""
+    try:
+        parsed = json.loads(payload) if isinstance(payload, str) else payload
+        return bool(isinstance(parsed, dict) and parsed.get("is_demo"))
+    except Exception:
+        return False
+
 
 def _dashboard_visibility(portfolio, demo_mode):
     """Styles for (dashboard, empty state). Never show numbers that are not
@@ -53,6 +134,14 @@ def _dashboard_visibility(portfolio, demo_mode):
     if demo_mode or _is_real_portfolio(portfolio):
         return {}, {"display": "none"}
     return {"display": "none"}, {}
+
+
+def _load_demo_lean() -> str:
+    """The demo portfolio as the store carries it: lean, like a real one."""
+    global _DEMO_LEAN
+    if _DEMO_LEAN is None:
+        _DEMO_LEAN = _lean(_load_demo_json())
+    return _DEMO_LEAN
 
 
 def _load_demo_json() -> str:
@@ -143,15 +232,19 @@ def _fresher(a, b):
     return a if _synced_at(a) > _synced_at(b) else b
 
 
-def _disk_cached_portfolio(uid):
-    """This user's last synced portfolio from the server-side cache, as JSON,
-    or None if there is none worth restoring."""
+def _held_portfolio(uid):
+    """The working copy this process is holding for *uid*, lean, or None.
+
+    Nothing is read off a disk here: the durable copy is the browser's, and
+    this is the copy the server was handed, either by a sync it just ran or
+    by the browser putting it back (see seed_server_copy).
+    """
     if not uid:
         return None
     try:
         from components.tr_api import get_cached_portfolio
-        cached = get_cached_portfolio(user_id=uid)
-        return json.dumps(cached) if _is_real_portfolio(cached) else None
+        held = get_cached_portfolio(user_id=uid)
+        return _lean(held, uid) if _is_real_portfolio(held) else None
     except Exception:
         return None
 
@@ -167,7 +260,9 @@ def _backup_for_uid(local_backup, uid):
         if not isinstance(wrap, dict) or wrap.get("uid") != uid:
             return None
         portfolio = wrap.get("portfolio")
-        return portfolio if _is_real_portfolio(portfolio) else None
+        # Lean for the store; the vault keeps the whole thing, because the
+        # browser is the only place this portfolio lasts.
+        return _lean(portfolio, uid) if _is_real_portfolio(portfolio) else None
     except Exception:
         return None
 
@@ -957,10 +1052,23 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def mirror_real_portfolio(portfolio_data, demo_mode, current_user):
+        """Copy the portfolio into the browser's own store, whole.
+
+        The store carries a lean payload, so the bulk is taken from the
+        working copy this process is holding. The browser's copy is the only
+        one that lasts: nothing of it is written to this machine.
+        """
         uid = auth.current_uid(current_user)
         if demo_mode or not uid or not _is_real_portfolio(portfolio_data):
             return no_update
-        return _wrap_backup(uid, portfolio_data)
+        whole = _full_portfolio(portfolio_data)
+        if not whole or whole.get("data", {}).get("lean"):
+            # This process is not holding the bulk, so it cannot complete the
+            # payload. Writing what it has would overwrite the browser's copy
+            # with a stripped one, and the browser's is the only copy there
+            # is. Leave it alone; the worker that has it will do this.
+            return no_update
+        return _wrap_backup(uid, json.dumps(whole))
 
     # ── Hydrate the view from the (decrypted) browser backup ──
     # When the encrypted vault restores the backup on load/login, surface it in
@@ -1061,7 +1169,7 @@ def register_callbacks(app):
         uid = restore_state.get("uid")
         # Locked / logged out → demo, and clear any browser-held TR credentials.
         if not uid or restore_state.get("status") == "locked":
-            return True, _load_demo_json(), None
+            return True, _load_demo_lean(), None
 
         # Remember the TR reconnect token on the per-user server connection so
         # the connect modal can prefill the phone number and offer a proper
@@ -1084,12 +1192,12 @@ def register_callbacks(app):
         # The server-side cache is the other copy of the same thing, and it
         # is the one a sync writes first, so it can be the newer of the two
         # (or the only one, if the vault is empty or was never written).
-        best = _fresher(backup, _disk_cached_portfolio(uid))
+        best = _fresher(backup, _held_portfolio(uid))
         if best:
             return False, best, no_update
 
         # No real data anywhere yet, keep demo mode so the banner stays visible
-        return True, _load_demo_json(), no_update
+        return True, _load_demo_lean(), no_update
 
     # ── Demo mode toggle (manual button) ──
     @app.callback(
@@ -1106,16 +1214,77 @@ def register_callbacks(app):
             raise PreventUpdate
         new_mode = not demo_mode
         if new_mode:
-            return True, _load_demo_json()
+            return True, _load_demo_lean()
         else:
             uid = auth.current_uid(current_user)
             # Back to real: whichever copy of the real portfolio is newer.
             best = _fresher(_backup_for_uid(local_backup, uid),
-                            _disk_cached_portfolio(uid))
+                            _held_portfolio(uid))
             # Nothing to switch to. This used to return no_update, which left
             # the demo portfolio on screen with demo mode off and the banner
             # gone: the demo holdings then read as the user's own account.
             return (False, best) if best else (False, NO_DATA)
+
+    # ── The browser hands its copy back ──
+    # The durable copy of a portfolio is the browser's; this machine keeps
+    # only a working copy in memory, which is empty after a restart and on
+    # any worker that has not seen this account. The vault restore already
+    # carries the whole thing, so that is the moment to put it back, and it
+    # costs no extra request.
+    @app.callback(
+        Output("vault-seed-dummy", "data"),
+        Input("vault-restore-state", "data"),
+        prevent_initial_call=True,
+    )
+    def seed_server_copy(restore_state):
+        if not isinstance(restore_state, dict):
+            raise PreventUpdate
+        uid = restore_state.get("uid")
+        wrapped = restore_state.get("portfolio")
+        if not uid or not wrapped:
+            raise PreventUpdate
+        try:
+            wrap = json.loads(wrapped) if isinstance(wrapped, str) else wrapped
+            payload = wrap.get("portfolio") if isinstance(wrap, dict) else None
+            parsed = json.loads(payload) if isinstance(payload, str) else payload
+        except Exception:
+            raise PreventUpdate
+        if not isinstance(parsed, dict) or parsed.get("is_demo"):
+            raise PreventUpdate
+        from components.tr_api import seed_portfolio
+        if not seed_portfolio(uid, parsed):
+            raise PreventUpdate
+        _log.info("Restored the working copy from the browser")
+        return True
+
+    # ── The data is on the server; put it on the page ──
+    # Everything else that fills the store depends on a hand-off landing:
+    # the sync result reaching the browser, or the encrypted vault decrypting
+    # and restoring. Both can fail, and when they do the user is looking at
+    # an empty account with their portfolio sitting on the server, with only
+    # "sync again" on offer. This asks the server directly whenever the page
+    # ends up on the real account with nothing in it.
+    @app.callback(
+        [Output("portfolio-data-store", "data", allow_duplicate=True),
+         Output("demo-mode", "data", allow_duplicate=True)],
+        [Input("portfolio-data-store", "data"),
+         Input("current-user-store", "data")],
+        State("demo-mode", "data"),
+        prevent_initial_call=True,
+    )
+    def restore_from_server(portfolio, current_user, demo_mode):
+        # Only when the page has nothing at all. Demo data on screen is a
+        # choice the user made, and the demo-mode flag alone is not enough to
+        # see that: this callback is triggered by the same store the toggle
+        # writes, and reading the flag as State raced it, so switching to
+        # demo got undone a beat later.
+        if demo_mode or _is_real_portfolio(portfolio) or _is_demo_payload(portfolio):
+            raise PreventUpdate
+        uid = auth.current_uid(current_user)
+        held = _held_portfolio(uid)
+        if not held:
+            raise PreventUpdate            # genuinely nothing synced
+        return held, False
 
     # ── Dashboard, or an honest empty state ──
     @app.callback(
@@ -1153,8 +1322,12 @@ def register_callbacks(app):
         # capped at a few megabytes) even though their portfolio was sitting
         # on the server.
         uid = auth.current_uid(current_user)
+        # A file-size check, not a load: this callback fires on every demo
+        # mode change and every page load, and reading the whole portfolio
+        # off disk to produce a boolean is not what it is for.
+        from components.tr_api import has_cached_portfolio
         has_real_data = bool(_backup_for_uid(local_backup, uid)
-                             or _disk_cached_portfolio(uid))
+                             or (uid and has_cached_portfolio(uid)))
 
         banner_style = {
             "display": "block" if show_demo else "none",
@@ -1326,7 +1499,7 @@ def register_callbacks(app):
                 _log.warning("Could not clear server-side data for %s: %s", uid, exc)
         # Back to demo, with the browser-held copies dropped as well. The
         # vault entry itself is removed clientside (see assets/secure_store.js).
-        return _load_demo_json(), True, None, None, (n_clicks or 0)
+        return _load_demo_lean(), True, None, None, (n_clicks or 0)
 
     # ── Daily price history: what the chart is drawn from, and the
     #    action that upgrades it. ──
@@ -1672,7 +1845,7 @@ def register_callbacks(app):
             return default
         
         try:
-            data = json.loads(data_json) if isinstance(data_json, str) else data_json
+            data = _full_portfolio(data_json)
             history = data.get("data", {}).get("history", [])
             
             if not history:
@@ -1793,7 +1966,7 @@ def register_callbacks(app):
             )
 
         try:
-            data = json.loads(data_json) if isinstance(data_json, str) else data_json
+            data = _full_portfolio(data_json)
             if not data.get("success"):
                 raise ValueError("No data")
 
@@ -2238,7 +2411,7 @@ def register_callbacks(app):
         lang = get_lang(lang_data)
         isin = trig.get("isin", "")
         try:
-            data = json.loads(data_json) if isinstance(data_json, str) else (data_json or {})
+            data = _full_portfolio(data_json)
         except Exception:
             data = {}
         portfolio = (data or {}).get("data", {}) or {}
@@ -3014,10 +3187,13 @@ def register_callbacks(app):
         lang = get_lang(lang_data)
         # Use deposits for benchmark simulation if "cash" is included in asset filter
         use_deposits = "cash" in (asset_class or [])
+        # Resolved once: the store carries a lean payload and the chart needs
+        # the daily history and the pre-computed series behind it.
+        full = _full_portfolio(data_json)
         t0 = time.perf_counter()
         figs = {
             chart_type: build_portfolio_chart(
-                data_json,
+                full,
                 chart_type,
                 selected_range,
                 benchmarks,
@@ -3154,7 +3330,7 @@ def register_callbacks(app):
             return html.Div(t("pa.chart_empty", lang), className="text-muted text-center py-3")
 
         try:
-            data = json.loads(data_json) if isinstance(data_json, str) else data_json
+            data = _full_portfolio(data_json)
             history = data.get("data", {}).get("history", [])
             if not history:
                 return html.Div(t("pa.chart_no_hist", lang), className="text-muted text-center py-3")

@@ -15,6 +15,9 @@ import pandas as pd
 import yfinance as yf
 import logging
 
+# Instrument names, ISINs and amounts never go into a log line.
+from core.log_privacy import anon
+
 log = logging.getLogger(__name__)
 
 
@@ -217,10 +220,10 @@ def get_crypto_prices_coingecko(isin: str, dates: List[datetime]) -> Dict[str, f
         
         resp = requests.get(url, params=params, timeout=30)
         if resp.status_code == 429:
-            log.warning(f"CoinGecko rate limit hit for {coin_id}")
+            log.warning(f"CoinGecko rate limit hit for {anon(coin_id)}")
             return {}
         if resp.status_code != 200:
-            log.warning(f"CoinGecko API error {resp.status_code} for {coin_id}")
+            log.warning(f"CoinGecko API error {resp.status_code} for {anon(coin_id)}")
             return {}
         
         data = resp.json()
@@ -248,11 +251,11 @@ def get_crypto_prices_coingecko(isin: str, dates: List[datetime]) -> Dict[str, f
                         result[date_str] = price_by_date[pd]
                         break
         
-        log.info(f"  CoinGecko: Got {len(result)} prices for {coin_id}")
+        log.info(f"  CoinGecko: Got {len(result)} prices for {anon(coin_id)}")
         return result
         
     except Exception as e:
-        log.warning(f"CoinGecko fetch failed for {coin_id}: {e}")
+        log.warning(f"CoinGecko fetch failed for {anon(coin_id)}: {e}")
         return {}
 
 
@@ -476,10 +479,10 @@ def get_currency_for_isin(isin: str, symbol: str = None) -> str:
             t = yf.Ticker(ticker_symbol)
             currency = t.info.get('currency', 'EUR')
             _currency_cache[isin] = currency
-            log.debug(f"Yahoo currency for {isin}: {currency}")
+            log.debug(f"Yahoo currency for {anon(isin)}: {currency}")
             return currency
         except Exception as e:
-            log.debug(f"Failed to get currency for {isin}: {e}")
+            log.debug(f"Failed to get currency for {anon(isin)}: {e}")
     
     # European ISINs default to EUR (DE, FR, NL, LU, AT, etc.)
     return 'EUR'
@@ -507,7 +510,7 @@ def get_current_price_eur(isin: str, name: str = "") -> Optional[Tuple[float, st
                 if price_eur:
                     return (price_eur, coin_id)
         except Exception as e:
-            log.debug(f"CoinGecko current price failed for {coin_id}: {e}")
+            log.debug(f"CoinGecko current price failed for {anon(coin_id)}: {e}")
         return None
     
     # Skip known no-external-data ISINs (bonds, etc.)
@@ -523,7 +526,7 @@ def get_current_price_eur(isin: str, name: str = "") -> Optional[Tuple[float, st
             price_eur = convert_to_eur(price_usd, 'USD', fx_rates)
             return (price_eur, ticker)
         except Exception as e:
-            log.debug(f"Failed to get price for {ticker}: {e}")
+            log.debug(f"Failed to get price for {anon(ticker)}: {e}")
             return None
     
     # 2. Check if it's a foreign stock with explicit ticker + currency
@@ -535,7 +538,7 @@ def get_current_price_eur(isin: str, name: str = "") -> Optional[Tuple[float, st
             price_eur = convert_to_eur(price, currency, fx_rates)
             return (price_eur, ticker)
         except Exception as e:
-            log.debug(f"Failed to get price for {ticker}: {e}")
+            log.debug(f"Failed to get price for {anon(ticker)}: {e}")
             return None
     
     # 3. Try ISIN directly (works for most ETFs)
@@ -547,7 +550,7 @@ def get_current_price_eur(isin: str, name: str = "") -> Optional[Tuple[float, st
         price_eur = convert_to_eur(price, currency, fx_rates)
         return (price_eur, isin)
     except Exception as e:
-        log.debug(f"ISIN direct lookup failed for {isin}: {e}")
+        log.debug(f"ISIN direct lookup failed for {anon(isin)}: {e}")
     
     # 4. Check ETF_ISIN_CURRENCY for known currency
     if isin in ETF_ISIN_CURRENCY:
@@ -610,7 +613,7 @@ def _lookup_isin_openfigi(isin: str) -> Optional[str]:
         
         return None
     except Exception as e:
-        log.debug(f"OpenFIGI lookup failed for {isin}: {e}")
+        log.debug(f"OpenFIGI lookup failed for {anon(isin)}: {e}")
         return None
 
 
@@ -680,7 +683,7 @@ def _lookup_isin_yfinance_search(isin: str) -> Optional[str]:
             # Quick check - try to get recent history
             hist = ticker.history(period="5d")
             if len(hist) > 0:
-                log.debug(f"Found {isin} with suffix {suffix}")
+                log.debug(f"Found {anon(isin)} with suffix {suffix}")
                 return test_symbol
         except:
             continue
@@ -709,12 +712,12 @@ def isin_to_symbol(isin: str, name: str = "") -> Optional[str]:
         # If it's None, we already tried and failed - don't retry
         return None
     
-    log.info(f"Looking up symbol for ISIN {isin} ({name})...")
+    log.info(f"Looking up symbol for {anon(isin)}...")
     
     # 3. Try OpenFIGI API
     symbol = _lookup_isin_openfigi(isin)
     if symbol:
-        log.info(f"  OpenFIGI found: {symbol}")
+        log.info(f"  OpenFIGI found a symbol for {anon(symbol)}")
         cache[isin] = symbol
         _save_json_cache(ISIN_SYMBOL_CACHE_FILE, cache)
         return symbol
@@ -722,13 +725,13 @@ def isin_to_symbol(isin: str, name: str = "") -> Optional[str]:
     # 4. Try yfinance search as fallback
     symbol = _lookup_isin_yfinance_search(isin)
     if symbol:
-        log.info(f"  yfinance search found: {symbol}")
+        log.info(f"  yfinance search found a symbol for {anon(symbol)}")
         cache[isin] = symbol
         _save_json_cache(ISIN_SYMBOL_CACHE_FILE, cache)
         return symbol
     
     # 5. Mark as not found in cache to avoid repeated lookups
-    log.warning(f"  Could not find Yahoo symbol for {isin} ({name})")
+    log.warning(f"  Could not find a Yahoo symbol for {anon(isin)}")
     cache[isin] = None
     _save_json_cache(ISIN_SYMBOL_CACHE_FILE, cache)
     return None
@@ -770,7 +773,7 @@ def add_isin_mapping(old_isin: str, new_isin: str) -> None:
     """Add a mapping from an old ISIN to a new ISIN (for corporate restructuring)."""
     global _OLD_ISIN_TO_NEW_ISIN
     _OLD_ISIN_TO_NEW_ISIN[old_isin] = new_isin
-    log.info(f"Added ISIN mapping: {old_isin} → {new_isin}")
+    log.info(f"Added ISIN mapping: {anon(old_isin)} → {anon(new_isin)}")
 
 
 def extract_isin_from_icon(icon: str, title: str = None) -> Optional[str]:
@@ -862,7 +865,7 @@ def get_price_at_date(isin: str, name: str, date: datetime) -> Optional[float]:
         return None
         
     except Exception as e:
-        log.debug(f"Failed to get price for {symbol} on {date_str}: {e}")
+        log.debug(f"Failed to get price for {anon(symbol)} on {date_str}: {e}")
         return None
 
 
@@ -917,7 +920,7 @@ def get_prices_for_dates(isin: str, name: str, dates: List[datetime],
         return result
 
     if cache_only:
-        log.info(f"  ↷ {name}: {cached_count} prices from cache, "
+        log.info(f"  ↷ {anon(name)}: {cached_count} prices from cache, "
                  f"{len(missing_dates)} not fetched (cache-only)")
         return result
     
@@ -944,7 +947,7 @@ def get_prices_for_dates(isin: str, name: str, dates: List[datetime],
     # BONDS/NO-DATA: Skip ISINs known to have no external price data
     # ============================================================
     if isin in NO_EXTERNAL_DATA:
-        log.info(f"  ⚠ No external price data for {name} - will use transaction prices")
+        log.info(f"  ⚠ No external price data for {anon(name)}, will use transaction prices")
         return result
     
     # ============================================================
@@ -977,7 +980,7 @@ def get_prices_for_dates(isin: str, name: str, dates: List[datetime],
             if currency is None:
                 try:
                     currency = ticker.info.get('currency', 'EUR')
-                    log.debug(f"Yahoo currency for {symbol}: {currency}")
+                    log.debug(f"Yahoo currency for {anon(symbol)}: {currency}")
                     fx_rates = get_fx_rates() if currency != 'EUR' else {}
                 except:
                     # Fallback to our mapping if Yahoo info fails
@@ -987,7 +990,7 @@ def get_prices_for_dates(isin: str, name: str, dates: List[datetime],
             start = datetime.strptime(range_start, "%Y-%m-%d") - timedelta(days=5)
             end = datetime.strptime(range_end, "%Y-%m-%d") + timedelta(days=1)
             
-            log.debug(f"Delta load: Fetching {range_start} to {range_end} for {symbol}")
+            log.debug(f"Delta load: Fetching {range_start} to {range_end} for {anon(symbol)}")
             hist = ticker.history(start=start, end=end)
             
             if len(hist) == 0:
@@ -1012,7 +1015,7 @@ def get_prices_for_dates(isin: str, name: str, dates: List[datetime],
                         total_new += 1
                         
         except Exception as e:
-            log.warning(f"Failed to fetch prices for {symbol} ({range_start} to {range_end}): {e}")
+            log.warning(f"Failed to fetch prices for {anon(symbol)} ({range_start} to {range_end}): {e}")
     
     # Save updated cache if we got new data
     if total_new > 0:
@@ -1359,8 +1362,8 @@ def build_portfolio_history_from_transactions(
     
     log.info(f"Built transaction-based history: {len(history)} data points")
     if history:
-        log.info(f"  First: {history[0]['date']} = €{history[0]['value']:,.2f}")
-        log.info(f"  Last:  {history[-1]['date']} = €{history[-1]['value']:,.2f}")
+        log.info(f"  First data point: {history[0]['date']}")
+        log.info(f"  Last data point:  {history[-1]['date']}")
     
     if return_position_histories:
         # Build position histories in expected format
@@ -1514,9 +1517,9 @@ def build_portfolio_history(
         isin_prices[isin] = prices
         
         if prices:
-            log.info(f"Got {len(prices)} prices for {name} ({isin})")
+            log.info(f"Got {len(prices)} prices for {anon(isin)}")
         else:
-            log.warning(f"No prices found for {name} ({isin})")
+            log.warning(f"No prices found for {anon(isin)}")
     
     if progress_callback:
         progress_callback(70, 100, "Calculating portfolio values...")
@@ -1677,7 +1680,7 @@ def update_position_values(positions: List[Dict]) -> List[Dict]:
                 "_ticker": ticker,  # Debug info
             })
             total_value += value
-            log.debug(f"{name[:30]}: qty={qty:.2f} × {price_eur:.2f} EUR = {value:.2f} EUR (gain: {profit/invested*100 if invested else 0:.1f}%)")
+            log.debug(f"{anon(name)}: valued at its latest price")
         else:
             # No price data - use invested as fallback
             updated.append({
@@ -1686,9 +1689,9 @@ def update_position_values(positions: List[Dict]) -> List[Dict]:
                 "profit": 0,
             })
             total_value += invested
-            log.debug(f"{name[:30]}: No price data, using invested={invested:.2f} EUR")
+            log.debug(f"{anon(name)}: no price data, falling back to the invested amount")
     
-    log.info(f"Position values updated: {len(updated)} positions, total={total_value:,.2f} EUR (invested={total_invested:,.2f} EUR)")
+    log.info(f"Position values updated: {len(updated)} positions")
     return updated
 
 
@@ -1754,7 +1757,7 @@ def calculate_and_save_history(force_rebuild: bool = False) -> Tuple[bool, str, 
     total_invested = sum(p.get("invested", 0) for p in updated_positions)
     total_profit = total_value - total_invested
     
-    log.info(f"Portfolio totals: value={total_value:,.2f} EUR, invested={total_invested:,.2f} EUR, profit={total_profit:,.2f} EUR")
+    log.info("Portfolio totals recomputed")
     
     # =========================================================================
     # BUILD PORTFOLIO HISTORY (PRIMARY: Transaction-based, no external APIs)
@@ -1825,7 +1828,7 @@ def calculate_and_save_history(force_rebuild: bool = False) -> Tuple[bool, str, 
         portfolio_data["cached_at"] = datetime.now().isoformat()
         portfolio_cache_file.write_text(json.dumps(portfolio_data, indent=2), encoding="utf-8")
         
-        log.info(f"Saved portfolio cache: totalValue={total_value + cash:,.2f} EUR, {len(position_histories)} position histories")
+        log.info(f"Saved portfolio cache with {len(position_histories)} position histories")
         
     except Exception as e:
         log.warning(f"Failed to save cache: {e}")

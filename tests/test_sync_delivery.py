@@ -12,9 +12,12 @@ made itself dependent on three fragile things at once:
     counted a fraction of the ticks and turned into an unpredictable
     wall-clock deadline.
 
-The portfolio cache on disk is the one durable record that a sync finished,
-so that is what decides the outcome now, and it is written atomically so a
-concurrent reader cannot catch it half-written.
+What a finished sync leaves behind is the portfolio itself, handed to the
+browser and held in memory here, so that is what decides the outcome: a
+portfolio taken delivery of after this sync started means the sync worked,
+marker or no marker. Nothing of it is written to this machine's disk; what
+is written is bookkeeping with no holdings in it, and that is written
+atomically so a concurrent reader cannot catch it half-written.
 """
 
 import json
@@ -30,12 +33,14 @@ from components import tr_api
 from components import tr_connector
 
 
-def _write_cache(uid, payload, mtime=None):
-    path = tr_api._portfolio_cache_path(uid)
-    tr_api._atomic_write_json(path, payload)
-    if mtime is not None:
-        os.utime(path, (mtime, mtime))
-    return path
+def _take_delivery(uid, payload=None, at=None):
+    """The server taking delivery of a portfolio, as a sync or a browser does."""
+    payload = payload or {"success": True, "data": {"positions": [{"isin": "X"}]}}
+    tr_api._mem_put(uid, "portfolio", payload)
+    if at is not None:                      # pretend it happened earlier
+        with tr_api._MEM_LOCK:
+            tr_api._MEM[uid]["portfolio"] = (at, payload)
+    return payload
 
 
 def _stamp_start(uid, ts):
@@ -44,17 +49,17 @@ def _stamp_start(uid, ts):
 
 # ── Atomic writes ────────────────────────────────────────────────────────
 
-def test_concurrent_reader_never_sees_a_partial_cache(monkeypatch, tmp_path):
-    """A reader in another worker gets the old file or the new one, never
-    a truncated one. Serialising a real portfolio takes seconds."""
+def test_concurrent_reader_never_sees_a_partial_file(monkeypatch, tmp_path):
+    """A reader in another worker gets the old file or the new one, never a
+    truncated one."""
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     uid = "atomic"
+    path = tr_api._fetch_result_path(uid)
     small = {"success": True, "data": {"positions": [{"isin": "OLD"}]}}
     big = {"success": True,
            "data": {"positions": [{"isin": f"ISIN{i:06d}", "name": "x" * 200}
                                   for i in range(4000)]}}
-    _write_cache(uid, small)
-    path = tr_api._portfolio_cache_path(uid)
+    tr_api._atomic_write_json(path, small)
 
     seen = []
     stop = threading.Event()
@@ -73,8 +78,8 @@ def test_concurrent_reader_never_sees_a_partial_cache(monkeypatch, tmp_path):
     th.start()
     try:
         for _ in range(5):
-            _write_cache(uid, big)
-            _write_cache(uid, small)
+            tr_api._atomic_write_json(path, big)
+            tr_api._atomic_write_json(path, small)
     finally:
         stop.set()
         th.join(timeout=5)
@@ -89,9 +94,10 @@ def test_concurrent_reader_never_sees_a_partial_cache(monkeypatch, tmp_path):
 def test_atomic_write_replaces_the_previous_file(monkeypatch, tmp_path):
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     uid = "replace"
-    _write_cache(uid, {"n": 1})
-    _write_cache(uid, {"n": 2})
-    assert json.loads(tr_api._portfolio_cache_path(uid).read_text()) == {"n": 2}
+    path = tr_api._fetch_result_path(uid)
+    tr_api._atomic_write_json(path, {"n": 1})
+    tr_api._atomic_write_json(path, {"n": 2})
+    assert json.loads(path.read_text()) == {"n": 2}
 
 
 # ── Is the cache on disk this sync's work? ───────────────────────────────
@@ -100,23 +106,23 @@ def test_fresh_portfolio_since(monkeypatch, tmp_path):
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     uid = "freshness"
     now = time.time()
+    tr_api._mem_drop(uid)
 
-    # Nothing cached at all.
+    # Nothing taken delivery of at all.
     assert tr_api.fresh_portfolio_since(uid, now - 10) is False
 
-    # Cached before this sync started: someone else's data, not this run's.
-    _write_cache(uid, {"success": True}, mtime=now - 600)
+    # Delivered before this sync started: not this run's work.
+    _take_delivery(uid, at=now - 600)
     assert tr_api.fresh_portfolio_since(uid, now - 60) is False
 
-    # Cached after this sync started: this run wrote it.
-    _write_cache(uid, {"success": True}, mtime=now - 5)
+    # Delivered after this sync started: this run did it.
+    _take_delivery(uid, at=now - 5)
     assert tr_api.fresh_portfolio_since(uid, now - 60) is True
 
-    # No start stamp: only a cache young enough to belong to the run the UI
-    # is waiting on counts.
+    # No start stamp: only a delivery young enough to belong to the run the
+    # UI is waiting on counts.
     assert tr_api.fresh_portfolio_since(uid, None) is True
-    _write_cache(uid, {"success": True},
-                 mtime=now - tr_api.TR_SYNC_TIMEOUT_SECONDS - 60)
+    _take_delivery(uid, at=now - tr_api.TR_SYNC_TIMEOUT_SECONDS - 60)
     assert tr_api.fresh_portfolio_since(uid, None) is False
 
 
@@ -149,13 +155,13 @@ def test_lost_marker_with_a_fresh_cache_is_a_success(monkeypatch, tmp_path):
     the sync had stopped."""
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     uid = "lost-marker"
+    tr_api._mem_drop(uid)
     _stamp_start(uid, time.time() - 120)
-    _write_cache(uid, {"success": True, "data": {"positions": [{"isin": "X"}]}})
+    _take_delivery(uid)
 
     outcome = tr_connector.resolve_sync_outcome(uid)
     assert outcome and outcome["success"] is True
-    # And the data the UI shows comes off that same cache, not from the
-    # in-process handoff only the syncing worker has.
+    # And the data the UI shows is the copy this process is holding.
     assert tr_api.take_fetch_data(uid) is None
     assert tr_api.get_cached_portfolio(uid)["data"]["positions"][0]["isin"] == "X"
 
@@ -174,12 +180,13 @@ def test_marker_still_wins_when_it_is_there(monkeypatch, tmp_path):
     assert outcome["flow"] == "refresh"
 
 
-def test_live_progress_outranks_an_older_cache(monkeypatch, tmp_path):
-    """A cache from a previous sync must not end the run that is under way."""
+def test_live_progress_outranks_an_older_delivery(monkeypatch, tmp_path):
+    """A copy from a previous sync must not end the run that is under way."""
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     uid = "in-flight"
     now = time.time()
-    _write_cache(uid, {"success": True}, mtime=now - 3600)
+    tr_api._mem_drop(uid)
+    _take_delivery(uid, at=now - 3600)
     _stamp_start(uid, now)
     tr_api.get_connection(uid)._write_progress(40, "Positions", "12 of 30")
     assert tr_connector.resolve_sync_outcome(uid) is None
@@ -241,8 +248,9 @@ def test_sync_state_reports_a_landed_sync(monkeypatch, tmp_path):
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
     uid = "watch-landed"
     watching_since = time.time()
+    tr_api._mem_drop(uid)
     _stamp_start(uid, watching_since - 60)
-    _write_cache(uid, {"success": True, "data": {"positions": [{"isin": "X"}]}})
+    _take_delivery(uid)
 
     state = tr_api.sync_state(uid)
     assert state["running"] is False

@@ -16,6 +16,11 @@ import json
 
 # Import the TR connector component
 from components.tr_connector import create_tr_connector_card, register_tr_callbacks
+import logging
+
+from core.log_privacy import anon
+
+_log = logging.getLogger(__name__)
 
 
 # ISIN to Yahoo ticker mapping for common assets
@@ -74,7 +79,7 @@ def fetch_index_data(symbol, start_date, end_date):
             return df[["Date", symbol]]
         return None
     except Exception as e:
-        print(f"Error fetching {symbol}: {e}")
+        _log.warning("Error fetching %s: %s", anon(symbol), e)
         return None
 
 
@@ -98,7 +103,7 @@ def fetch_position_history(isin, name, start_date, end_date):
                 df = df.reset_index()
                 return df[["Date", "Close"]], ticker
         except Exception as e:
-            print(f"Error fetching {ticker}: {e}")
+            _log.warning("Error fetching %s: %s", anon(ticker), e)
     
     return None, None
 
@@ -461,7 +466,7 @@ def register_callbacks(app):
             )
             
         except Exception as e:
-            print(f"Error updating positions: {e}")
+            _log.warning("Error updating positions: %s", e)
             return (
                 html.Div(f"Error: {str(e)}", className="text-danger text-center small py-3"),
                 "0",
@@ -524,7 +529,7 @@ def register_callbacks(app):
                         hovertemplate=f"<b>{name[:20]}</b><br>Date: %{{x}}<br>Value: %{{y:.2f}}%<extra></extra>"
                     ))
             except Exception as e:
-                print(f"Error fetching history for position: {e}")
+                _log.warning("Error fetching history for a position: %s", e)
         
         fig.update_layout(
             height=320,

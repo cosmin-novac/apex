@@ -94,18 +94,19 @@ def test_a_payload_with_no_stamp_loses_to_a_stamped_one():
     assert pa._fresher(unstamped, stamped) == stamped
 
 
-def test_disk_cache_is_read_for_the_user_and_skips_demo(monkeypatch, tmp_path):
+def test_the_held_copy_is_read_for_the_user_and_skips_demo(monkeypatch, tmp_path):
     from components import tr_api
     monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
-    uid = "diskuser"
-    assert pa._disk_cached_portfolio(uid) is None
+    uid = "helduser"
+    tr_api._mem_drop(uid)
+    assert pa._held_portfolio(uid) is None
 
-    tr_api._atomic_write_json(tr_api._portfolio_cache_path(uid), _real())
-    assert json.loads(pa._disk_cached_portfolio(uid))["data"]["positions"]
+    tr_api.seed_portfolio(uid, _real())
+    assert json.loads(pa._held_portfolio(uid))["data"]["positions"]
 
-    # A cache file that somehow holds demo data is not the user's portfolio.
-    tr_api._atomic_write_json(tr_api._portfolio_cache_path(uid), DEMO)
-    assert pa._disk_cached_portfolio(uid) is None
+    # Demo data is never the user's portfolio, wherever it turns up.
+    tr_api._mem_put(uid, "portfolio", DEMO)
+    assert pa._held_portfolio(uid) is None
 
 
 # ── Real account with nothing in it ───────────────────────────────────────
@@ -142,3 +143,18 @@ def test_the_empty_state_replaces_the_dashboard():
         json.dumps({"success": True, "data": {"positions": [], "cash": 0}}),
         False) == (HIDDEN, SHOWN)
     assert pa._dashboard_visibility(None, False) == (HIDDEN, SHOWN)
+
+
+def test_demo_data_on_screen_is_left_alone(monkeypatch, tmp_path):
+    """restore_from_server exists for a page that has nothing. Demo data is a
+    choice, and it used to get overwritten a beat after the user made it:
+    the callback is triggered by the same store the toggle writes, so the
+    demo-mode flag it read as State could still be the old one."""
+    from components import tr_api
+    monkeypatch.setattr(tr_api, "TR_CREDENTIALS_DIR", tmp_path)
+
+    assert pa._is_demo_payload(pa._load_demo_json()) is True
+    assert pa._is_demo_payload(pa._load_demo_lean()) is True
+    assert pa._is_demo_payload(json.dumps(_real())) is False
+    assert pa._is_demo_payload(pa.NO_DATA) is False
+    assert pa._is_demo_payload(None) is False

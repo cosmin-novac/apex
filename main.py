@@ -14,6 +14,12 @@ if not _root_logger.handlers:
 else:
     _root_logger.setLevel(_configured_log_level)
 
+# Before anything can log: the server log must never carry the user's
+# holdings. See core/log_privacy.py.
+from core.log_privacy import install_log_privacy  # noqa: E402
+
+install_log_privacy(_root_logger)
+
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, ctx, no_update, Input, Output, State
@@ -32,11 +38,16 @@ from components.rule_builder import register_rule_builder_callbacks
 from components.auth import user_store, register_auth_callbacks
 from components.auth_modal import auth_modal, auth_user_area, register_auth_modal_callbacks
 from components.i18n import t, get_lang
-from components.tr_api import ensure_playwright_browser
+from components.tr_api import (ensure_playwright_browser, note_worker_started,
+                               purge_persisted_portfolios)
 from core.seo import register_seo_routes
 
 log = logging.getLogger(__name__)
 log.info("Starting Apex application")
+# Nothing of anyone's portfolio belongs on this machine; older builds
+# wrote it here, so it goes on the way up.
+purge_persisted_portfolios()
+note_worker_started()
 try:
     ensure_playwright_browser()
 except Exception as exc:
@@ -192,6 +203,9 @@ app.layout = dbc.Container([
     # so the data survives reloads but is unreadable until that user logs in.
     dcc.Store(id="local-portfolio-backup", storage_type="memory"),
     dcc.Store(id="vault-sync-dummy", storage_type="memory"),
+    # Output of seed_server_copy: the browser handing its portfolio back
+    # to a process that has none (pages/portfolio_analysis.py).
+    dcc.Store(id="vault-seed-dummy", storage_type="memory"),
     # Outcome of the last vault read ({uid, status}), written by secure_store.js
     # AFTER it has attempted to decrypt the vault. Server callbacks that decide
     # demo-vs-real listen to this, so they never race the async decrypt.

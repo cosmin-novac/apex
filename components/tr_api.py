@@ -16,9 +16,13 @@ import sys
 import ctypes
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
+import tempfile
 import threading
 import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+# Instrument names, ISINs and amounts never go into a log line.
+from core.log_privacy import anon
 
 # Minimum seconds between Trade Republic syncs.
 # Keeps the app responsive and prevents accidental rapid re-syncs.
@@ -60,6 +64,152 @@ def _atomic_write_json(path: Path, payload: Any) -> None:
             tmp.unlink(missing_ok=True)
         except Exception:
             pass
+
+
+# ── Nothing of the user's portfolio is written to this machine ───────────
+# The browser holds the durable copy. What lives here is a working copy in
+# memory, so the callbacks that render a page do not have to have it uploaded
+# to them on every request, and it is gone when the process ends.
+#
+# The portfolio, the transactions, the instrument names and the state of a
+# login in progress all live in here. What is still written to disk is bookkeeping with no
+# holdings in it at all: how far a sync has got, when it started, and how it
+# ended. The cookie jar is materialised for the length of a flow on RAM
+# backed storage and removed, because pytr reads it from a path.
+_MEM_LOCK = threading.Lock()
+_MEM: Dict[str, Dict[str, Any]] = {}
+
+# A working copy is not a record. It goes when the process does, and it goes
+# on its own after this long even if the process lives.
+MEM_TTL_SECONDS = int(os.environ.get("APEX_MEMORY_TTL_SECONDS", str(6 * 3600)))
+
+
+# Anything that looks like an amount or an ISIN does not go in the progress
+# file. Counts, percentages and the "x of y" the stages report do.
+_PROGRESS_UNSAFE = re.compile(
+    r"[€$£]|\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b|\b(?:EUR|USD|GBP|CHF)\b")
+
+
+def _progress_safe(detail: str) -> str:
+    text = str(detail or "")
+    return "" if _PROGRESS_UNSAFE.search(text) else text
+
+
+def _mem_put(user_id: str, key: str, value: Any) -> None:
+    uid = _safe_user_id(user_id)
+    with _MEM_LOCK:
+        _MEM.setdefault(uid, {})[key] = (datetime.now().timestamp(), value)
+
+
+def _mem_stamp(user_id: str, key: str) -> Optional[float]:
+    """When this working copy was put here, or None if there is none."""
+    try:
+        uid = _safe_user_id(user_id)
+    except Exception:
+        return None
+    with _MEM_LOCK:
+        entry = (_MEM.get(uid) or {}).get(key)
+        if not entry:
+            return None
+        stamped, _ = entry
+        if datetime.now().timestamp() - stamped > MEM_TTL_SECONDS:
+            return None
+        return stamped
+
+
+def _mem_get(user_id: str, key: str, default=None):
+    try:
+        uid = _safe_user_id(user_id)
+    except Exception:
+        return default
+    with _MEM_LOCK:
+        entry = (_MEM.get(uid) or {}).get(key)
+        if not entry:
+            return default
+        stamped, value = entry
+        if datetime.now().timestamp() - stamped > MEM_TTL_SECONDS:
+            _MEM[uid].pop(key, None)
+            return default
+        return value
+
+
+def _mem_drop(user_id: str, *keys: str) -> None:
+    try:
+        uid = _safe_user_id(user_id)
+    except Exception:
+        return
+    with _MEM_LOCK:
+        if not keys:
+            _MEM.pop(uid, None)
+            return
+        bucket = _MEM.get(uid) or {}
+        for key in keys:
+            bucket.pop(key, None)
+
+
+def seed_portfolio(user_id: str, portfolio: Dict[str, Any]) -> bool:
+    """Hand the server back the copy the browser has been keeping.
+
+    A page load, or a request that lands on a worker which has never seen
+    this account, arrives with nothing in memory. The browser has the durable
+    copy, so it puts it back rather than the account looking empty or a sync
+    being needed again.
+    """
+    if not isinstance(portfolio, dict) or not portfolio.get("success"):
+        return False
+    inner = portfolio.get("data") or {}
+    if not inner.get("positions") and not inner.get("cash"):
+        return False
+    _mem_put(user_id, "portfolio", portfolio)
+    return True
+
+
+def has_portfolio_in_memory(user_id: str = "_default") -> bool:
+    return _mem_get(user_id, "portfolio") is not None
+
+
+# pytr reads the cookie jar from a path, so one has to exist while a login or
+# a sync is running. It is put somewhere that is not this machine's durable
+# storage (/dev/shm is RAM on Linux) and removed when the flow ends. The
+# browser keeps the only lasting copy, encrypted with this server's key, and
+# hands it back at the start of the next sync.
+def _ephemeral_root() -> Path:
+    configured = os.environ.get("APEX_EPHEMERAL_DIR")
+    for candidate in ([Path(configured)] if configured else []) + [
+            Path("/dev/shm/apex"), Path(tempfile.gettempdir()) / "apex-ephemeral"]:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except Exception:
+            continue
+    return TR_CREDENTIALS_DIR / "_ephemeral"
+
+
+def export_cookie_jar(user_id: str = "_default") -> Optional[str]:
+    """The current session jar, for the browser to keep. None if there is none."""
+    try:
+        path = _ephemeral_root() / _safe_user_id(user_id) / "cookies.txt"
+        return path.read_text(encoding="utf-8") if path.exists() else None
+    except Exception:
+        return None
+
+
+def import_cookie_jar(user_id: str, jar: Optional[str]) -> bool:
+    """Put the browser's copy of the session jar back where pytr can read it."""
+    if not jar or not isinstance(jar, str) or "\n" not in jar:
+        return False
+    try:
+        path = _ephemeral_root() / _safe_user_id(user_id) / "cookies.txt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(jar, encoding="utf-8")
+        try:
+            os.chmod(path, 0o600)
+        except Exception:
+            pass
+        return True
+    except Exception as exc:
+        log.warning("Could not restore the session jar for %s: %s", user_id, exc)
+        return False
 
 
 def _default_waf_token_method() -> str:
@@ -172,20 +322,24 @@ def _get_cipher_key():
     return hashlib.sha256(ENCRYPTION_KEY.encode()).digest()
 
 
-def encrypt_credentials(phone_no: str, pin: str = None) -> str:
+def encrypt_credentials(phone_no: str, pin: str = None, cookie_jar: str = None) -> str:
     """Encrypt the reconnect token for browser storage.
 
-    Security: the PIN is **never** persisted. Only the phone number is stored
-    (encrypted), which is enough to identify the session for reconnect; the
-    web-session itself is resumed from the server-side cookie jar. The ``pin``
-    parameter is accepted for backward compatibility but deliberately ignored.
+    The PIN is **never** kept. What goes in is the phone number and, since
+    this machine keeps nothing, the Trade Republic session jar: it is what
+    lets a sync resume without a new code, and the browser is the only place
+    it lasts. Encrypted with this server's key, so the browser stores
+    something it cannot itself read. The ``pin`` parameter is accepted for
+    backward compatibility and ignored.
     """
     from cryptography.fernet import Fernet
     # Derive Fernet key from our encryption key
     key = base64.urlsafe_b64encode(_get_cipher_key())
     f = Fernet(key)
-    data = json.dumps({"phone": phone_no})
-    encrypted = f.encrypt(data.encode())
+    payload = {"phone": phone_no}
+    if cookie_jar:
+        payload["jar"] = cookie_jar
+    encrypted = f.encrypt(json.dumps(payload).encode())
     return base64.urlsafe_b64encode(encrypted).decode()
 
 
@@ -193,18 +347,24 @@ def decrypt_credentials(encrypted: str) -> Tuple[Optional[str], Optional[str]]:
     """Decrypt the reconnect token from browser storage.
 
     Returns ``(phone, None)``. The PIN is never stored, so it is always None.
+    Use ``decrypt_reconnect_token`` when the session jar is wanted too.
     """
+    payload = decrypt_reconnect_token(encrypted)
+    return payload.get("phone"), None
+
+
+def decrypt_reconnect_token(encrypted: str) -> Dict[str, Any]:
+    """The whole reconnect token: the phone, and the session jar if it has one."""
     try:
         from cryptography.fernet import Fernet
         key = base64.urlsafe_b64encode(_get_cipher_key())
         f = Fernet(key)
         encrypted_bytes = base64.urlsafe_b64decode(encrypted.encode())
-        decrypted = f.decrypt(encrypted_bytes).decode()
-        data = json.loads(decrypted)
-        return data.get("phone"), None
+        data = json.loads(f.decrypt(encrypted_bytes).decode())
+        return data if isinstance(data, dict) else {}
     except Exception as e:
         log.error(f"Failed to decrypt credentials: {e}")
-        return None, None
+        return {}
 
 
 import re
@@ -485,7 +645,8 @@ class TRConnection:
         self._user_cache_dir = TR_CREDENTIALS_DIR / self.user_id
         self._user_cache_dir.mkdir(parents=True, exist_ok=True)
         self._instrument_cache_path = self._user_cache_dir / "instrument_cache.json"
-        self._cookies_path = self._user_cache_dir / "cookies.txt"
+        self._cookies_path = _ephemeral_root() / self.user_id / "cookies.txt"
+        self._cookies_path.parent.mkdir(parents=True, exist_ok=True)
         self._progress_path = self._user_cache_dir / "progress.json"
 
         # Migrate legacy (non-namespaced) caches into the _default bucket
@@ -779,22 +940,24 @@ class TRConnection:
                 self.api._websession.cookies.save(ignore_discard=True)
             except Exception as e:
                 log.warning("Could not flush TR login cookies for %s: %s", self.user_id, e)
-            self._pending_login_path.write_text(json.dumps({
+            # In memory: the phone number is the user's, and the login is
+            # over in minutes either way.
+            _mem_put(self.user_id, "pending_login", {
                 "process_id": process_id,
                 "phone": self.phone_no,
                 "ts": datetime.now().timestamp(),
                 "countdown": countdown,
                 "waf_method": self.waf_method_used,
-            }), encoding="utf-8")
+            })
         except Exception as e:
             log.warning("Could not persist pending TR login for %s: %s", self.user_id, e)
 
     def _restore_pending_login(self) -> bool:
         """Rebuild the in-flight login (processId + cookies) from disk."""
         try:
-            if not self._pending_login_path.exists():
+            data = _mem_get(self.user_id, "pending_login")
+            if not data:
                 return False
-            data = json.loads(self._pending_login_path.read_text(encoding="utf-8"))
             # A login code is only briefly valid; treat older handoffs as dead.
             if datetime.now().timestamp() - float(data.get("ts", 0)) > 600:
                 return False
@@ -820,7 +983,7 @@ class TRConnection:
 
     def _clear_pending_login(self) -> None:
         try:
-            self._pending_login_path.unlink(missing_ok=True)
+            _mem_drop(self.user_id, "pending_login")
         except Exception:
             pass
 
@@ -842,29 +1005,24 @@ class TRConnection:
         return self._cookies_path.exists()
 
     def _load_instrument_cache(self) -> Dict[str, Any]:
-        try:
-            if self._instrument_cache_path.exists():
-                data = json.loads(self._instrument_cache_path.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    normalized = {}
-                    for k, v in data.items():
-                        if not k or not v:
-                            continue
-                        if isinstance(v, dict):
-                            normalized[str(k)] = v
-                        else:
-                            normalized[str(k)] = {"name": str(v)}
-                    return normalized
-        except Exception as e:
-            log.warning(f"Failed to load instrument cache: {e}")
-        return {}
+        """Instrument names by ISIN, from this process's memory.
+
+        The set of ISINs an account holds is the portfolio, so this is not
+        something to leave on a disk either. Losing it on a restart costs a
+        second of re-fetching during the next sync.
+        """
+        data = _mem_get(self.user_id, "instruments")
+        if not isinstance(data, dict):
+            return {}
+        normalized = {}
+        for k, v in data.items():
+            if not k or not v:
+                continue
+            normalized[str(k)] = v if isinstance(v, dict) else {"name": str(v)}
+        return normalized
 
     def _save_instrument_cache(self, cache: Dict[str, Any]) -> None:
-        try:
-            TR_CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
-            self._instrument_cache_path.write_text(json.dumps(cache), encoding="utf-8")
-        except Exception as e:
-            log.warning(f"Failed to save instrument cache: {e}")
+        _mem_put(self.user_id, "instruments", cache)
 
     @staticmethod
     def _preferred_exchange_id(inst_response: Dict[str, Any], fallback: str = "LSX") -> str:
@@ -941,9 +1099,9 @@ class TRConnection:
                 hist["history"] = sorted(points, key=lambda p: p.get("date", ""))
                 updated += 1
             except asyncio.TimeoutError:
-                log.debug("Ticker timeout for %s on %s", isin, exchange)
+                log.debug("Ticker timeout for %s on %s", anon(isin), exchange)
             except Exception as e:
-                log.debug("Ticker update failed for %s on %s: %s", isin, exchange, e)
+                log.debug("Ticker update failed for %s on %s: %s", anon(isin), exchange, e)
             finally:
                 if sub_id:
                     try:
@@ -1014,7 +1172,7 @@ class TRConnection:
                     ct = resp.headers.get("Content-Type", "")
                     ext = "svg" if "svg" in ct else "png"
                     (logos_dir / f"{isin}.{ext}").write_bytes(resp.content)
-                    log.info(f"  ✓ {isin} logo from Parqet ({len(resp.content)}b {ext})")
+                    log.info(f"  ✓ {anon(isin)} logo from Parqet ({len(resp.content)}b {ext})")
                     return
             except Exception:
                 pass
@@ -1036,12 +1194,12 @@ class TRConnection:
                 resp = _requests.get(avatar_url, timeout=LOGO_HTTP_TIMEOUT)
                 if resp.status_code == 200 and len(resp.content) > 50:
                     (logos_dir / f"{isin}.png").write_bytes(resp.content)
-                    log.info(f"  ✓ {isin} avatar fallback ({len(resp.content)}b)")
+                    log.info(f"  ✓ {anon(isin)} avatar fallback ({len(resp.content)}b)")
                     return
             except Exception:
                 pass
 
-            log.debug(f"  ✗ {isin}: no logo source available")
+            log.debug(f"  ✗ {anon(isin)}: no logo source available")
 
         # Serial downloads took up to 2×timeout per position, over 10 minutes
         # for a whole portfolio when a CDN is unreachable. A small pool keeps
@@ -1080,35 +1238,28 @@ class TRConnection:
             pool.shutdown(wait=False, cancel_futures=True)
 
     def _load_transactions_cache(self) -> List[Dict]:
-        """Load cached transactions (user-scoped)."""
-        cache_file = self._user_cache_dir / "transactions_cache.json"
-        try:
-            if cache_file.exists():
-                data = json.loads(cache_file.read_text(encoding="utf-8"))
-                if isinstance(data, list):
-                    return data
-        except Exception as e:
-            log.warning(f"Failed to load transactions cache: {e}")
-        return []
+        """Transactions this process still holds from an earlier sync.
+
+        Only an optimisation: it lets a sync load the timeline as a delta.
+        Empty after a restart, which costs one full timeline read.
+        """
+        held = _mem_get(self.user_id, "transactions")
+        return held if isinstance(held, list) else []
 
     def _save_transactions_cache(self, transactions: List[Dict]) -> None:
-        """Save transactions to cache (user-scoped).
-        
-        Note: We strip the 'details' field before saving as it's huge and not needed
-        for caching purposes (shares are already extracted).
+        """Hold the transactions in memory for a later delta load.
+
+        'details' is dropped: it is large and the shares are already out of
+        it. Nothing here is written down.
         """
         try:
-            self._user_cache_dir.mkdir(parents=True, exist_ok=True)
-            cache_file = self._user_cache_dir / "transactions_cache.json"
-            # Strip 'details' field to save space - it can be huge!
-            clean_transactions = [
+            _mem_put(self.user_id, "transactions", [
                 {k: v for k, v in txn.items() if k != 'details'}
                 for txn in transactions
-            ]
-            cache_file.write_text(json.dumps(clean_transactions, default=str), encoding="utf-8")
-            log.info(f"Saved {len(transactions)} transactions to cache (user={self.user_id})")
+            ])
+            log.info(f"Holding {len(transactions)} transactions for a delta load")
         except Exception as e:
-            log.warning(f"Failed to save transactions cache: {e}")
+            log.warning(f"Failed to hold transactions: {e}")
 
     async def _fetch_timeline_transactions(self, delta_load: bool = True) -> List[Dict]:
         """Fetch timeline transactions from TR with delta loading.
@@ -1446,8 +1597,8 @@ class TRConnection:
                             else:
                                 # Validation failed - log details for debugging
                                 ts = txn.get('timestamp', '')[:10]
-                                log.warning(f"⚠️ Shares validation failed: {title} on {ts}")
-                                log.warning(f"    pytr parsed: {event.shares}, raw text: {raw_shares_text}")
+                                log.warning(f"⚠️ Shares validation failed for {anon(title)} on {ts}")
+                                log.warning("    pytr parsed a quantity the raw text does not support")
                                 
                                 # Try manual extraction as fallback
                                 new_shares = self._extract_shares_from_details(response)
@@ -1465,7 +1616,7 @@ class TRConnection:
                                         txn['shares'] = validated_est
                                         batch_success += 1
                                         total_success += 1
-                                        log.info(f"    ✓ Estimated from price: {validated_est}")
+                                        log.info("    ✓ Estimated the quantity from the trade price")
                                     else:
                                         log.warning(f"    ✗ All methods failed, transaction will be skipped")
                             
@@ -1496,7 +1647,7 @@ class TRConnection:
                     if total_success <= 5 or total_success % 100 == 0:
                         title = txn.get('title', '')[:25]
                         shares = txn.get('shares', 0)
-                        log.info(f"  [{total_success}/{trade_count}] {title}: {shares:.6f} shares")
+                        log.info(f"  [{total_success}/{trade_count}] {anon(title)} enriched")
                         
                 except asyncio.TimeoutError:
                     log.warning(f"  Timeout waiting for responses, {len(pending_subscriptions)} remaining")
@@ -1549,7 +1700,7 @@ class TRConnection:
                     price = self._parse_german_number(price_text)
                     if price and price > 0:
                         estimated_shares = amount / price
-                        log.info(f"    Estimated shares from price: {amount:.2f} / {price:.2f} = {estimated_shares:.8f}")
+                        log.info("    Estimated shares from the trade price")
                         return estimated_shares
         
         return None
@@ -1583,10 +1734,10 @@ class TRConnection:
         if 'BTC' in icon or 'BTC' in isin or 'bitcoin' in title:
             # BTC has never been below €1,000 or above €200,000
             if implied_price < 1000:
-                log.warning(f"BTC shares validation FAILED: {shares:.8f} for €{amount:.2f} => €{implied_price:.2f}/BTC (too low)")
+                log.warning("BTC shares validation FAILED: implied price too low")
                 return None
             if implied_price > 200000:
-                log.warning(f"BTC shares validation FAILED: {shares:.8f} for €{amount:.2f} => €{implied_price:.2f}/BTC (too high)")
+                log.warning("BTC shares validation FAILED: implied price too high")
                 return None
             return shares
         
@@ -1594,10 +1745,10 @@ class TRConnection:
         if 'ETH' in icon or 'ETH' in isin or 'ethereum' in title:
             # ETH has been between €100 and €5000
             if implied_price < 50:
-                log.warning(f"ETH shares validation FAILED: {shares:.8f} for €{amount:.2f} => €{implied_price:.2f}/ETH")
+                log.warning("ETH shares validation FAILED: implied price out of range")
                 return None
             if implied_price > 10000:
-                log.warning(f"ETH shares validation FAILED: {shares:.8f} for €{amount:.2f} => €{implied_price:.2f}/ETH")
+                log.warning("ETH shares validation FAILED: implied price out of range")
                 return None
             return shares
         
@@ -1609,12 +1760,12 @@ class TRConnection:
             corrected_shares = shares / 1000
             corrected_price = amount / corrected_shares
             if 0.01 <= corrected_price <= 500000:
-                log.warning(f"⚠️ German number format fix: {shares:.0f} -> {corrected_shares:.6f} (€{implied_price:.6f} -> €{corrected_price:.2f}/share)")
+                log.warning("⚠️ German number format fix applied to a trade quantity (factor 1000)")
                 return corrected_shares
-            log.warning(f"Shares validation FAILED: {shares:.8f} for €{amount:.2f} => €{implied_price:.6f}/share (too low)")
+            log.warning("Shares validation FAILED: implied price per share too low")
             return None
         if implied_price > 500000:
-            log.warning(f"Shares validation FAILED: {shares:.8f} for €{amount:.2f} => €{implied_price:.2f}/share (too high)")
+            log.warning("Shares validation FAILED: implied price per share too high")
             return None
         
         return shares
@@ -1655,7 +1806,7 @@ class TRConnection:
                                 parsed = self._parse_german_number(text)
                                 if parsed is not None:
                                     # Log for debugging
-                                    log.debug(f"Parsed shares from text '{text}' = {parsed}")
+                                    log.debug("Parsed a share quantity out of the event text")
                                     return parsed
                         elif isinstance(detail, (int, float)):
                             return float(detail)
@@ -1779,13 +1930,13 @@ class TRConnection:
             return []
         
         try:
-            log.info(f"Fetching history for {isin}...")
+            log.info(f"Fetching history for {anon(isin)}...")
             await self.api.performance_history(isin, timeframe, exchange="LSX")
             sub_id, sub_params, response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
             aggregates = response.get('aggregates', response.get('expectedHistoryLight', []))
-            log.info(f"Got {len(aggregates)} history points for {isin}")
+            log.info(f"Got {len(aggregates)} history points for {anon(isin)}")
             
             history = []
             for agg in aggregates:
@@ -1801,7 +1952,7 @@ class TRConnection:
             
             return history
         except Exception as e:
-            log.error(f"Error fetching history for {isin}: {e}")
+            log.error(f"Error fetching history for {anon(isin)}: {e}")
             return []
 
     def _build_position_histories_from_transactions(
@@ -1908,7 +2059,7 @@ class TRConnection:
                 closes = get_prices_for_dates(isin, name, weekday_dts,
                                               cache_only=not market_prices)
             except Exception as exc:
-                log.warning(f"  Market prices unavailable for {name}: {exc}")
+                log.warning(f"  Market prices unavailable for {anon(name)}: {exc}")
                 closes = {}
             # Execution prices win on their own dates, unless the same-day
             # market close says the raw price is from before a stock split.
@@ -1916,9 +2067,11 @@ class TRConnection:
                 closes, known_prices, label=name)
             if not merged_prices:
                 continue
+            # A count, not a name: this line is written to a file, and the
+            # instrument someone holds is not something to leave on a disk.
             self._write_progress(
                 75 + int(9 * (idx + 1) / n_isins), "Price history",
-                f"{name[:34]} ({idx + 1}/{n_isins})",
+                f"{idx + 1} of {n_isins}",
             )
 
             # Interpolate prices for all dates
@@ -2012,7 +2165,7 @@ class TRConnection:
             name = isin_to_name.get(isin, isin)
             pos = pos_lookup.get(isin, {})
             
-            log.info(f"[{idx+1}/{len(isins_with_transactions)}] Fetching prices for {name}...")
+            log.info(f"[{idx+1}/{len(isins_with_transactions)}] Fetching prices for {anon(name)}...")
             
             dates_as_dt = [datetime.combine(d, datetime.min.time()) for d in sorted_dates]
             prices = get_prices_for_dates(isin, name, dates_as_dt)
@@ -2036,7 +2189,7 @@ class TRConnection:
                         'name': name,
                     }
             else:
-                log.warning(f"  No prices available for {name}")
+                log.warning(f"  No prices available for {anon(name)}")
         
         return position_histories
 
@@ -2112,7 +2265,7 @@ class TRConnection:
                 # For bonds: the amount (negative for purchase) approximates nominal value
                 # Bond "quantity" in TR is the nominal value (e.g., 10543.18 EUR)
                 shares = abs(float(amount))
-                log.info(f"Bond {title}: using amount {shares:.2f} as nominal value")
+                log.info(f"Bond {anon(title)}: using the booked amount as its nominal value")
             elif is_bond and amount is not None and subtitle in SELL_SUBTITLES:
                 shares = abs(float(amount))
             else:
@@ -2246,7 +2399,7 @@ class TRConnection:
         if mismatches:
             log.info(f"Holdings reconciliation needed ({len(mismatches)} positions):")
             for m in mismatches[:5]:
-                log.info(f"  {m['isin']} ({m['name']}): calculated={m['calculated']:.4f}, actual={m['actual']:.4f}")
+                log.info(f"  {anon(m['isin'])}: computed holding does not match the account")
             if len(mismatches) > 5:
                 log.info(f"  ... and {len(mismatches) - 5} more")
         
@@ -2260,7 +2413,7 @@ class TRConnection:
                 if isin in holdings_timeline:
                     for date_str in holdings_timeline[isin]:
                         holdings_timeline[isin][date_str] *= ratio
-                    log.info(f"  Applied {ratio:.2f}x ratio to {isin} ({adj['reason']})")
+                    log.info(f"  Applied {ratio:.2f}x ratio to {anon(isin)} ({adj['reason']})")
                 # Update current_holdings too
                 if isin in current_holdings:
                     current_holdings[isin] *= ratio
@@ -2270,7 +2423,7 @@ class TRConnection:
                 old_isin = adj['old_isin']
                 if old_isin in holdings_timeline:
                     holdings_timeline[isin] = holdings_timeline.pop(old_isin)
-                    log.info(f"  Transferred history from {old_isin} to {isin} ({adj['reason']})")
+                    log.info(f"  Transferred history from {anon(old_isin)} to {anon(isin)} ({adj['reason']})")
                 # Update current_holdings
                 if old_isin in current_holdings:
                     current_holdings[isin] = current_holdings.pop(old_isin)
@@ -2287,7 +2440,7 @@ class TRConnection:
                     for date_str in all_dates:
                         holdings_timeline[isin][date_str] = quantity
                     current_holdings[isin] = quantity
-                    log.info(f"  Added {quantity:.4f} shares of {isin} from {first_date} ({adj['reason']})")
+                    log.info(f"  Added a transferred-in holding of {anon(isin)} from {first_date} ({adj['reason']})")
         
         # Final validation after adjustments
         final_mismatches = []
@@ -2508,11 +2661,9 @@ class TRConnection:
                 # Calculate adjustment factor and apply retroactively
                 # This accounts for fees/taxes we don't track individually
                 adjustment = current_cash - calculated_cash
-                log.info(f"Cash timeline adjustment: calculated={calculated_cash:.2f}, "
-                        f"actual={current_cash:.2f}, adjustment={adjustment:.2f}")
+                log.info("Cash timeline adjusted to the account's actual balance")
         
-        log.info(f"Built cash timeline: {len(cash_timeline)} dates, "
-                f"final balance: {running_cash:.2f} EUR")
+        log.info(f"Built cash timeline: {len(cash_timeline)} dates")
         
         return cash_timeline
 
@@ -2681,7 +2832,7 @@ class TRConnection:
         if history:
             samples = history[:2] + history[-2:] if len(history) > 4 else history
             for h in samples:
-                log.info(f"  History sample: {h['date']}: invested={h['invested']:,.2f}, value={h['value']:,.2f}")
+                log.debug("  History sample at %s", h["date"])
         
         return history
 
@@ -2775,7 +2926,7 @@ class TRConnection:
             # Update today's value with actual current value
             history[-1]['value'] = current_total
         
-        log.info(f"Built history with {len(history)} data points from {len(daily_flows)} cash flow days, total deposited: {cumulative:.2f}")
+        log.info(f"Built history with {len(history)} data points from {len(daily_flows)} cash flow days")
         
         return history
     
@@ -2912,8 +3063,7 @@ class TRConnection:
             cumulative += daily_flows[date_str]
             invested_series[date_str] = cumulative
         
-        log.info(f"Built invested series: {len(invested_series)} dates, "
-                 f"final cumulative: {cumulative:,.2f} EUR")
+        log.info(f"Built invested series: {len(invested_series)} dates")
         
         return invested_series
     
@@ -2961,16 +3111,23 @@ class TRConnection:
         return self._cookies_path.exists()
     
     def get_encrypted_credentials(self, phone_no: str, pin: str = None) -> str:
-        """Build the browser reconnect token (phone only; the PIN is never stored)."""
-        return encrypt_credentials(phone_no)
+        """Build the browser reconnect token: phone plus the session jar.
+
+        The jar rides along because the browser is where it lasts now; this
+        machine only has it for the length of the flow.
+        """
+        return encrypt_credentials(phone_no, cookie_jar=export_cookie_jar(self.user_id))
     
     def set_credentials_from_encrypted(self, encrypted: str) -> bool:
-        """Restore the phone number from the encrypted browser token.
+        """Restore the phone number, and the session jar, from the browser token.
 
-        The PIN is never stored, so only the phone is restored. Reconnect relies
-        on the server-side web-session cookies, not the PIN.
+        The PIN is never kept. The jar is what reconnect actually runs on, and
+        the browser is where it lives now, so this is the moment it comes back.
         """
-        phone, _ = decrypt_credentials(encrypted)
+        payload = decrypt_reconnect_token(encrypted)
+        phone = payload.get("phone")
+        if payload.get("jar"):
+            import_cookie_jar(self.user_id, payload["jar"])
         if phone:
             if phone != self.phone_no:
                 self._securities_account_number = None
@@ -3107,7 +3264,7 @@ class TRConnection:
             sub_id, sub_params, cash_response = await self._recv_response()
             await self.api.unsubscribe(sub_id)
             
-            log.info(f"Cash response: {cash_response}")
+            log.debug("Cash response received (%s)", type(cash_response).__name__)
             
             self.portfolio_data = portfolio_response
             self.cash_data = cash_response
@@ -3157,8 +3314,7 @@ class TRConnection:
             }
         except Exception as e:
             log.error(f"Portfolio fetch failed: {e}")
-            import traceback
-            traceback.print_exc()
+            log.debug("fetch traceback", exc_info=True)
             return {
                 "success": False,
                 "error": friendly_tr_error(e)
@@ -3203,12 +3359,12 @@ class TRConnection:
             if isinstance(cash_response, list) and len(cash_response) > 0:
                 # First element is usually the main cash balance
                 cash = float(cash_response[0].get('amount', 0))
-                log.info(f"Parsed cash from array: {cash} {cash_response[0].get('currencyId', 'EUR')}")
+                log.info("Parsed the cash balance from the array response")
             elif isinstance(cash_response, dict):
                 # Fallback if response format changes
                 cash = float(cash_response.get('amount', cash_response.get('value', 0)))
             
-            log.info(f"Portfolio netValue from TR: {net_value}, cash: {cash}")
+            log.debug("Portfolio netValue and cash parsed from the TR response")
             
             # Fetch instrument names only (skip ticker - too slow and unreliable)
             instrument_cache = self._load_instrument_cache()
@@ -3269,9 +3425,9 @@ class TRConnection:
                             "imageId": image_id,
                             "exchangeId": exchange_id,
                         }
-                        log.info(f"[{i+1}/{len(positions)}] {isin}: {name} (type={instrument_type}, exchange={exchange_id}, img={image_id})")
+                        log.info(f"[{i+1}/{len(positions)}] {anon(isin)} (type={instrument_type}, exchange={exchange_id})")
                     except Exception as e:
-                        log.warning(f"[{i+1}/{len(positions)}] Could not get details for {isin}: {e}")
+                        log.warning(f"[{i+1}/{len(positions)}] Could not get details for {anon(isin)}: {e}")
                 
                 # Use TR's netValue if available, otherwise calculate from invested
                 current_value = position_value if position_value > 0 else invested
@@ -3299,7 +3455,7 @@ class TRConnection:
             total_profit = total_value - total_invested
             total_profit_pct = (total_profit / total_invested * 100) if total_invested > 0 else 0
             
-            log.info(f"Portfolio summary: invested={total_invested:.2f}, value={total_value:.2f}, profit={total_profit:.2f} ({total_profit_pct:.2f}%)")
+            log.info(f"Portfolio summary built for {len(enriched_positions)} positions")
             
             # Fetch timeline transactions (for history reconstruction)
             self._write_progress(50, "Transactions", "Loading timeline…")
@@ -3354,7 +3510,7 @@ class TRConnection:
                             pos['currentPrice'] = latest_price
                             pos['value'] = current_value
                             pos['profit'] = current_value - invested
-                            log.debug(f"Updated {pos.get('name', isin)}: price={latest_price:.4f}, value={current_value:.2f}, profit={pos['profit']:.2f}")
+                            log.debug("Updated %s with its latest price", anon(isin))
 
             # Prefer TR realtime ticker values for the current snapshot. The
             # transaction-derived prices above are exact execution prices, but
@@ -3370,7 +3526,7 @@ class TRConnection:
             total_profit = total_value - total_invested
             total_profit_pct = (total_profit / total_invested * 100) if total_invested > 0 else 0
             
-            log.info(f"Updated portfolio summary: invested={total_invested:.2f}, value={total_value:.2f}, profit={total_profit:.2f} ({total_profit_pct:.2f}%)")
+            log.info(f"Updated portfolio summary for {len(enriched_positions)} positions")
 
             # Build history after current positions have their latest values.
             # Otherwise today's chart point is pinned to the pre-update fallback
@@ -3441,8 +3597,7 @@ class TRConnection:
 
         except Exception as e:
             log.error(f"Fetch all data failed: {e}")
-            import traceback
-            traceback.print_exc()
+            log.debug("fetch traceback", exc_info=True)
             return {
                 "success": False,
                 "error": friendly_tr_error(e)
@@ -3497,33 +3652,36 @@ class TRConnection:
         }
     
     def _save_portfolio_cache(self, data: Dict[str, Any]):
-        """Save portfolio data to local cache with pre-calculated series (user-scoped)."""
-        cache_file = self._user_cache_dir / "portfolio_cache.json"
+        """Keep the finished portfolio in memory for the browser to collect."""
         try:
-            import datetime
-            data['cached_at'] = datetime.datetime.now().isoformat()
-            
+            data['cached_at'] = datetime.now().isoformat()
+
             # Pre-calculate TWR and drawdown series for faster chart rendering
             history = data.get('data', {}).get('history', [])
             if history:
                 cached_series = self._calculate_and_cache_twr_series(history)
                 data['data']['cachedSeries'] = cached_series
                 log.info(f"Pre-calculated chart series with {len(cached_series.get('dates', []))} data points")
-            
-            _atomic_write_json(cache_file, data)
-            log.info("Portfolio data cached")
+
+            _mem_put(self.user_id, "portfolio", data)
+            log.info("Portfolio ready for the browser")
         except Exception as e:
-            log.error(f"Failed to cache portfolio: {e}")
+            log.error(f"Failed to hold portfolio: {e}")
     
     def _write_progress(self, pct: int, stage: str, detail: str = ""):
         """Record fetch progress so the UI can poll it. Best-effort, never raises.
 
-        Written to a per-user file on the (shared) instance disk so a separate
-        request/worker handling the UI poll can read it while the fetch runs.
+        Written to a per-user file on the instance disk, because the poll that
+        shows it can be served by a different worker than the one syncing. It
+        is one of the three things this app writes down, so it holds counts
+        and stage names and nothing else: an instrument name or an amount in
+        here would be a holding on a disk. The stripping below is the guard,
+        not the fix; the callers pass counts.
         """
         try:
             _atomic_write_json(self._progress_path, {
-                "pct": int(pct), "stage": stage, "detail": detail,
+                "pct": int(pct), "stage": stage,
+                "detail": _progress_safe(detail),
                 "ts": datetime.now().timestamp(),
             })
         except Exception:
@@ -3538,15 +3696,8 @@ class TRConnection:
             pass
 
     def _load_portfolio_cache(self) -> Optional[Dict[str, Any]]:
-        """Load portfolio data from local cache (user-scoped)."""
-        cache_file = self._user_cache_dir / "portfolio_cache.json"
-        if cache_file.exists():
-            try:
-                with open(cache_file, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                log.error(f"Failed to load cache: {e}")
-        return None
+        """The working copy this process holds, if it still has one."""
+        return _mem_get(self.user_id, "portfolio")
     
     async def _reconnect(self, encrypted_credentials: str = None) -> Dict[str, Any]:
         """Reconnect by resuming the persisted web-session cookies.
@@ -3724,8 +3875,10 @@ def get_cached_transactions(user_id: str = "_default") -> List[Dict]:
 # wait for it: start_fetch_async runs the fetch in a daemon thread and
 # returns immediately; the UI's existing 1 s progress poll watches
 # progress.json while it runs and picks the outcome up from a small result
-# marker file (cross-worker safe: the data itself is already persisted to
-# portfolio_cache.json by the fetch).
+# marker file. Those two files, and the sync start stamp, are all that is
+# written to this machine: how far a sync got, when it started, and how it
+# ended. The portfolio itself is handed to the browser and held in memory
+# here, never written down.
 
 _BG_FETCH_THREADS: Dict[str, threading.Thread] = {}
 _BG_FETCH_DATA: Dict[str, Dict[str, Any]] = {}
@@ -3740,16 +3893,12 @@ def _sync_start_path(user_id: str) -> Path:
     return TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "sync_start.json"
 
 
-def _portfolio_cache_path(user_id: str) -> Path:
-    return TR_CREDENTIALS_DIR / _safe_user_id(user_id) / "portfolio_cache.json"
-
-
 def sync_started_ts(user_id: str = "_default") -> Optional[float]:
     """When the running (or last) sync was started, or None if never.
 
-    Written to disk rather than kept in memory because the poll that has to
-    reason about it can land on a different gunicorn worker than the one
-    running the sync.
+    On disk rather than in memory because the poll that has to reason about
+    it can land on a different gunicorn worker than the one running the sync.
+    A timestamp and the name of the flow: no holdings in it.
     """
     try:
         with open(_sync_start_path(user_id)) as f:
@@ -3759,11 +3908,13 @@ def sync_started_ts(user_id: str = "_default") -> Optional[float]:
 
 
 def portfolio_cached_ts(user_id: str = "_default") -> Optional[float]:
-    """When this user's portfolio cache was last written, or None."""
-    try:
-        return _portfolio_cache_path(user_id).stat().st_mtime
-    except Exception:
-        return None
+    """When this process last took delivery of a portfolio, or None."""
+    return _mem_stamp(user_id, "portfolio")
+
+
+def has_cached_portfolio(user_id: str = "_default") -> bool:
+    """Whether this process is holding a portfolio for this user."""
+    return has_portfolio_in_memory(user_id)
 
 
 def fresh_portfolio_since(user_id: str, since_ts: Optional[float]) -> bool:
@@ -3934,6 +4085,85 @@ def disconnect(user_id: str = "_default"):
     drop_connection(user_id)
 
 
+_WORKERS_PATH = None
+
+
+def note_worker_started() -> int:
+    """Log a warning when this app is running with more than one worker.
+
+    Nothing of a portfolio is written to this machine any more, so the only
+    copy the server has is in the memory of one process. A second worker
+    cannot see it: the poll that delivers a finished sync, and the pages that
+    render one, keep landing on a process that has nothing. It still works,
+    because the browser hands its copy back and the delivery waits for the
+    worker that has the data, but every one of those is a round trip that a
+    single worker does not need. Run gunicorn with --workers 1 --threads N.
+
+    Returns how many workers have been seen in the last minute.
+    """
+    global _WORKERS_PATH
+    try:
+        _WORKERS_PATH = TR_CREDENTIALS_DIR / "workers.json"
+        now = datetime.now().timestamp()
+        seen = {}
+        try:
+            seen = {str(k): float(v) for k, v in
+                    json.loads(_WORKERS_PATH.read_text()).items()}
+        except Exception:
+            seen = {}
+        seen = {pid: ts for pid, ts in seen.items() if now - ts < 60}
+        seen[str(os.getpid())] = now
+        _atomic_write_json(_WORKERS_PATH, seen)
+        if len(seen) > 1:
+            log.warning(
+                "%s app workers are running. The synced portfolio is held in "
+                "one process's memory and never written to disk, so the other "
+                "workers have to be handed it again by the browser. Use "
+                "--workers 1 --threads 8.", len(seen))
+        return len(seen)
+    except Exception:
+        return 1
+
+
+def purge_persisted_portfolios() -> int:
+    """Clear cache files an earlier version may have left in the data dir.
+
+    Portfolio data is held in memory and in the browser, so these paths are
+    not written any more. Tidying them on the way up keeps an upgraded
+    deployment consistent with that rather than leaving stale files around.
+    """
+    stale = ("portfolio_cache.json", "transactions_cache.json",
+             "instrument_cache.json", "cookies.txt", "pending_login.json")
+    removed = 0
+    try:
+        if not TR_CREDENTIALS_DIR.exists():
+            return 0
+        for name in stale:                       # pre-namespacing leftovers
+            try:
+                path = TR_CREDENTIALS_DIR / name
+                if path.is_file():
+                    path.unlink()
+                    removed += 1
+            except Exception:
+                pass
+        for user_dir in TR_CREDENTIALS_DIR.iterdir():
+            if not user_dir.is_dir():
+                continue
+            for name in stale:
+                try:
+                    path = user_dir / name
+                    if path.is_file():
+                        path.unlink()
+                        removed += 1
+                except Exception:
+                    pass
+    except Exception as exc:
+        log.warning("Could not sweep persisted portfolios: %s", exc)
+    if removed:
+        log.info("Removed %s file(s) an earlier build had written to disk", removed)
+    return removed
+
+
 def clear_user_data(user_id: str = "_default") -> List[str]:
     """Delete everything this server holds for a user, and return what went.
 
@@ -3959,6 +4189,14 @@ def clear_user_data(user_id: str = "_default") -> List[str]:
         except Exception as exc:
             log.warning("Could not remove %s for %s: %s", name, user_id, exc)
     _BG_FETCH_DATA.pop(user_id, None)
+    _mem_drop(user_id)
+    try:
+        jar = _ephemeral_root() / _safe_user_id(user_id) / "cookies.txt"
+        if jar.exists():
+            jar.unlink()
+            removed.append("session")
+    except Exception:
+        pass
     drop_connection(user_id)
     log.info("Cleared stored data for user=%s (%s)", user_id, ", ".join(removed) or "nothing")
     return removed
