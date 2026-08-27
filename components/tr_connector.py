@@ -513,8 +513,10 @@ def register_tr_callbacks(app):
         detail = prog.get('detail', '')
         ago = max(0, int(datetime.now().timestamp() - float(prog.get('ts', 0))))
         step_line = stage + (f": {detail}" if detail else "")
+        # No warning sign on it: a stage that takes a while is normal, and a
+        # triangle makes a working sync look like a broken one.
         if ago >= 12:
-            elapsed_line = f"⚠ Still working… no update for {ago}s"
+            elapsed_line = f"Still working… no update for {ago}s"
         else:
             elapsed_line = f"Last update {ago}s ago"
         # The same step line also feeds the status under "Send Verification
