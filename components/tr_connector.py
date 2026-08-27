@@ -517,8 +517,9 @@ def register_tr_callbacks(app):
             marker = {"success": False, "flow": marker.get("flow"),
                       "error": "Sync finished but no data was stored. Please try again."}
 
-        if marker.get("flow") == "refresh":
-            # A failed refresh keeps the (still valid) connected session.
+        if marker.get("flow") in ("refresh", "history"):
+            # A failed refresh or price-history load keeps the (still valid)
+            # connected session.
             return (
                 {"display": "none"}, {"display": "none"}, {"display": "none"}, {"display": "block"},
                 "connected", "", _tr_error_alert(marker.get("error")),

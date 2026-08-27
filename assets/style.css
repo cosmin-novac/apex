@@ -2614,6 +2614,42 @@ hr {
     white-space: nowrap;
 }
 
+/* What the value chart is drawn from, and the action that upgrades it.
+   A sync uses the user's own execution prices; the daily closing series is
+   a separate download because it is the slowest thing the sync can do. */
+.history-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -2px 0 6px;
+    flex-wrap: wrap;
+}
+.history-source {
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+.history-source::before {
+    content: "\F1D0";
+    font-family: "bootstrap-icons";
+    margin-right: 5px;
+    font-size: 0.7rem;
+}
+.load-history-btn {
+    font-size: 0.74rem !important;
+    font-weight: 600 !important;
+    color: var(--primary-color) !important;
+    padding: 2px 6px !important;
+    text-decoration: none !important;
+}
+.load-history-btn:hover:not(:disabled) {
+    color: var(--primary-hover) !important;
+    background: rgba(99, 102, 241, 0.08) !important;
+    border-radius: 6px;
+}
+.load-history-btn:disabled {
+    color: #94a3b8 !important;
+}
+
 .chart-hover-details {
     min-height: 286px;
     display: flex;

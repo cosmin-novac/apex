@@ -866,9 +866,15 @@ def get_price_at_date(isin: str, name: str, date: datetime) -> Optional[float]:
         return None
 
 
-def get_prices_for_dates(isin: str, name: str, dates: List[datetime]) -> Dict[str, float]:
+def get_prices_for_dates(isin: str, name: str, dates: List[datetime],
+                         cache_only: bool = False) -> Dict[str, float]:
     """
     Get prices for multiple dates efficiently with DELTA LOADING.
+
+    ``cache_only`` returns whatever is already on disk and fetches nothing.
+    This is what a plain sync uses: downloading a full daily price series per
+    security is the slowest thing the sync does, and it is the part the user
+    can ask for separately once the portfolio itself is on screen.
     All prices are converted to EUR before caching.
     
     Uses multiple data sources:
@@ -908,6 +914,11 @@ def get_prices_for_dates(isin: str, name: str, dates: List[datetime]) -> Dict[st
     cached_count = len(result)
     if not missing_dates:
         log.info(f"  ✓ All {cached_count} prices from cache")
+        return result
+
+    if cache_only:
+        log.info(f"  ↷ {name}: {cached_count} prices from cache, "
+                 f"{len(missing_dates)} not fetched (cache-only)")
         return result
     
     # ============================================================

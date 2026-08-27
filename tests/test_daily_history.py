@@ -28,7 +28,8 @@ def test_position_histories_are_daily(monkeypatch):
     monkeypatch.setattr(portfolio_history, "get_prices_from_transactions",
                         lambda *a, **k: {isin: {txn_day: 100.0}})
     monkeypatch.setattr(portfolio_history, "get_prices_for_dates",
-                        lambda _isin, _name, dts: _daily_prices(start, 31, 100.0))
+                        lambda _isin, _name, dts, cache_only=False:
+                            _daily_prices(start, 31, 100.0))
     monkeypatch.setattr(portfolio_history, "set_isin_mappings", lambda *a: None)
 
     conn = TRConnection()

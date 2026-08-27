@@ -64,7 +64,7 @@ def test_builder_survives_presplit_buy(monkeypatch):
     monkeypatch.setattr(portfolio_history, "get_prices_from_transactions",
                         lambda *a, **k: {isin: {buy_day: 2666.0}})
     monkeypatch.setattr(portfolio_history, "get_prices_for_dates",
-                        lambda _isin, _name, dts: closes)
+                        lambda _isin, _name, dts, cache_only=False: closes)
     monkeypatch.setattr(portfolio_history, "set_isin_mappings", lambda *a: None)
 
     conn = TRConnection()
