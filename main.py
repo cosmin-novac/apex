@@ -427,6 +427,15 @@ app.clientside_callback(
     State("current-user-store", "data"),
     prevent_initial_call=True,
 )
+# Clearing stored data also drops the encrypted vault entry, which only the
+# browser can do (the server never has the key).
+app.clientside_callback(
+    "window.dash_clientside.apexVault.clearVault",
+    Output("vault-sync-dummy", "data", allow_duplicate=True),
+    Input("clear-data-done", "data"),
+    State("current-user-store", "data"),
+    prevent_initial_call=True,
+)
 app.clientside_callback(
     "window.dash_clientside.apexVault.restoreBackup",
     [Output("local-portfolio-backup", "data", allow_duplicate=True),

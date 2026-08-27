@@ -3807,6 +3807,36 @@ def disconnect(user_id: str = "_default"):
     drop_connection(user_id)
 
 
+def clear_user_data(user_id: str = "_default") -> List[str]:
+    """Delete everything this server holds for a user, and return what went.
+
+    The synced portfolio, the transaction and instrument caches, the session
+    cookies and any half-finished login. Not the account itself: this is the
+    "my data is wrong, let me start the sync over" button, not a sign-out.
+    The shared price cache is keyed by ISIN rather than by user, so it stays.
+    """
+    removed: List[str] = []
+    conn = get_connection(user_id)
+    try:
+        conn.clear_credentials()
+    except Exception as exc:
+        log.warning("Could not clear credentials for %s: %s", user_id, exc)
+    for name in ("portfolio_cache.json", "transactions_cache.json",
+                 "instrument_cache.json", "cookies.txt", "progress.json",
+                 "fetch_result.json", "pending_login.json"):
+        path = conn._user_cache_dir / name
+        try:
+            if path.exists():
+                path.unlink()
+                removed.append(name)
+        except Exception as exc:
+            log.warning("Could not remove %s for %s: %s", name, user_id, exc)
+    _BG_FETCH_DATA.pop(user_id, None)
+    drop_connection(user_id)
+    log.info("Cleared stored data for user=%s (%s)", user_id, ", ".join(removed) or "nothing")
+    return removed
+
+
 def has_session(user_id: str = "_default") -> bool:
     """Check if persisted pytr web-session cookies exist for reconnect."""
     return get_connection(user_id).has_session()

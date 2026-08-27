@@ -2727,6 +2727,65 @@ hr {
     }
 }
 
+/* The phone actions menu. On a phone the header row cannot hold sync, hide
+   values, the demo toggle and a destructive action, so they live behind one
+   button. The real buttons stay in the DOM (Bootstrap display classes, not
+   removal) and the menu items click them. */
+.pa-menu-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 2px;
+    padding: 9px 12px;
+    border: none;
+    background: transparent;
+    color: #1e293b;
+    font-size: 0.86rem;
+    font-weight: 500;
+    text-align: left;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+.pa-menu-item:hover,
+.pa-menu-item:focus-visible {
+    background: rgba(99, 102, 241, 0.09);
+}
+.pa-menu-item i {
+    font-size: 0.95rem;
+    color: #64748b;
+}
+.pa-menu-danger,
+.pa-menu-danger i {
+    color: #b91c1c;
+}
+.pa-menu-danger:hover,
+.pa-menu-danger:focus-visible {
+    background: rgba(220, 38, 38, 0.09);
+}
+.pa-menu-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: #e5e7eb;
+}
+
+/* The Rank Lab corridor: exact numbers under the slider. */
+.ml-num-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+.ml-num {
+    width: 5.2rem;
+    font-size: 0.82rem !important;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.ml-num-dash {
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
 /* What the value chart is drawn from, and the action that upgrades it.
    A sync uses the user's own execution prices; the daily closing series is
    a separate download because it is the slowest thing the sync can do. */
