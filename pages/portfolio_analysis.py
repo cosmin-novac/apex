@@ -43,15 +43,30 @@ def _load_demo_json() -> str:
         return json.dumps({"success": False, "error": "Demo data file not found"})
 
 def _is_real_portfolio(data) -> bool:
-    """True if *data* is a successful, non-empty portfolio JSON string.
+    """True if *data* is a successful portfolio JSON string that holds something.
 
-    Used to decide whether the browser-only backup holds real synced data we
-    can restore (the backup never stores demo data)."""
+    Used to decide whether the browser-only backup or the disk cache holds real
+    synced data we can restore (neither ever stores demo data).
+
+    The success flag alone is not enough. A sync whose position fetch came back
+    empty still reports success, and accepting that payload takes the user out
+    of demo mode and leaves the page showing 0 € with no holdings, no banner and
+    no way back: the demo data is gone and the empty payload is what gets
+    restored on every reload. A portfolio with nothing in it is a failed sync,
+    not an empty portfolio, so it has to hold either a position or some cash."""
     if not data:
         return False
     try:
         parsed = json.loads(data) if isinstance(data, str) else data
-        return bool(isinstance(parsed, dict) and parsed.get("success"))
+        if not (isinstance(parsed, dict) and parsed.get("success")):
+            return False
+        inner = parsed.get("data") or {}
+        if inner.get("positions"):
+            return True
+        try:
+            return float(inner.get("cash") or 0) > 0
+        except (TypeError, ValueError):
+            return False
     except Exception:
         return False
 
@@ -910,7 +925,7 @@ def register_callbacks(app):
         try:
             from components.tr_api import get_cached_portfolio
             cached = get_cached_portfolio(user_id=uid)
-            if cached and cached.get("success"):
+            if _is_real_portfolio(cached):
                 return False, json.dumps(cached), no_update
         except Exception:
             pass
@@ -942,7 +957,7 @@ def register_callbacks(app):
                 return False, backup
             from components.tr_api import get_cached_portfolio
             cached = get_cached_portfolio(user_id=uid)
-            if cached and cached.get("success"):
+            if _is_real_portfolio(cached):
                 return False, json.dumps(cached)
             return False, no_update
 

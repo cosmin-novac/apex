@@ -211,9 +211,11 @@ app.layout = dbc.Container([
     settings_modal,
     auth_modal,
     dcc.Store(id="mobile-sidebar-dummy"),
-    # Bumped once the page the user asked for is on screen; mount_other_pages
-    # hangs off it. See render_active_page.
-    dcc.Store(id="page-mounted", data=0),
+    # Which page wrappers have been built. See mount_pages.
+    dcc.Store(id="pages-mounted", data=[]),
+    # Ticks the background prefetch: one page per tick, so the work is spread
+    # across round trips instead of blocking the main thread in one burst.
+    dcc.Interval(id="page-prefetch", interval=700),
     mobile_header,
     mobile_overlay,
     dbc.Row([
@@ -249,44 +251,59 @@ def redirect_to_default(pathname):
 
 
 @app.callback([Output(f"page-wrap-{key}", "children") for key in _PAGE_KEYS]
-              + [Output("page-mounted", "data")],
-              Input("lang-store", "data"),
-              [State("url", "pathname"), State("page-mounted", "data")])
-def render_active_page(lang_data, pathname, mounted):
-    """First response carries only the page the visitor actually asked for.
+              + [Output("pages-mounted", "data"),
+                 Output("page-prefetch", "disabled")],
+              [Input("url", "pathname"), Input("lang-store", "data"),
+               Input("page-prefetch", "n_intervals")],
+              State("pages-mounted", "data"))
+def mount_pages(pathname, lang_data, _tick, mounted):
+    """Build a page the first time somebody asks for it, and never again.
 
     Mounting all nine up front cost about 290 kB of layout JSON and six
-    thousand DOM nodes before React attached a single click handler. On a
-    phone that is several seconds during which the landing page is painted
-    but its buttons do nothing, which reads as a broken page rather than a
-    loading one.
+    thousand DOM nodes before React attached a single click handler, so the
+    landing page painted while its buttons did nothing. Deferring the other
+    eight to just after the first paint fixed that but only moved the cost:
+    the browser then spent seven seconds on a throttled phone building pages
+    nobody had asked to see, and every tap during that window felt stuck.
 
-    The other eight follow in mount_other_pages, which is chained to this
-    callback's own output so it can never overtake it.
+    So each page waits for its own first visit. The first switch to a page
+    costs one round trip; after that it stays mounted, so going back is a
+    style toggle and the page keeps whatever state it had. Someone who only
+    ever opens two pages never pays for the other seven.
+
+    Waiting for that first visit on its own made the first switch to a page
+    cost up to 2.8 s on a throttled phone, so the rest are also prefetched in
+    the background, one per tick. Each is its own round trip, which leaves the
+    main thread free between them, and by the time somebody navigates the page
+    is usually already there.
+
+    A language change rebuilds the visible page and drops the rest, which
+    re-mounts them in the new language when they are next visited.
     """
     lang = get_lang(lang_data)
     active = _active_page_key(pathname)
-    return ([fn(lang) if key == active else None for key, fn, _p in _PAGES]
-            + [(mounted or 0) + 1])
+    if ctx.triggered_id == "lang-store":
+        # Everything else has to be rebuilt in the new language, so the
+        # prefetch goes back to work.
+        return ([fn(lang) if key == active else None for key, fn, _p in _PAGES]
+                + [[active], False])
 
+    mounted = list(mounted or [])
+    if active not in mounted:
+        wanted = active                       # asked for, build it now
+    elif ctx.triggered_id == "page-prefetch":
+        wanted = next((k for k in _PAGE_KEYS if k not in mounted), None)
+        if wanted is None:
+            # Everything is up. Stop the interval rather than let it poll the
+            # server every 700 ms for the rest of the session.
+            return [no_update] * len(_PAGES) + [no_update, True]
+    else:
+        return [no_update] * len(_PAGES) + [no_update, no_update]
 
-@app.callback([Output(f"page-wrap-{key}", "children", allow_duplicate=True)
-               for key in _PAGE_KEYS],
-              Input("page-mounted", "data"),
-              [State("lang-store", "data"), State("url", "pathname")],
-              prevent_initial_call=True)
-def mount_other_pages(_mounted, lang_data, pathname):
-    """Bring in the pages nobody asked for yet, once the visible one is up.
-
-    They stay mounted from here on, so navigation costs no round trip and a
-    page keeps its state while the user is away on another one. The trigger
-    is render_active_page's output rather than a timer: Dash keeps one
-    in-flight request per callback, so a timer racing the first response
-    would sometimes replace it and leave the visible page blank.
-    """
-    lang = get_lang(lang_data)
-    active = _active_page_key(pathname)
-    return [no_update if key == active else fn(lang) for key, fn, _p in _PAGES]
+    mounted.append(wanted)
+    done = len(mounted) == len(_PAGES)
+    return ([fn(lang) if key == wanted else no_update for key, fn, _p in _PAGES]
+            + [mounted, done])
 
 
 app.clientside_callback(
