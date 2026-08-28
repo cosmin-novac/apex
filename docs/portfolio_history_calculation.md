@@ -165,7 +165,7 @@ After building history, we also update each position's current value:
 
 ```python
 for position in positions:
-    current_price = get_price_at_date(isin, today)
+    current_price = last price in position_histories[isin]
     if current_price:
         position.value = quantity × current_price
         position.profit = position.value - position.invested
