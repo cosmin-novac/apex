@@ -628,48 +628,24 @@ def layout(lang="en"):
         
         # Right side - Controls
         html.Div([
-            # Sync button (hidden, sync via banner CTA)
-            dbc.Button([
-                html.I(className="bi bi-arrow-repeat"),
-                html.Span(t("pa.sync", lang), className="d-none d-md-inline ms-1"),
-            ], id="sync-tr-data-btn", color="link", size="sm", className="header-icon-btn sync-btn-prominent d-none d-md-inline-flex", n_clicks=0, title=t("pa.sync", lang), style={"display": "none"}),
-
-            # Demo mode toggle (hidden, auto-managed)
-            dbc.Button([
-                html.I(className="bi bi-person-badge", id="demo-toggle-icon"),
-            ], id="demo-toggle-btn", color="link", size="sm", className="header-icon-btn d-none d-md-inline-flex", n_clicks=0, title=t("pa.switch_demo", lang), style={"display": "none"}),
-
-            # Privacy toggle
-            dbc.Button([
-                html.I(className="bi bi-eye-slash", id="privacy-icon"),
-            ], id="toggle-privacy-btn", color="link", size="sm", className="header-icon-btn d-none d-md-inline-flex", n_clicks=0, title=t("pa.hide", lang)),
-
-            # Phones get one menu instead of a row that does not fit. The
-            # items click the real buttons above, which stay in the DOM and
-            # keep every callback they already had.
+            # Sync, the demo toggle and the privacy toggle live in the menu
+            # at the end of this row. The buttons themselves stay here, out
+            # of sight: the menu items click them, so each action has one
+            # implementation and every callback bound to them still works.
             html.Div([
-                dbc.Button(html.I(className="bi bi-three-dots-vertical"),
-                           id="pa-actions-btn", color="link", size="sm",
-                           className="header-icon-btn d-md-none",
-                           n_clicks=0, title=t("pa.actions", lang)),
-                dbc.Popover(dbc.PopoverBody([
-                    html.Button([html.I(className="bi bi-arrow-repeat me-2"),
-                                 t("pa.sync", lang)],
-                                id="pa-menu-sync", className="pa-menu-item", n_clicks=0),
-                    html.Button([html.I(className="bi bi-eye-slash me-2"),
-                                 html.Span(t("pa.hide_values", lang), id="pa-menu-privacy-label")],
-                                id="pa-menu-privacy", className="pa-menu-item", n_clicks=0),
-                    html.Button([html.I(className="bi bi-person-badge me-2"),
-                                 html.Span(t("pa.switch_demo", lang), id="pa-menu-demo-label")],
-                                id="pa-menu-demo", className="pa-menu-item", n_clicks=0),
-                    html.Div(className="pa-menu-sep"),
-                    html.Button([html.I(className="bi bi-trash3 me-2"),
-                                 t("pa.clear_data", lang)],
-                                id="pa-menu-clear", className="pa-menu-item pa-menu-danger",
-                                n_clicks=0),
-                ], className="p-1"), id="pa-actions-popover", target="pa-actions-btn",
-                    trigger="legacy", placement="bottom-end"),
-            ], className="header-dropdown-wrapper d-md-none"),
+                dbc.Button([
+                    html.I(className="bi bi-arrow-repeat"),
+                    html.Span(t("pa.sync", lang), className="ms-1"),
+                ], id="sync-tr-data-btn", color="link", size="sm", className="header-icon-btn", n_clicks=0, title=t("pa.sync", lang)),
+
+                dbc.Button([
+                    html.I(className="bi bi-person-badge", id="demo-toggle-icon"),
+                ], id="demo-toggle-btn", color="link", size="sm", className="header-icon-btn", n_clicks=0, title=t("pa.switch_demo", lang)),
+
+                dbc.Button([
+                    html.I(className="bi bi-eye-slash", id="privacy-icon"),
+                ], id="toggle-privacy-btn", color="link", size="sm", className="header-icon-btn", n_clicks=0, title=t("pa.hide", lang)),
+            ], style={"display": "none"}),
 
             html.Div(className="header-divider"),
             
@@ -732,6 +708,33 @@ def layout(lang="en"):
                     dbc.Button(t("pa.all", lang), id="tf-max", n_clicks=0, size="sm", outline=True, color="light", className="tf-pill"),
                 ], className="timeframe-btn-group", size="sm"),
             ], className="timeframe-pill-bar"),
+
+            html.Div(className="header-divider"),
+
+            # The actions menu, at the end of the bar on every width.
+            html.Div([
+                dbc.Button(html.I(className="bi bi-list"),
+                           id="pa-actions-btn", color="link", size="sm",
+                           className="header-icon-btn pa-actions-btn",
+                           n_clicks=0, title=t("pa.actions", lang)),
+                dbc.Popover(dbc.PopoverBody([
+                    html.Button([html.I(className="bi bi-arrow-repeat me-2"),
+                                 t("pa.sync", lang)],
+                                id="pa-menu-sync", className="pa-menu-item", n_clicks=0),
+                    html.Button([html.I(className="bi bi-eye-slash me-2"),
+                                 html.Span(t("pa.hide_values", lang), id="pa-menu-privacy-label")],
+                                id="pa-menu-privacy", className="pa-menu-item", n_clicks=0),
+                    html.Button([html.I(className="bi bi-person-badge me-2"),
+                                 html.Span(t("pa.switch_demo", lang), id="pa-menu-demo-label")],
+                                id="pa-menu-demo", className="pa-menu-item", n_clicks=0),
+                    html.Div(className="pa-menu-sep"),
+                    html.Button([html.I(className="bi bi-trash3 me-2"),
+                                 t("pa.clear_data", lang)],
+                                id="pa-menu-clear", className="pa-menu-item pa-menu-danger",
+                                n_clicks=0),
+                ], className="p-1"), id="pa-actions-popover", target="pa-actions-btn",
+                    trigger="legacy", placement="bottom-end"),
+            ], className="header-dropdown-wrapper pa-actions"),
         ], className="header-right"),
     ], className="sticky-header"),
     
@@ -1303,31 +1306,16 @@ def register_callbacks(app):
          Output("demo-toggle-btn", "title"),
          Output("demo-toggle-icon", "className"),
          Output("demo-login-link", "children"),
-         Output("demo-banner-suffix", "children"),
-         Output("sync-tr-data-btn", "style"),
-         Output("demo-toggle-btn", "style")],
+         Output("demo-banner-suffix", "children")],
         [Input("demo-mode", "data"),
-         Input("current-user-store", "data"),
-         Input("local-portfolio-backup", "data")],
+         Input("current-user-store", "data")],
         State("lang-store", "data"),
         prevent_initial_call=False,
     )
-    def update_demo_banner(demo_mode, current_user, local_backup, lang_data):
+    def update_demo_banner(demo_mode, current_user, lang_data):
         lang = get_lang(lang_data)
         show_demo = demo_mode or not current_user
-
-        # The user "has real data" if a real synced portfolio exists in the
-        # browser vault or in the server-side cache. Counting only the vault
-        # hid the toggle from anyone whose vault write had failed (it is
-        # capped at a few megabytes) even though their portfolio was sitting
-        # on the server.
         uid = auth.current_uid(current_user)
-        # A file-size check, not a load: this callback fires on every demo
-        # mode change and every page load, and reading the whole portfolio
-        # off disk to produce a boolean is not what it is for.
-        from components.tr_api import has_cached_portfolio
-        has_real_data = bool(_backup_for_uid(local_backup, uid)
-                             or (uid and has_cached_portfolio(uid)))
 
         banner_style = {
             "display": "block" if show_demo else "none",
@@ -1348,20 +1336,11 @@ def register_callbacks(app):
             link_text = t("pa.demo_login", lang)
             suffix_text = t("pa.demo_suffix", lang)
 
-        # The sync button is the reconnect/refresh entry point, show it for
-        # every logged-in user (it opens the connect modal when there is no
-        # session yet). The demo toggle only makes sense once real data exists.
-        sync_visible = {} if uid else {"display": "none"}
-        # Also shown while the user is on their real account with nothing in
-        # it: that is the one state they need it to get back out of.
-        toggle_visible = ({} if (has_real_data or (uid and not show_demo))
-                          else {"display": "none"})
-
         if show_demo:
             return (banner_style, t("pa.switch_real", lang), "bi bi-briefcase-fill",
-                    link_text, suffix_text, sync_visible, toggle_visible)
+                    link_text, suffix_text)
         return (banner_style, t("pa.switch_demo", lang), "bi bi-person-badge",
-                link_text, suffix_text, sync_visible, toggle_visible)
+                link_text, suffix_text)
     
     # Sync button: if connected → sync; if not logged in → login; if not connected → open TR modal
     @app.callback(
@@ -1413,10 +1392,10 @@ def register_callbacks(app):
                 {"display": "block"}, {"display": "none"},
                 "syncing", "connection-status syncing", "Syncing data...")
     
-    # ── The phone actions menu ──
-    # Each item clicks the real button, which is still in the DOM (hidden by
-    # a Bootstrap display class, not removed), so every existing callback
-    # keeps working and there is one implementation of each action.
+    # ── The actions menu ──
+    # Each item clicks the real button, which is still in the DOM behind a
+    # hidden wrapper rather than removed, so every existing callback keeps
+    # working and there is one implementation of each action.
     # The empty state's buttons work the same way: they click the real
     # controls in the header rather than duplicating what those do.
     for _item, _target in (("pa-empty-sync-btn", "sync-tr-data-btn"),
