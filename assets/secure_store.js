@@ -1,7 +1,7 @@
 /**
  * secure_store.js
  *
- * Encrypts Apex's per-user data at rest in localStorage.
+ * Encrypts Apex's per-user data at rest in the browser (IndexedDB).
  *
  * The vault holds a single JSON blob per logged-in user:
  *   { portfolio: <portfolio-backup>, tr_creds: <encrypted TR credentials> }
@@ -26,12 +26,14 @@
 
   window.dash_clientside = window.dash_clientside || {};
 
-  var KEY_PREFIX = "apex.vault.";
+  var KEY_PREFIX = "apex.vault.";        // the old localStorage key
+  var DB_NAME = "apex";
+  var DB_STORE = "vault";
   var enc = new TextEncoder();
   var dec = new TextDecoder();
 
   function hasCrypto() {
-    return !!(window.crypto && window.crypto.subtle && window.localStorage);
+    return !!(window.crypto && window.crypto.subtle);
   }
 
   function activeKey() {
@@ -54,49 +56,94 @@
     return bytes;
   }
 
+  // The encrypted blob lives in IndexedDB. localStorage caps an origin at
+  // about 5 MB of text, and base64 of the ciphertext adds a third on top, so
+  // a synced portfolio of any size sat right on that line: it fit some days
+  // and not others. IndexedDB takes the ciphertext as bytes, with a budget
+  // measured in hundreds of megabytes, which takes the size question off the
+  // table rather than working around it.
+  function idbOpen() {
+    if (!window.indexedDB) return Promise.resolve(null);
+    return new Promise(function (resolve) {
+      var req;
+      try {
+        req = window.indexedDB.open(DB_NAME, 1);
+      } catch (e) {
+        return resolve(null);
+      }
+      req.onupgradeneeded = function () {
+        if (!req.result.objectStoreNames.contains(DB_STORE)) {
+          req.result.createObjectStore(DB_STORE);
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { resolve(null); };
+      req.onblocked = function () { resolve(null); };
+    });
+  }
+
+  function idbRun(mode, run) {
+    return idbOpen().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DB_STORE, mode);
+        var req = run(tx.objectStore(DB_STORE));
+        tx.oncomplete = function () { db.close(); resolve(req ? req.result : true); };
+        tx.onerror = function () { db.close(); reject(tx.error); };
+        tx.onabort = function () { db.close(); reject(tx.error); };
+      });
+    });
+  }
+
   async function vaultSet(uid, key, obj) {
     if (!hasCrypto() || !uid || !key) return false;
     var iv = window.crypto.getRandomValues(new Uint8Array(12));
     var ct = await window.crypto.subtle.encrypt(
       { name: "AES-GCM", iv: iv }, key, enc.encode(JSON.stringify(obj))
     );
-    var payload = JSON.stringify({ v: 2, iv: toB64(iv), ct: toB64(ct) });
-    window.localStorage.setItem(KEY_PREFIX + uid, payload);
+    var stored = await idbRun("readwrite", function (store) {
+      // Bytes, not base64: nothing is inflated on the way in.
+      return store.put({ v: 3, iv: iv, ct: new Uint8Array(ct) }, uid);
+    });
+    if (stored !== null) return true;
+    // No IndexedDB in this browser: the old store, and its old limit.
+    if (!window.localStorage) return false;
+    window.localStorage.setItem(KEY_PREFIX + uid, JSON.stringify(
+      { v: 2, iv: toB64(iv), ct: toB64(ct) }));
     return true;
   }
 
   async function vaultGet(uid, key) {
     if (!hasCrypto() || !uid || !key) return null;
-    var raw = window.localStorage.getItem(KEY_PREFIX + uid);
-    if (!raw) return null;
-    var payload = JSON.parse(raw);
+    var record = await idbRun("readonly", function (store) {
+      return store.get(uid);
+    }).catch(function () { return null; });
+
+    if (!record) {
+      // Written before the move, or by a browser without IndexedDB. Read it
+      // where it is and, if this browser has somewhere better, put it there:
+      // the blob is opaque, so moving it needs no key.
+      var raw = window.localStorage && window.localStorage.getItem(KEY_PREFIX + uid);
+      if (!raw) return null;
+      var payload = JSON.parse(raw);
+      record = { iv: fromB64(payload.iv), ct: fromB64(payload.ct) };
+      var moved = await idbRun("readwrite", function (store) {
+        return store.put({ v: 3, iv: record.iv, ct: record.ct }, uid);
+      }).catch(function () { return null; });
+      if (moved !== null) window.localStorage.removeItem(KEY_PREFIX + uid);
+    }
+
     var pt = await window.crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: fromB64(payload.iv) }, key, fromB64(payload.ct)
+      { name: "AES-GCM", iv: record.iv }, key, record.ct
     );
     return JSON.parse(dec.decode(pt));
   }
 
-  // Everything the sync computed for speed, dropped. The server-side cache
-  // still has the complete copy; this is what goes to localStorage when the
-  // complete one does not fit (see persistBackup).
-  function slimBackup(wrapJson) {
-    try {
-      var wrap = JSON.parse(wrapJson);
-      var portfolio = JSON.parse(wrap.portfolio);
-      if (portfolio && portfolio.data) {
-        delete portfolio.data.positionHistories;
-        delete portfolio.data.cachedSeries;
-      }
-      wrap.portfolio = JSON.stringify(portfolio);
-      return JSON.stringify(wrap);
-    } catch (e) {
-      return null;
-    }
-  }
-
   function vaultClear(uid) {
-    if (!window.localStorage || !uid) return false;
-    window.localStorage.removeItem(KEY_PREFIX + uid);
+    if (!uid) return false;
+    idbRun("readwrite", function (store) { return store.delete(uid); })
+      .catch(function () { /* nothing stored there */ });
+    if (window.localStorage) window.localStorage.removeItem(KEY_PREFIX + uid);
     // The restore guard remembers it already hydrated this user; without
     // clearing it the next tick would skip the read and leave the dropped
     // data on screen until a reload.
@@ -134,28 +181,14 @@
         };
         try {
           await vaultSet(uid, key, blob);
-        } catch (quota) {
-          // localStorage is about 5 MB and a synced portfolio can exceed it:
-          // the per-position price histories and the pre-computed chart
-          // series are most of the weight. Written whole it threw, nothing
-          // was stored, and the next load fell back to demo data with only a
-          // console line to show for it. Store what actually identifies the
-          // portfolio instead; the server-side cache keeps the full copy and
-          // is preferred whenever it is there.
-          var slim = slimBackup(blob.portfolio);
-          if (slim) {
-            blob.portfolio = slim;
-            try {
-              await vaultSet(uid, key, blob);
-              console.warn("[apex vault] portfolio too large for localStorage; " +
-                           "stored without price histories and cached series.");
-              return NU;
-            } catch (stillTooBig) { /* fall through to creds only */ }
-          }
+        } catch (full) {
+          // Only reachable on a browser with no IndexedDB, where the write
+          // lands in localStorage and its few megabytes. Keep the
+          // credentials, so the way back is a sync rather than a login.
           blob.portfolio = null;
           await vaultSet(uid, key, blob);
-          console.error("[apex vault] portfolio does not fit in localStorage; " +
-                        "kept credentials only. It is still on the server.", quota);
+          console.error("[apex vault] portfolio could not be stored; " +
+                        "kept credentials only.", full);
         }
       } catch (e) {
         console.error("[apex vault] persist failed, synced data will NOT survive a reload:", e);

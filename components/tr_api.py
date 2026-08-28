@@ -925,10 +925,6 @@ class TRConnection:
     # received a valid code. Persisting the handoff next to the cookie jar
     # makes the verify step work from any process.
 
-    @property
-    def _pending_login_path(self) -> Path:
-        return self._user_cache_dir / "pending_login.json"
-
     def _save_pending_login(self, countdown) -> None:
         try:
             process_id = getattr(self.api, "_process_id", None) if self.api else None
@@ -975,7 +971,7 @@ class TRConnection:
                     log.warning("Could not load TR login cookies for %s: %s", self.user_id, e)
             api._process_id = process_id
             self.api = api
-            log.info("Restored pending TR login from disk for user=%s", self.user_id)
+            log.info("Restored the pending TR login for user=%s", self.user_id)
             return True
         except Exception as e:
             log.warning("Could not restore pending TR login for %s: %s", self.user_id, e)
@@ -1403,44 +1399,6 @@ class TRConnection:
                 unique_transactions.append(txn)
         
         return unique_transactions
-
-    async def _fetch_transaction_details(self, transaction_id: str, retries: int = 2) -> Optional[Dict]:
-        """Fetch detailed info for a single transaction, including shares.
-        
-        Uses timeline_detail_v2 API to get full transaction details with quantity.
-        Includes retry logic for robustness.
-        """
-        if not self.api or not self.is_connected:
-            log.warning(f"Cannot fetch detail for {transaction_id} - not connected")
-            return None
-        
-        for attempt in range(retries + 1):
-            try:
-                await self.api.timeline_detail_v2(transaction_id)
-                sub_id, sub_params, response = await self._recv_response()
-                await self.api.unsubscribe(sub_id)
-                
-                # Check if we got a valid response
-                if response is None:
-                    log.debug(f"Got None response for {transaction_id}, attempt {attempt+1}")
-                    if attempt < retries:
-                        await asyncio.sleep(0.5 * (attempt + 1))
-                        continue
-                    return None
-                    
-                # Check for error responses
-                if isinstance(response, dict) and response.get('errors'):
-                    log.debug(f"Error response for {transaction_id}: {response.get('errors')}")
-                    return None
-                    
-                return response
-            except Exception as e:
-                if attempt < retries:
-                    await asyncio.sleep(0.5 * (attempt + 1))  # Backoff
-                    continue
-                log.debug(f"Error fetching detail for {transaction_id} after {retries+1} attempts: {e}")
-                return None
-        return None
 
     async def _enrich_transactions_with_shares(self, transactions: List[Dict]) -> List[Dict]:
         """Fetch shares/quantity for buy/sell transactions from TR.
@@ -1916,80 +1874,6 @@ class TRConnection:
         except (ValueError, AttributeError):
             return None
 
-    async def _fetch_portfolio_aggregate_history(self, timeframe: str = "max") -> List[Dict]:
-        """Fetch aggregate portfolio history from TR.
-        
-        Uses the portfolioAggregateHistory API to get real portfolio value over time.
-        Timeframe options: 1d, 1w, 1m, 3m, 1y, max
-        """
-        if not self.api or not self.is_connected:
-            log.error("Cannot fetch portfolio history - not connected")
-            return []
-        
-        try:
-            log.info(f"Fetching portfolio aggregate history (timeframe={timeframe})...")
-            await self.api.portfolio_history(timeframe)
-            sub_id, sub_params, response = await self._recv_response()
-            await self.api.unsubscribe(sub_id)
-            
-            # Response should contain historical data points
-            # Expected format: {aggregates: [{time, value, invested}, ...]}
-            aggregates = response.get('aggregates', [])
-            log.info(f"Got {len(aggregates)} aggregate history points")
-            
-            history = []
-            for agg in aggregates:
-                ts = agg.get('time', agg.get('timestamp', ''))
-                if ts:
-                    # Convert timestamp to date string
-                    date_str = ts[:10] if len(ts) >= 10 else ts
-                    history.append({
-                        'date': date_str,
-                        'value': float(agg.get('close', agg.get('value', 0))),
-                        'invested': float(agg.get('invested', agg.get('averageBuyIn', 0))),
-                    })
-            
-            return history
-        except Exception as e:
-            log.error(f"Error fetching portfolio history: {e}")
-            return []
-
-    async def _fetch_position_history(self, isin: str, timeframe: str = "max") -> List[Dict]:
-        """Fetch price history for a single position/instrument.
-        
-        Uses the aggregateHistory API to get historical prices for an ISIN.
-        NOTE: This is unreliable - many instruments fail. Use _build_position_histories_from_yahoo instead.
-        """
-        if not self.api or not self.is_connected:
-            log.error("Cannot fetch position history - not connected")
-            return []
-        
-        try:
-            log.info(f"Fetching history for {anon(isin)}...")
-            await self.api.performance_history(isin, timeframe, exchange="LSX")
-            sub_id, sub_params, response = await self._recv_response()
-            await self.api.unsubscribe(sub_id)
-            
-            aggregates = response.get('aggregates', response.get('expectedHistoryLight', []))
-            log.info(f"Got {len(aggregates)} history points for {anon(isin)}")
-            
-            history = []
-            for agg in aggregates:
-                ts = agg.get('time', agg.get('date', ''))
-                if ts:
-                    date_str = ts[:10] if len(ts) >= 10 else ts
-                    # Price data - close price
-                    close_price = float(agg.get('close', agg.get('price', 0)))
-                    history.append({
-                        'date': date_str,
-                        'price': close_price,
-                    })
-            
-            return history
-        except Exception as e:
-            log.error(f"Error fetching history for {anon(isin)}: {e}")
-            return []
-
     def _build_position_histories_from_transactions(
         self, transactions: List[Dict], positions: List[Dict],
         market_prices: bool = True,
@@ -2132,100 +2016,6 @@ class TRConnection:
                     }
         
         log.info(f"Built position histories for {len(position_histories)} instruments from transaction prices")
-        return position_histories
-
-    def _build_position_histories_from_yahoo(
-        self, transactions: List[Dict], positions: List[Dict]
-    ) -> Dict[str, Dict]:
-        """Build per-position price histories using Yahoo Finance.
-        
-        FALLBACK METHOD: Only used if transaction-based approach fails.
-        
-        Returns:
-            Dict of {isin: {history: [{date, price}], quantity, instrumentType, name}}
-        """
-        from components.portfolio_history import (
-            extract_isin_from_icon,
-            get_prices_for_dates,
-        )
-        
-        # Build position lookup
-        pos_lookup = {p.get('isin', ''): p for p in positions}
-        isin_to_name = {p.get('isin', ''): p.get('name', '') for p in positions}
-        
-        # Buy/sell transaction subtitles (German)
-        BUY_SUBTITLES = {'Kauforder', 'Sparplan ausgeführt', 'Limit-Buy-Order', 'Bonusaktien', 'Tausch'}
-        SELL_SUBTITLES = {'Verkaufsorder', 'Limit-Sell-Order', 'Stop-Sell-Order'}
-        
-        # Find all ISINs that have transactions
-        isins_with_transactions = set()
-        all_dates = set()
-        
-        for txn in transactions:
-            subtitle = txn.get("subtitle", "")
-            icon = txn.get("icon", "")
-            timestamp = txn.get("timestamp", "")
-            
-            if not timestamp:
-                continue
-            
-            isin = extract_isin_from_icon(icon)
-            if not isin:
-                continue
-            
-            if subtitle in BUY_SUBTITLES or subtitle in SELL_SUBTITLES:
-                isins_with_transactions.add(isin)
-                try:
-                    date = datetime.fromisoformat(timestamp.replace("+0000", "+00:00")).replace(tzinfo=None)
-                    all_dates.add(date.date())
-                except:
-                    pass
-        
-        if not isins_with_transactions or not all_dates:
-            return {}
-        
-        # Generate history dates (DAILY + today), matching the primary builder.
-        start_date = min(all_dates)
-        end_date = datetime.now().date()
-
-        history_dates = {start_date + timedelta(days=k)
-                         for k in range((end_date - start_date).days + 1)}
-        history_dates.update(all_dates)
-        sorted_dates = sorted(history_dates)
-        
-        # Fetch prices for each ISIN
-        position_histories = {}
-        
-        for idx, isin in enumerate(isins_with_transactions):
-            name = isin_to_name.get(isin, isin)
-            pos = pos_lookup.get(isin, {})
-            
-            log.info(f"[{idx+1}/{len(isins_with_transactions)}] Fetching prices for {anon(name)}...")
-            
-            dates_as_dt = [datetime.combine(d, datetime.min.time()) for d in sorted_dates]
-            prices = get_prices_for_dates(isin, name, dates_as_dt)
-            
-            if prices:
-                # Build price history list
-                price_history = []
-                for date_str in sorted(prices.keys()):
-                    price = prices.get(date_str)
-                    if price and price > 0:
-                        price_history.append({
-                            'date': date_str,
-                            'price': price,
-                        })
-                
-                if price_history:
-                    position_histories[isin] = {
-                        'history': price_history,
-                        'quantity': pos.get('quantity', 0),
-                        'instrumentType': pos.get('instrumentType', ''),
-                        'name': name,
-                    }
-            else:
-                log.warning(f"  No prices available for {anon(name)}")
-        
         return position_histories
 
     def _build_holdings_timeline(
@@ -3102,45 +2892,6 @@ class TRConnection:
         
         return invested_series
     
-    def _merge_history_with_invested(self, history: List[Dict], invested_series: Dict[str, float]) -> List[Dict]:
-        """Merge portfolio history with transaction-derived invested amounts.
-        
-        TR's aggregate history often returns incorrect invested values (0 or same as value).
-        This function replaces those with accurate values computed from transactions.
-        
-        Args:
-            history: List of {date, value, invested} from TR aggregate history
-            invested_series: Dict mapping date -> cumulative invested from transactions
-            
-        Returns:
-            History with corrected invested values
-        """
-        if not history or not invested_series:
-            return history
-        
-        # Get sorted invested dates for interpolation
-        invested_dates = sorted(invested_series.keys())
-        if not invested_dates:
-            return history
-        
-        # For each history point, find the most recent invested value
-        for point in history:
-            date_str = point.get('date', '')[:10]
-            
-            # Find most recent invested value on or before this date
-            invested_value = None
-            for inv_date in invested_dates:
-                if inv_date <= date_str:
-                    invested_value = invested_series[inv_date]
-                else:
-                    break
-            
-            # Only update if we found a value (keep original if before first transaction)
-            if invested_value is not None:
-                point['invested'] = invested_value
-        
-        return history
-    
     def has_session(self) -> bool:
         """Check if a pytr web-session cookie file exists (needed for reconnect)."""
         return self._cookies_path.exists()
@@ -3803,11 +3554,6 @@ def drop_connection(user_id: str) -> None:
 # Public API functions (sync wrappers)
 # All accept an optional *user_id* to scope per user.
 
-def has_saved_credentials(user_id: str = "_default") -> bool:
-    """Check if TR credentials are saved."""
-    return get_connection(user_id).has_credentials()
-
-
 def initiate_login(phone_no: str, pin: str, user_id: str = "_default") -> Dict[str, Any]:
     """Start the login process - sends verification code to TR app."""
     conn = get_connection(user_id)
@@ -3894,12 +3640,6 @@ def get_fetch_progress(user_id: str = "_default") -> Optional[Dict[str, Any]]:
         return data
     except Exception:
         return None
-
-
-def get_cached_transactions(user_id: str = "_default") -> List[Dict]:
-    """Get cached transactions without connecting."""
-    conn = get_connection(user_id)
-    return conn._load_transactions_cache()
 
 
 # ── Background sync ──────────────────────────────────────────────────────
@@ -4247,24 +3987,3 @@ def is_connected(user_id: str = "_default") -> bool:
     return get_connection(user_id).is_connected
 
 
-def read_cookiefile(user_id: str = "_default") -> Optional[str]:
-    """Return the pytr web-session cookie jar text for *user_id*, or None."""
-    p = get_connection(user_id)._cookies_path
-    try:
-        return _without_waf_cookie(p.read_text(encoding="utf-8")) if p.exists() else None
-    except Exception:
-        return None
-
-
-def restore_cookiefile(user_id: str, cookie_text: str) -> bool:
-    """Write a previously backed-up pytr web-session cookie jar to disk."""
-    if not cookie_text:
-        return False
-    conn = get_connection(user_id)
-    try:
-        conn._user_cache_dir.mkdir(parents=True, exist_ok=True)
-        conn._cookies_path.write_text(_without_waf_cookie(cookie_text), encoding="utf-8")
-        return True
-    except Exception as e:
-        log.warning(f"Failed to restore TR web-session cookies for {user_id}: {e}")
-        return False

@@ -310,11 +310,14 @@ The Portfolio Analysis page displays Trade Republic portfolio data including:
 **Problem**: TR's `portfolioAggregateHistory` API returns `invested` values that are often 0 or equal to `value`.
 **Solution**: Build invested series from transaction history and merge it with the aggregate history:
 ```python
-# In fetch_all_data():
-aggregate_history = await self._fetch_portfolio_aggregate_history("max")
+# In _fetch_all_data():
 invested_series = self._build_invested_series_from_transactions(transactions)
-history = self._merge_history_with_invested(aggregate_history, invested_series)
+history = self._build_history_with_market_values(
+    transactions, position_histories, invested_series, total_value,
+    enriched_positions, 0.0)
 ```
+TR's aggregate history is no longer read at all: the chart is built from
+holdings times prices plus cash, so it needs no invested values from it.
 
 ### Learning 3: TWR Calculation Requires Accurate Invested Data
 **Problem**: Time-Weighted Return (TWR) calculation needs the change in invested amount between periods to identify cash flows.
