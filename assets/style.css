@@ -2830,6 +2830,13 @@ hr {
     font-size: 0.72rem;
     color: #94a3b8;
 }
+.chart-benchmark-note {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: #94a3b8;
+    margin: 2px 0 6px;
+}
+
 .history-source::before {
     content: "\F1D0";
     font-family: "bootstrap-icons";

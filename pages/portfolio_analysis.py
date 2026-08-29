@@ -862,8 +862,19 @@ def layout(lang="en"):
                                title=t("pa.load_history_hint", lang), n_clicks=0),
                         ], id="history-bar", className="history-bar",
                            style={"display": "none"}),
+
+                        # What the comparison lines are, for anyone seeing
+                        # them for the first time.
+                        html.Div(t("pa.benchmark_note", lang),
+                                 className="chart-benchmark-note"),
                     
-                        dcc.Loading(
+                        dcc.Loading([
+                            # The figures are built on the server and handed to
+                            # the chart by a clientside callback, so the graph
+                            # alone never looks busy. The store the server
+                            # writes to lives in here instead, and the spinner
+                            # covers the chart for as long as that takes.
+                            dcc.Store(id="chart-figures-store", storage_type="memory"),
                             dcc.Graph(
                                 id="main-portfolio-chart-v2",
                                 config={
@@ -880,9 +891,7 @@ def layout(lang="en"):
                                 # axis ticks and hover, never the chart itself.
                                 className="",
                             ),
-                            type="circle",
-                            color="#6366f1"
-                        ),
+                        ], type="circle", color="#6366f1"),
                     ], className="py-2"),
                 ], className="card-modern h-100"),
             ], md=12, className="mb-3"),
@@ -1001,7 +1010,6 @@ def layout(lang="en"):
     dcc.Store(id="clear-data-done", data=0),
     # All three chart figures (value/drawdown/performance), built together on
     # data changes; switching tabs just picks one clientside, no round trip.
-    dcc.Store(id="chart-figures-store", storage_type="memory"),
     # True on a phone-width viewport. A store rather than a matchMedia call
     # inside the chart callback, because Dash only reruns a callback when an
     # input changes and the window is not an input: without this a rotation

@@ -147,6 +147,74 @@ def _mem_drop(user_id: str, *keys: str) -> None:
             bucket.pop(key, None)
 
 
+# Money the user moved into or out of the account, as opposed to what the
+# portfolio did with it. Two series are built from this: the invested line
+# (cumulative capital) and the cash balance behind the value line. They have
+# to agree. When they did not, a transfer counted as capital but not as cash
+# raised the invested line while the value line stayed put, and the day of a
+# large transfer read as a crash: with 66k invested and 85k arriving, the
+# return for that day came out as 66/151 - 1, a 56% fall that never happened.
+_NON_CAPITAL_TITLES = {
+    'Zinsen',           # Interest payments
+    'Steuerkorrektur',  # Tax corrections
+}
+
+_NON_CAPITAL_SUBTITLES = {
+    # Dividends and interest
+    'Bardividende', 'Dividende',
+    'Festzins', 'Zinszahlung',
+    # Internal portfolio operations
+    'Verkaufsorder', 'Limit-Sell-Order', 'Stop-Sell-Order',
+    'Kauforder', 'Limit-Buy-Order',
+    'Sparplan ausgeführt', 'Sparplan fehlgeschlagen',
+    # Tax and adjustments
+    'Vorabpauschale', 'Bonusaktien',
+    # Failed/rejected transfers
+    'Abgelehnt',
+    # Corporate actions
+    'Tausch', 'Fusion',
+}
+
+# Subtitles with variable suffixes (e.g. "2 % p.a.", "3,25 % p.a.")
+_NON_CAPITAL_SUBTITLE_PATTERNS = ['% p.a.', '1 % Bonus']
+
+
+def capital_flow(txn: Dict[str, Any]) -> float:
+    """What this transaction added to (or took out of) the account.
+
+    Positive for money in, negative for money out, zero for everything the
+    portfolio did with itself: buys, sells, dividends, interest, taxes.
+
+    Trade Republic books an incoming transfer in more than one shape. A bank
+    deposit is titled "Einzahlung"; a completed transfer carries the subtitle
+    "Fertig"; older transfers carry neither and put the sender's name in the
+    title. All three are the user's own money arriving.
+    """
+    title = txn.get('title') or ''
+    subtitle = txn.get('subtitle') or ''
+    amount = txn.get('amount')
+    if amount is None:
+        return 0.0
+    amount = float(amount)
+
+    if title in _NON_CAPITAL_TITLES or subtitle in _NON_CAPITAL_SUBTITLES:
+        return 0.0
+    if any(pattern in subtitle for pattern in _NON_CAPITAL_SUBTITLE_PATTERNS):
+        return 0.0
+
+    if title == 'Einzahlung' and amount > 0:
+        return amount
+    if subtitle == 'Fertig' and amount > 0:
+        return amount
+    if subtitle == 'Gesendet' and amount < 0:
+        return amount
+    # No subtitle: an older transfer, with the sender or recipient as title.
+    # A system entry would have been filtered above.
+    if not subtitle and amount != 0 and (' ' in title or not title.isupper()):
+        return amount
+    return 0.0
+
+
 def seed_portfolio(user_id: str, portfolio: Dict[str, Any]) -> bool:
     """Hand the server back the copy the browser has been keeping.
 
@@ -2436,13 +2504,16 @@ class TRConnection:
             
             amount = float(amount)
             
-            # === Deposits and withdrawals ===
-            if title == 'Einzahlung' and amount > 0:
-                cash_flows.append((date_str, amount))  # Deposit adds cash
-            elif subtitle == 'Fertig' and amount > 0:
-                cash_flows.append((date_str, amount))  # P2P received adds cash
-            elif subtitle == 'Gesendet' and amount < 0:
-                cash_flows.append((date_str, amount))  # Withdrawal removes cash
+            # === Money in and out of the account ===
+            # The same call the invested series is built from, so a transfer
+            # that raises the invested line also raises the cash balance
+            # behind the value line. It used to know only about the two
+            # newer shapes of a transfer, and an older one raised invested
+            # against an unchanged value: a deposit read as a crash.
+            external = capital_flow(txn)
+            if external:
+                cash_flows.append((date_str, external))
+
             elif title == 'Zinsen' and amount > 0:
                 cash_flows.append((date_str, amount))  # Interest adds cash
             
@@ -2757,141 +2828,42 @@ class TRConnection:
     
     def _build_invested_series_from_transactions(self, transactions: List[Dict]) -> Dict[str, float]:
         """Build a date -> cumulative invested amount mapping from transactions.
-        
-        This gives us accurate invested amounts at each date, computed from actual
-        deposit/withdrawal transactions. TR's aggregate history often returns 0 or
-        incorrect invested values, so we use this as the source of truth.
-        
-        CAPITAL INFLOWS (counted as positive):
-        - Einzahlung: Bank deposits (title='Einzahlung', amount > 0)
-        - Fertig transfers: Completed P2P incoming (subtitle='Fertig', amount > 0)
-        - Old-style P2P: Historical transfers with person name as title (no subtitle, amount > 0)
-        
-        CAPITAL OUTFLOWS (counted as negative):
-        - Gesendet: Bank withdrawals (subtitle='Gesendet', amount < 0)
-        - Old-style P2P: Historical transfers with person name as title (no subtitle, amount < 0)
-        
-        NOT COUNTED as capital flows:
-        - Dividends (Dividende, Bardividende) - returns on investment
-        - Interest (Zinsen, Festzins, Zinszahlung) - returns
-        - Tax corrections (Steuerkorrektur, Vorabpauschale)
-        - Sales (Verkaufsorder, etc.) - internal portfolio movements
-        - Purchases (Kauforder, Sparplan, etc.) - internal portfolio movements
-        - Rejected transfers (Abgelehnt) - never completed
-        
-        Returns:
-            Dict mapping date string (YYYY-MM-DD) to cumulative invested amount
+
+        This gives us accurate invested amounts at each date, computed from
+        actual deposit/withdrawal transactions. TR's aggregate history often
+        returns 0 or incorrect invested values, so we use this as the source
+        of truth.
+
+        What counts as capital is decided by capital_flow(), which the cash
+        timeline uses as well: the invested line and the value line have to
+        move on the same transactions.
         """
         if not transactions:
             return {}
-        
-        # Titles that represent system transactions, NOT capital flows
-        # (even if they have no subtitle)
-        non_capital_titles = {
-            'Zinsen',           # Interest payments
-            'Steuerkorrektur',  # Tax corrections
-        }
-        
-        # Subtitles that are NOT capital flows
-        non_capital_subtitles = {
-            # Dividends and interest
-            'Bardividende', 'Dividende', 
-            'Festzins', 'Zinszahlung',
-            # Internal portfolio operations
-            'Verkaufsorder', 'Limit-Sell-Order', 'Stop-Sell-Order',
-            'Kauforder', 'Limit-Buy-Order', 
-            'Sparplan ausgeführt', 'Sparplan fehlgeschlagen',
-            # Tax and adjustments
-            'Vorabpauschale', 'Bonusaktien',
-            # Failed/rejected transfers
-            'Abgelehnt',
-            # Corporate actions
-            'Tausch', 'Fusion',
-        }
-        
-        # Subtitles with variable suffixes (e.g., "2 % p.a.", "3,25 % p.a.")
-        non_capital_subtitle_patterns = ['% p.a.', '1 % Bonus']
-        
-        # Build daily cash flows
-        daily_flows = {}
-        
+
+        daily_flows: Dict[str, float] = {}
         for txn in transactions:
             ts = txn.get('timestamp', '')
             if not ts:
                 continue
-            
-            date_str = ts[:10]  # YYYY-MM-DD
-            title = txn.get('title', '') or ''
-            subtitle = txn.get('subtitle', '') or ''
-            amount = txn.get('amount')
-            
-            if amount is None:
-                continue
-            
-            amount = float(amount)
-            flow = 0.0
-            
-            # Skip known non-capital titles
-            if title in non_capital_titles:
-                continue
-            
-            # Skip known non-capital subtitles
-            if subtitle in non_capital_subtitles:
-                continue
-            
-            # Skip pattern-based non-capital subtitles (interest rates, etc.)
-            if any(pattern in subtitle for pattern in non_capital_subtitle_patterns):
-                continue
-            
-            # === CAPITAL INFLOWS ===
-            
-            # 1. Bank deposits: title='Einzahlung', positive amount
-            if title == 'Einzahlung' and amount > 0:
-                flow = amount
-            
-            # 2. Completed P2P transfers: subtitle='Fertig', positive amount
-            elif subtitle == 'Fertig' and amount > 0:
-                flow = amount
-            
-            # 3. Old-style P2P transfers: no subtitle, positive amount, not a known system title
-            # These are historical transfers (pre-2022) where the title is the sender's name
-            # and there's no subtitle. They show up as positive cash inflows.
-            elif not subtitle and amount > 0 and title not in non_capital_titles:
-                # Additional check: title should look like a person name (has space or is not all caps)
-                # System titles like "Zinsen" are filtered above, anything else is likely a P2P
-                if ' ' in title or not title.isupper():
-                    flow = amount
-            
-            # === CAPITAL OUTFLOWS ===
-            
-            # 4. Bank withdrawals: subtitle='Gesendet', negative amount
-            elif subtitle == 'Gesendet' and amount < 0:
-                flow = amount  # Already negative
-            
-            # 5. Old-style P2P outgoing: no subtitle, negative amount (sent to someone)
-            elif not subtitle and amount < 0 and title not in non_capital_titles:
-                if ' ' in title or not title.isupper():
-                    flow = amount  # Already negative
-            
-            if flow != 0:
+            flow = capital_flow(txn)
+            if flow:
+                date_str = ts[:10]
                 daily_flows[date_str] = daily_flows.get(date_str, 0.0) + flow
-        
+
         if not daily_flows:
             return {}
-        
-        # Sort dates and compute cumulative invested
-        sorted_dates = sorted(daily_flows.keys())
+
         invested_series = {}
         cumulative = 0.0
-        
-        for date_str in sorted_dates:
+        for date_str in sorted(daily_flows.keys()):
             cumulative += daily_flows[date_str]
             invested_series[date_str] = cumulative
-        
+
         log.info(f"Built invested series: {len(invested_series)} dates")
-        
+
         return invested_series
-    
+
     def has_session(self) -> bool:
         """Check if a pytr web-session cookie file exists (needed for reconnect)."""
         return self._cookies_path.exists()
