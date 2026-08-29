@@ -208,6 +208,14 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
                                  "de": "Tägliche Schlusskurse"},
     "pa.history_trades":        {"en": "Your trade prices only",
                                  "de": "Nur deine Ausführungskurse"},
+    "pa.benchmark_note":        {"en": "Benchmark lines put your deposits into that index or "
+                                       "asset on the same dates, so you can see what the same "
+                                       "money would be worth there instead of in the securities "
+                                       "you bought.",
+                                 "de": "Die Vergleichslinien legen deine Einzahlungen an denselben "
+                                       "Tagen in den jeweiligen Vergleichswert an, damit du siehst, "
+                                       "was dasselbe Geld dort wert wäre statt in den Papieren, die "
+                                       "du gekauft hast."},
     "pa.close":                 {"en": "Close",                    "de": "Schließen"},
     "pa.trades_bought":         {"en": "Bought",                   "de": "Gekauft"},
     "pa.trades_sold":           {"en": "Sold",                     "de": "Verkauft"},
