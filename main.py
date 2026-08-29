@@ -105,7 +105,7 @@ app.index_string = f"""<!DOCTYPE html>
 
 sidebar = html.Div([
     dcc.Link([
-        html.H2("APEX", className="sidebar-logo"),
+        html.H2("APE\u2022X", className="sidebar-logo"),
         html.P("Portfolio & Backtesting", id="sidebar-tagline", className="sidebar-tagline"),
     ], href="/", className="sidebar-brand"),
     html.Hr(className="sidebar-divider"),
@@ -185,7 +185,7 @@ content = html.Div(
     id="page-content", className="main-content")
 mobile_header = html.Div([
     html.Button(html.I(className="bi bi-list", style={"fontSize": "1.5rem"}), id="mobile-menu-btn", className="mobile-menu-btn", n_clicks=0),
-    html.Span("APEX", className="mobile-header-title"),
+    html.Span("APE\u2022X", className="mobile-header-title"),
 ], className="mobile-header")
 mobile_overlay = html.Div(id="mobile-overlay", className="mobile-overlay", n_clicks=0)
 
