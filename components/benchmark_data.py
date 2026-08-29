@@ -26,6 +26,11 @@ BENCHMARKS = {
     "URTH": {"name": "MSCI World", "color": "#3b82f6"},
     "^IXIC": {"name": "NASDAQ", "color": "#8b5cf6"},
     "^STOXX": {"name": "STOXX 600", "color": "#06b6d4"},
+    # Priced in euro, which is what the portfolios here are held in: the
+    # comparison is against what the money would have done, not against a
+    # dollar index plus a currency move.
+    "BTC-EUR": {"name": "Bitcoin", "color": "#f7931a"},
+    "4GLD.DE": {"name": "Gold", "color": "#b8860b"},
 }
 
 # Cache validity period (24 hours)
