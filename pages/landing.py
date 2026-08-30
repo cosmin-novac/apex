@@ -1,33 +1,29 @@
 """
 Apex landing page (route "/").
 
-A quiet, editorial home screen: what the app is, what it can do, and where the
-data lives. The hero chart is not decoration; it is the S&P 500 total return
-series that ships with the Rank Lab, drawn from the same data the app runs
-its simulations on.
+A quiet, editorial home screen: what the app is, what it can do, and where
+the data lives. The hero and the capability cards show the pages themselves,
+screenshots taken with the demo portfolio loaded, so the landing previews
+the app instead of describing it.
 """
 
 from dash import html, dcc
 import dash_bootstrap_components as dbc
-import plotly.graph_objects as go
 
 from components.i18n import t
-from core import utils as cu
 
 GITHUB_URL = "https://github.com/cosmin-novac/apex"
 
-INK = "#161a1f"
-ACCENT = "#1d4ed8"
-BENCH = "#b45309"
-
-# (icon, tint, title-key, desc-key, route), icons match the sidebar so the
-# cards read as previews of the actual pages.
+# (icon, tint, title-key, desc-key, route, screenshot). The screenshots are
+# the pages themselves, taken with the demo portfolio loaded (tools/
+# capture_landing_shots.py rebuilds them), so each card shows what the link
+# opens rather than describing it.
 _CAPABILITIES = [
-    ("bi-graph-up", "indigo", "landing.c2_title", "landing.c2_desc", "/backtesting"),
-    ("bi-trophy", "amber", "landing.c4_title", "landing.c4_desc", "/ranks"),
-    ("bi-wallet2", "green", "landing.c3_title", "landing.c3_desc", "/portfolio"),
-    ("bi-bar-chart-line", "violet", "landing.c1_title", "landing.c1_desc", "/compare"),
-    ("bi-currency-dollar", "cyan", "landing.c5_title", "landing.c5_desc", "/realcost"),
+    ("bi-graph-up", "indigo", "landing.c2_title", "landing.c2_desc", "/backtesting", "backtesting"),
+    ("bi-trophy", "amber", "landing.c4_title", "landing.c4_desc", "/ranks", "ranks"),
+    ("bi-wallet2", "green", "landing.c3_title", "landing.c3_desc", "/portfolio", "simulator"),
+    ("bi-bar-chart-line", "violet", "landing.c1_title", "landing.c1_desc", "/compare", "compare"),
+    ("bi-currency-dollar", "cyan", "landing.c5_title", "landing.c5_desc", "/realcost", "realcost"),
 ]
 
 # (icon, title-key, desc-key)
@@ -38,47 +34,20 @@ _DATA_NOTES = [
 ]
 
 
-def _hero_figure(lang):
-    """S&P 500 total return since 2000, from the shipped benchmark file."""
-    try:
-        from core import megacap_lab as ml
-        d = ml.load_data()
-        bench = d["bench"]
-        x = [m + "-01" for m in bench.index]
-        y = (bench / bench.iloc[0] * 10_000).round(0).tolist()
-    except Exception:
-        return None, None
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=x, y=y, mode="lines", line=dict(color=ACCENT, width=2),
-        fill="tozeroy", fillcolor="rgba(29,78,216,0.07)",
-        hovertemplate="%{x|%b %Y}: %{y:,.0f} $<extra></extra>",
-    ))
-    fig.update_layout(
-        separators=cu.plotly_separators(lang),
-        margin=dict(l=0, r=0, t=6, b=0), height=210,
-        plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
-        font=dict(family="Inter, sans-serif", size=11, color="#5b6472"),
-        hovermode="x",
-        xaxis=dict(showgrid=False, tickformat="%Y", dtick="M60", ticks="outside", ticklen=4, tickcolor="#e3e1dc",
-                   linecolor="#e3e1dc", showline=True),
-        yaxis=dict(showgrid=True, gridcolor="#f0efec", zeroline=False, tickprefix="$" if lang != "de" else "",
-                   ticksuffix=" $" if lang == "de" else "", separatethousands=True, rangemode="tozero"),
-    )
-    final = y[-1] if y else None
-    return fig, final
-
-
-def _capability_card(icon, tint, title_key, desc_key, href, lang):
+def _capability_card(icon, tint, title_key, desc_key, href, shot, lang):
     return dcc.Link(
         html.Div([
-            html.Div(html.I(className=f"bi {icon}"), className=f"lp-card-icon lp-tint-{tint}"),
+            html.Img(src=f"/assets/landing/{shot}.webp", alt=t(title_key, lang),
+                     className="lp-card-shot"),
             html.Div([
-                html.H3(t(title_key, lang), className="lp-card-title"),
-                html.P(t(desc_key, lang), className="lp-card-desc"),
-            ], className="lp-card-body"),
-            html.Span("→", className="lp-card-arrow"),
-        ], className="lp-card"),
+                html.Div(html.I(className=f"bi {icon}"), className=f"lp-card-icon lp-tint-{tint}"),
+                html.Div([
+                    html.H3(t(title_key, lang), className="lp-card-title"),
+                    html.P(t(desc_key, lang), className="lp-card-desc"),
+                ], className="lp-card-body"),
+                html.Span("→", className="lp-card-arrow"),
+            ], className="lp-card-row"),
+        ], className="lp-card lp-card-with-shot"),
         href=href, className="lp-card-link",
     )
 
@@ -92,18 +61,17 @@ def _data_note(icon, title_key, desc_key, lang):
 
 
 def layout(lang="en"):
-    fig, final = _hero_figure(lang)
-    final_txt = (("$" + cu.fmt_num(final, lang, 0)) if lang != "de" else (cu.fmt_num(final, lang, 0) + " $")) if final else ""
-    start_txt = ("$10,000" if lang != "de" else "10.000 $")
-
-    hero_chart = html.Div([
+    # The hero shows the app, not an index: the portfolio dashboard with the
+    # demo data loaded, which is exactly what the primary button opens.
+    hero_chart = dcc.Link(
         html.Div([
-            html.Span(t("landing.chart_label", lang), className="lp-chart-label"),
-            html.Span(final_txt, className="lp-chart-value"),
-        ], className="lp-chart-head"),
-        dcc.Graph(figure=fig, config={"displayModeBar": False, "staticPlot": False}, className="lp-chart"),
-        html.P(t("landing.chart_caption", lang).format(start=start_txt), className="lp-chart-caption"),
-    ], className="lp-chart-card") if fig else None
+            html.Div([html.Span(className="lp-frame-dot") for _ in range(3)],
+                     className="lp-frame-bar"),
+            html.Img(src="/assets/landing/hero.webp",
+                     alt=t("landing.c1_title", lang), className="lp-hero-shot"),
+        ], className="lp-hero-frame"),
+        href="/compare", className="lp-hero-shot-link",
+    )
 
     return html.Div([
 
