@@ -2873,7 +2873,20 @@ class TRConnection:
 
         The jar rides along because the browser is where it lasts now; this
         machine only has it for the length of the flow.
+
+        The live session writes to the jar file first: Trade Republic rotates
+        the session cookies while a sync runs (the web session is refreshed
+        about every five minutes), and pytr keeps those rotations in memory
+        only. Exporting the file as it was handed the browser the cookies
+        from login time, and the next reconnect ran on a session TR had
+        already replaced: that is when "reconnect without a new code" asked
+        for a code anyway.
         """
+        if self.api is not None:
+            try:
+                self.api.save_websession()
+            except Exception as exc:
+                log.warning("Could not persist the live session cookies: %s", exc)
         return encrypt_credentials(phone_no, cookie_jar=export_cookie_jar(self.user_id))
     
     def set_credentials_from_encrypted(self, encrypted: str) -> bool:
@@ -3476,7 +3489,20 @@ class TRConnection:
             self._strip_waf_cookie_file()
 
             self.api = self._new_api()
-            await asyncio.to_thread(self.api.resume_websession)
+            # pytr reports a dead session by RETURNING False, not by raising:
+            # it validates the cookies with a settings() call, and on a 401
+            # clears them and returns. Ignoring that return value declared
+            # this connection alive with an empty cookie jar, so the sync
+            # started, failed against the websocket minutes later, and the
+            # user saw "sync failed" instead of being asked for a new code.
+            resumed = await asyncio.to_thread(self.api.resume_websession)
+            if not resumed:
+                self.is_connected = False
+                return {"success": False, "needs_reauth": True,
+                        "error": "Session expired - please log in again"}
+            # Validating the session can hand back rotated cookies; put them
+            # in the jar now so anything exported from here on is current.
+            self.api.save_websession()
             self.is_connected = True
             
             return {
