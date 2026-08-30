@@ -267,6 +267,13 @@ def _backup_for_uid(local_backup, uid):
         return None
 
 
+def _bench_name(symbol: str) -> str:
+    """What a benchmark is called on screen. BENCHMARKS is the one list of
+    them, so a symbol added there is named everywhere without a second copy
+    of the mapping going stale."""
+    return (BENCHMARKS.get(symbol) or {}).get("name", symbol)
+
+
 def bench_trailing_return(bdf, days_ago):
     """Trailing return of a benchmark over its own last *days_ago* days.
 
@@ -2978,14 +2985,6 @@ def register_callbacks(app):
             if include_benchmarks and chart_type in ["tab-performance", "tab-value"]:
                 # Add benchmarks (value + performance)
                 benchmark_colors = _BENCHMARK_COLORS
-                benchmark_names = {
-                    "^GSPC": "S&P 500",
-                    "^GDAXI": "DAX",
-                    "URTH": "MSCI World",
-                    "^IXIC": "NASDAQ",
-                    "^STOXX": "STOXX 600",
-                }
-
                 bench_simulations = {}
                 if benchmarks and transactions:
                     try:
@@ -3012,19 +3011,19 @@ def register_callbacks(app):
                         if chart_type == "tab-performance":
                             # Use same TWR calculation as portfolio - starts at 0%
                             bench_y = _calculate_twr_series_df(sim_df)
-                            hovertemplate = f"<b>{benchmark_names.get(bench, bench)}</b>  %{{y:,.2f}}%<extra></extra>"
+                            hovertemplate = f"<b>{_bench_name(bench)}</b>  %{{y:,.2f}}%<extra></extra>"
                         else:
                             bench_y = sim_df['value']
-                            hovertemplate = _money_hover(benchmark_names.get(bench, bench), lang)
+                            hovertemplate = _money_hover(_bench_name(bench), lang)
 
                         fig.add_trace(go.Scatter(
                             x=sim_df['date'].dt.strftime('%Y-%m-%d').tolist(),
                             y=_series_to_number_list(bench_y),
                             mode='lines',
-                            name=benchmark_names.get(bench, bench),
+                            name=_bench_name(bench),
                             line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6),
                             customdata=_make_hover_meta(
-                                benchmark_names.get(bench, bench),
+                                _bench_name(bench),
                                 "percent" if chart_type == "tab-performance" else "currency",
                                 len(sim_df),
                             ),
@@ -3057,17 +3056,17 @@ def register_callbacks(app):
                             x=pd.to_datetime(bench_data['Date']).dt.strftime('%Y-%m-%d').tolist(),
                             y=_series_to_number_list(bench_y),
                             mode='lines',
-                            name=benchmark_names.get(bench, bench),
+                            name=_bench_name(bench),
                             line=dict(color=benchmark_colors.get(bench, "#888"), width=1.6),
                             customdata=_make_hover_meta(
-                                benchmark_names.get(bench, bench),
+                                _bench_name(bench),
                                 "percent" if chart_type == "tab-performance" else "currency",
                                 len(bench_data),
                             ),
                             hovertemplate=(
-                                f"<b>{benchmark_names.get(bench, bench)}</b>  %{{y:,.2f}}%<extra></extra>"
+                                f"<b>{_bench_name(bench)}</b>  %{{y:,.2f}}%<extra></extra>"
                                 if chart_type == "tab-performance"
-                                else _money_hover(benchmark_names.get(bench, bench), lang)
+                                else _money_hover(_bench_name(bench), lang)
                             ),
                         ))
             
@@ -3377,14 +3376,6 @@ def register_callbacks(app):
                 },
             }]
 
-            benchmark_names = {
-                "^GSPC": "S&P 500",
-                "^GDAXI": "DAX",
-                "URTH": "MSCI World",
-                "^IXIC": "NASDAQ",
-                "^STOXX": "STOXX 600",
-            }
-
             # One fetch per benchmark, deep enough for the longest column.
             fetch_start = (last_date - timedelta(days=365 * 11)).strftime("%Y-%m-%d")
             fetch_end = last_date.strftime("%Y-%m-%d")
@@ -3412,7 +3403,7 @@ def register_callbacks(app):
                     total_b = (current_bench - base) / base * 100 if base > 0 else None
 
                 rows.append({
-                    "asset": benchmark_names.get(bench, bench),
+                    "asset": _bench_name(bench),
                     "is_portfolio": False,
                     "values": {
                         "1D": bench_trailing_return(bdf, 1),
@@ -3441,7 +3432,7 @@ def register_callbacks(app):
                 scale_by_period[p_] = max(magnitudes) if magnitudes else 1.0
 
             def cell(value, period):
-                if value is None:
+                if value is None or not math.isfinite(value):
                     return html.Td("-", className="pcmp-na", title=t("pa.cmp_na", lang))
                 scale = scale_by_period.get(period) or 1.0
                 weight = min(1.0, abs(value) / scale) if scale > 0 else 0.0
@@ -3459,22 +3450,26 @@ def register_callbacks(app):
                     style={"color": color, "backgroundColor": bg},
                 )
 
+            # The hint sits outside the scrolling wrapper: inside it, it
+            # travelled sideways with the table and left the screen.
             table = html.Div([
-                html.Table([
-                    html.Thead(html.Tr(
-                        [html.Th(t("pa.cmp_asset", lang), className="pcmp-asset-head")]
-                        + [html.Th(headers[p_], className="pcmp-head") for p_ in periods]
-                    )),
-                    html.Tbody([
-                        html.Tr(
-                            [html.Td(r["asset"], className="pcmp-asset")]
-                            + [cell(r["values"].get(p_), p_) for p_ in periods],
-                            className="pcmp-row-portfolio" if r["is_portfolio"] else "",
-                        ) for r in rows
-                    ]),
-                ], className="pcmp-table"),
+                html.Div(
+                    html.Table([
+                        html.Thead(html.Tr(
+                            [html.Th(t("pa.cmp_asset", lang), className="pcmp-asset-head")]
+                            + [html.Th(headers[p_], className="pcmp-head") for p_ in periods]
+                        )),
+                        html.Tbody([
+                            html.Tr(
+                                [html.Td(r["asset"], className="pcmp-asset")]
+                                + [cell(r["values"].get(p_), p_) for p_ in periods],
+                                className="pcmp-row-portfolio" if r["is_portfolio"] else "",
+                            ) for r in rows
+                        ]),
+                    ], className="pcmp-table"),
+                    className="pcmp-wrap"),
                 html.P(t("pa.cmp_hint", lang), className="pcmp-hint"),
-            ], className="pcmp-wrap")
+            ])
 
             return table
 
