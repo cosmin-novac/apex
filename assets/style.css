@@ -4582,6 +4582,54 @@ button.btn::-moz-focus-inner {
     margin-top: 22px;
 }
 .lp-card-link { text-decoration: none; display: block; height: 100%; }
+.lp-card-with-shot { padding: 0; overflow: hidden; }
+.lp-card-shot {
+    display: block;
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    object-fit: cover;
+    object-position: top;
+    border-bottom: 1px solid var(--lp-rule);
+    background: #f4f4f2;
+}
+.lp-card-row {
+    position: relative;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 16px 40px 16px 16px;
+}
+.lp-card-row .lp-card-arrow { top: 16px; }
+
+/* The hero screenshot, in a plain window frame. */
+.lp-hero-shot-link { display: block; text-decoration: none; }
+.lp-hero-frame {
+    background: #fff;
+    border: 1px solid var(--lp-rule);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 18px 44px rgba(22, 26, 31, 0.10);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.lp-hero-shot-link:hover .lp-hero-frame {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 52px rgba(22, 26, 31, 0.14);
+}
+.lp-frame-bar {
+    display: flex;
+    gap: 6px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--lp-rule);
+    background: #fafaf8;
+}
+.lp-frame-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #e2e0db;
+}
+.lp-hero-shot { display: block; width: 100%; }
+
 .lp-card {
     position: relative;
     height: 100%;
@@ -4700,6 +4748,10 @@ button.btn::-moz-focus-inner {
         align-items: start;
         padding: 14px 32px 14px 14px;
     }
+    /* The screenshot cards keep the image across the full width; the
+       icon-left grid applies to the row underneath it instead. */
+    .lp-card-with-shot { display: block; padding: 0; }
+    .lp-card-row { padding: 12px 32px 14px 12px; }
     .lp-card-icon { margin-bottom: 0; }
     .lp-card-arrow { top: 14px; right: 14px; }
     .lp-section { padding-top: 36px; }

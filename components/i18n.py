@@ -612,9 +612,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "landing.cta_secondary":   {"en": "Open backtesting",              "de": "Backtesting öffnen"},
     "landing.hero_note":       {"en": "Free, no account needed. Every tool works on the demo portfolio.",
                                 "de": "Kostenlos und ohne Konto. Alle Werkzeuge funktionieren mit dem Demo-Portfolio."},
-    "landing.chart_label":     {"en": "S&P 500, dividends reinvested",  "de": "S&P 500, Dividenden reinvestiert"},
-    "landing.chart_caption":   {"en": "{start} invested at the start of 2000.",
-                                "de": "{start}, Anfang 2000 investiert."},
 
     "landing.fact1_k":         {"en": "Price",                          "de": "Preis"},
     "landing.fact1_v":         {"en": "Free, no subscription",          "de": "Kostenlos, kein Abo"},
