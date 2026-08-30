@@ -775,6 +775,26 @@ class TRConnection:
         with self._op_lock:
             return self.run(coro, timeout=timeout)
 
+    # A websocket send on a half-dead connection blocks forever: the socket
+    # is open, TR is not reading, and nothing times out. The request sends
+    # are bounded (see the enrichment batch loop); this bounds the little
+    # unsub frames, which sit INSIDE the receive loop and hung a sync there
+    # with nothing in the log after the first enrichment.
+    _UNSUB_TIMEOUT_SECONDS = 10.0
+
+    async def _unsubscribe_quietly(self, sub_id) -> bool:
+        """Unsubscribe with a bound. False means the connection has stopped
+        accepting sends and the caller should stop talking to it."""
+        try:
+            await asyncio.wait_for(self.api.unsubscribe(sub_id),
+                                   timeout=self._UNSUB_TIMEOUT_SECONDS)
+            return True
+        except asyncio.TimeoutError:
+            log.warning("Trade Republic stopped accepting unsubscribe frames")
+            return False
+        except Exception:
+            return True         # an error response is fine; only a hang is not
+
     async def _recv_response(self, timeout: float = 30.0):
         """Receive one pytr websocket response without waiting indefinitely."""
         if not self.api:
@@ -1380,7 +1400,9 @@ class TRConnection:
                 # Subscribe to timeline transactions
                 await self.api.timeline_transactions(after=after_cursor)
                 sub_id, sub_params, response = await self._recv_response()
-                await self.api.unsubscribe(sub_id)
+                # The page in hand is still processed either way; a refused
+                # unsubscribe only means no FURTHER page is requested.
+                send_dead = not await self._unsubscribe_quietly(sub_id)
                 
                 # Handle unexpected response types
                 if isinstance(response, list):
@@ -1439,6 +1461,9 @@ class TRConnection:
                 after_cursor = cursors.get('after')
                 if not after_cursor:
                     log.info(f"Timeline complete after {page} pages")
+                    break
+                if send_dead:
+                    log.warning("Working with the %s timeline pages already fetched", page)
                     break
                     
             except Exception as e:
@@ -1544,7 +1569,7 @@ class TRConnection:
             log.info("Testing TR connection before enrichment...")
             await self.api.cash()
             sub_id, _, _ = await self._recv_response()
-            await self.api.unsubscribe(sub_id)
+            await self._unsubscribe_quietly(sub_id)
             log.info("TR connection verified")
         except Exception as e:
             log.error(f"TR connection test failed: {e}")
@@ -1612,8 +1637,13 @@ class TRConnection:
                     if txn_id is None:
                         continue
                     
-                    # Unsubscribe to clean up
-                    await self.api.unsubscribe(sub_id)
+                    # Unsubscribe to clean up. A connection that stops
+                    # accepting sends is done: keep what is enriched so far
+                    # and let the sync finish. The trades still missing their
+                    # share count are asked about again on the next sync.
+                    if not await self._unsubscribe_quietly(sub_id):
+                        stalled = True
+                        break
                     
                     if response is None or (isinstance(response, dict) and response.get('errors')):
                         continue
@@ -1713,12 +1743,14 @@ class TRConnection:
                     log.debug(f"  Error receiving response: {e}")
                     received += 1
             
-            # Unsubscribe from any remaining pending subscriptions
-            for sub_id in list(pending_subscriptions.keys()):
-                try:
-                    await self.api.unsubscribe(sub_id)
-                except:
-                    pass
+            # Unsubscribe from any remaining pending subscriptions. One
+            # refused send is enough to know the rest would only wait out
+            # the same timeout each.
+            if not stalled:
+                for sub_id in list(pending_subscriptions.keys()):
+                    if not await self._unsubscribe_quietly(sub_id):
+                        stalled = True
+                        break
             pending_subscriptions.clear()
             
             log.info(f"  Batch complete: {batch_success} successful enrichments")
