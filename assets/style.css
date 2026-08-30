@@ -4134,8 +4134,18 @@ button.btn::-moz-focus-inner {
     background: #f8fafc;
     position: sticky;
     top: 0;
+    z-index: 2;
 }
-.pcmp-table th.pcmp-asset-head { text-align: left; left: 0; z-index: 2; }
+/* The asset column stays put while the numbers scroll under it, so it has to
+   be painted above them. Without a z-index a sticky table cell is left where
+   the browser wants to put it, and the figures scrolled straight over the
+   names. */
+.pcmp-table th.pcmp-asset-head {
+    text-align: left;
+    left: 0;
+    z-index: 3;
+    border-right: 1px solid #eef2f7;
+}
 .pcmp-table td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
 .pcmp-asset {
     text-align: left;
@@ -4143,7 +4153,14 @@ button.btn::-moz-focus-inner {
     color: #1e293b;
     position: sticky;
     left: 0;
+    z-index: 1;
     background: #fff;
+    border-right: 1px solid #eef2f7;
+    /* iOS repaints a sticky table cell a frame late during a flick, and the
+       figures sliding underneath showed through the names. Its own layer is
+       repainted with the scroll rather than after it. Checked on WebKit,
+       Chromium and Gecko: the column still sticks. */
+    transform: translateZ(0);
 }
 .pcmp-num {
     text-align: right;

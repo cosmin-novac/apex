@@ -78,6 +78,14 @@ def _normalize_benchmark_df(df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame
     df = df.sort_index()
     if "Close" not in df.columns:
         return None
+    # A close that is not a number is not a price. Yahoo returns those for
+    # non-trading days on thinly traded lines, and a NaN in the last row
+    # turned every return computed from it into NaN: the comparison table
+    # printed "nan%" down the whole row while the chart still drew a line.
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df = df.dropna(subset=["Close"])
+    if df.empty:
+        return None
     df.index.name = "Date"
     return df[["Close"]]
 
