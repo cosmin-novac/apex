@@ -226,6 +226,8 @@ app.layout = dbc.Container([
     settings_modal,
     auth_modal,
     dcc.Store(id="mobile-sidebar-dummy"),
+    # Sink for the last-page recorder below; nothing reads it.
+    dcc.Store(id="last-page-noted", storage_type="memory"),
     # Which page wrappers have been built. See mount_pages.
     dcc.Store(id="pages-mounted", data=[]),
     # Ticks the background prefetch: one page per tick, so the work is spread
@@ -251,6 +253,57 @@ app.validation_layout = html.Div([
     legal_layout("impressum", "en"),
     legal_layout("privacy", "en"),
 ])
+
+
+# ── Come back to the page you were on ────────────────────────────────────
+# A logged-in user who left the app on Backtesting starts there next time,
+# not on the landing page. The path is remembered per account in this
+# browser's localStorage (a route name, nothing else), and only a deliberate
+# stop on the landing page overwrites it, so parking on "/" is respected.
+_REMEMBERED_PAGES = '["/compare", "/portfolio", "/backtesting", "/ranks", "/realcost"]'
+
+app.clientside_callback(
+    """
+    function(path) {
+        try {
+            var uid = window.apexAuth && window.apexAuth.currentUid();
+            var pages = %s;
+            if (uid && (path === "/" || pages.indexOf(path) !== -1)) {
+                window.localStorage.setItem("apex.lastPage." + uid, path);
+            }
+        } catch (e) { /* storage blocked: nothing to remember */ }
+        return window.dash_clientside.no_update;
+    }
+    """ % _REMEMBERED_PAGES,
+    Output("last-page-noted", "data"),
+    Input("url", "pathname"),
+)
+
+app.clientside_callback(
+    """
+    function(user, path) {
+        var nu = window.dash_clientside.no_update;
+        try {
+            // The stay-signed-in unlock is asynchronous, so the uid shows up
+            // on a later poll tick than the first paint. Restore once, the
+            // first time this load knows who is here; after that the URL is
+            // the user's own business.
+            if (window.__apexLastPageRestored) return nu;
+            var uid = user && (user.uid || user.id || user);
+            if (!uid) return nu;
+            window.__apexLastPageRestored = true;
+            if (path !== "/") return nu;
+            var last = window.localStorage.getItem("apex.lastPage." + uid);
+            if (last && %s.indexOf(last) !== -1) return last;
+        } catch (e) { /* storage blocked: stay where we are */ }
+        return nu;
+    }
+    """ % _REMEMBERED_PAGES,
+    Output("url", "pathname", allow_duplicate=True),
+    [Input("current-user-store", "data")],
+    State("url", "pathname"),
+    prevent_initial_call=True,
+)
 
 
 @app.callback(Output("url", "pathname"), Input("url", "pathname"))
