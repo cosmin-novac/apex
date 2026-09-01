@@ -596,10 +596,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
 
     # ── Landing page (/) ────────────────────────────────────────────────
     # ── Landing page ("/") ──────────────────────────────────────────────
-    "landing.oss_line":        {"en": "Just a little heads up, this project is completely free and it's also open source. I enjoy working on it, I do it for fun and ",
-                                "de": "Kurzer Hinweis: Dieses Projekt ist komplett kostenlos und außerdem Open Source. Ich arbeite gern daran, ich mache es aus Spaß und "},
-    "landing.oss_join":        {"en": "everyone is welcome to participate.",
-                                "de": "alle sind herzlich eingeladen, mitzumachen."},
+    "landing.oss_line":        {"en": "Free, open source, and built for fun. ",
+                                "de": "Kostenlos, Open Source und aus Spaß gebaut. "},
+    "landing.oss_join":        {"en": "Everyone is welcome to participate.",
+                                "de": "Alle sind herzlich eingeladen, mitzumachen."},
     "landing.eyebrow":         {"en": "Portfolio analysis, backtesting and market history",
                                 "de": "Portfolio-Analyse, Backtesting und Marktgeschichte"},
     "landing.hero_line1":      {"en": "Test the idea before",
@@ -610,8 +610,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
                                 "de": "Teste eine Strategie an Jahrzehnten echter Marktdaten, berechne ein Portfolio dreißig Jahre voraus und miss deine Rendite ehrlich am Markt."},
     "landing.cta_primary":     {"en": "Start with the demo portfolio",  "de": "Mit dem Demo-Portfolio starten"},
     "landing.cta_secondary":   {"en": "Open backtesting",              "de": "Backtesting öffnen"},
-    "landing.hero_note":       {"en": "Free, no account needed. Every tool works on the demo portfolio.",
-                                "de": "Kostenlos und ohne Konto. Alle Werkzeuge funktionieren mit dem Demo-Portfolio."},
+    "landing.hero_note":       {"en": "No account needed. Every tool works on the demo portfolio.",
+                                "de": "Kein Konto nötig. Alle Werkzeuge funktionieren mit dem Demo-Portfolio."},
 
     "landing.fact1_k":         {"en": "Price",                          "de": "Preis"},
     "landing.fact1_v":         {"en": "Free, no subscription",          "de": "Kostenlos, kein Abo"},
