@@ -4428,7 +4428,7 @@ button.btn::-moz-focus-inner {
 }
 .lp-hero-title {
     font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
-    font-size: clamp(2.1rem, 4vw, 3.1rem);
+    font-size: clamp(1.5rem, 2.4vw, 2.1rem);
     line-height: 1.12;
     font-weight: 600;
     letter-spacing: -0.015em;

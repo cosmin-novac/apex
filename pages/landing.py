@@ -95,8 +95,8 @@ def layout(lang="en"):
                                  href="/backtesting", className="lp-btn lp-btn-quiet"),
                     ], className="lp-cta-row"),
                     html.P(t("landing.hero_note", lang), className="lp-hero-note"),
-                ], lg=6, className="lp-hero-col"),
-                dbc.Col(hero_chart, lg=6, className="lp-hero-chart-col"),
+                ], lg=5, className="lp-hero-col"),
+                dbc.Col(hero_chart, lg=7, className="lp-hero-chart-col"),
             ], className="g-4 align-items-center"),
         ], className="lp-hero"),
 
