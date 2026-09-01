@@ -647,6 +647,7 @@ def layout(lang="en"):
             load_rules_modal(lang),
             dcc.Store(id="saved-rules-store", storage_type="local"),
             dcc.Store(id="strategy-store", storage_type="memory"),
+            dcc.Store(id="strategy-drawn", storage_type="memory"),
             
         ], md=4, className="mb-3"),
         

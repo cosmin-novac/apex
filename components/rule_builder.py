@@ -24,7 +24,13 @@ _JOINERS = {"any": " or ", "all": " and "}
 
 
 def empty_strategy():
-    return {b: {"join": "any", "conds": []} for b in BLOCKS}
+    strategy = {b: {"join": "any", "conds": []} for b in BLOCKS}
+    # seeded: the default rule set has been offered once, so an empty card
+    # stays empty. rev: bumped by structural edits only, so editing an
+    # expression in place does not redraw the card and close the code panel.
+    strategy["seeded"] = False
+    strategy["rev"] = 0
+    return strategy
 
 
 def normalize_strategy(data):
@@ -46,6 +52,8 @@ def normalize_strategy(data):
         return strategy
 
     strategy = empty_strategy()
+    strategy["seeded"] = bool(data.get("seeded"))
+    strategy["rev"] = int(data.get("rev") or 0)
     for block in BLOCKS:
         raw = data.get(block) or {}
         join = raw.get("join")
@@ -76,6 +84,13 @@ def add_condition(strategy, block, text, expr):
     strategy = normalize_strategy(strategy)
     block = block if block in BLOCKS else "buy"
     strategy[block]["conds"].append({"text": (text or expr).strip(), "expr": expr.strip()})
+    return _bump(strategy)
+
+
+def _bump(strategy):
+    """Mark a structural change (the card has to be redrawn)."""
+    strategy["rev"] = int(strategy.get("rev") or 0) + 1
+    strategy["seeded"] = True
     return strategy
 
 
@@ -297,13 +312,22 @@ def register_rule_builder_callbacks(app):
     def toggle_info_modal(n1, n2, is_open):
         return not is_open if (n1 or n2) else is_open
 
-    # The card is drawn from the strategy, never edited in place.
+    # The card is drawn from the strategy, never edited in place. It is only
+    # redrawn for structural changes (rev) or a language switch: an
+    # expression edited in place already shows its new value, and a redraw
+    # would close the code panel the user is typing in.
     @app.callback(
-        Output("trading-rules-container", "children"),
+        [Output("trading-rules-container", "children"),
+         Output("strategy-drawn", "data")],
         [Input("strategy-store", "data"), Input("lang-store", "data")],
+        State("strategy-drawn", "data"),
     )
-    def draw_strategy(strategy, lang_data):
-        return render_strategy(strategy, get_lang(lang_data))
+    def draw_strategy(strategy, lang_data, drawn):
+        lang = get_lang(lang_data)
+        token = f"{normalize_strategy(strategy)['rev']}:{lang}"
+        if drawn == token:
+            raise PreventUpdate
+        return render_strategy(strategy, lang), token
 
     # Everything that changes the strategy.
     @app.callback(
@@ -311,7 +335,6 @@ def register_rule_builder_callbacks(app):
          Output("input-generate-rule", "value"),
          Output("rule-error", "children")],
         [Input("apply-modal-button", "n_clicks"),
-         Input("input-generate-rule", "n_blur"),
          Input({"type": "cond-remove", "block": ALL, "index": ALL}, "n_clicks"),
          Input({"type": "cond-join", "block": ALL}, "n_clicks"),
          Input("confirm-load-rules-modal", "n_clicks"),
@@ -322,7 +345,7 @@ def register_rule_builder_callbacks(app):
          State("lang-store", "data")],
         prevent_initial_call=True,
     )
-    def edit_strategy(add_clicks, prompt_blur, remove_clicks, join_clicks, load_clicks,
+    def edit_strategy(add_clicks, remove_clicks, join_clicks, load_clicks,
                       saved, strategy, prompt, selected_set, lang_data):
         trigger = ctx.triggered_id
         lang = get_lang(lang_data)
@@ -335,16 +358,16 @@ def register_rule_builder_callbacks(app):
             conds = strategy[block]["conds"]
             if 0 <= index < len(conds):
                 conds.pop(index)
-            return strategy, no_update, None
+            return _bump(strategy), no_update, None
 
         if isinstance(trigger, dict) and trigger.get("type") == "cond-join":
             if not any(c for c in (join_clicks or []) if c):
                 raise PreventUpdate
             block = trigger["block"]
             strategy[block]["join"] = "all" if strategy[block]["join"] == "any" else "any"
-            return strategy, no_update, None
+            return _bump(strategy), no_update, None
 
-        if trigger in ("apply-modal-button", "input-generate-rule"):
+        if trigger == "apply-modal-button":
             prompt = (prompt or "").strip()
             if not prompt:
                 raise PreventUpdate
@@ -360,14 +383,18 @@ def register_rule_builder_callbacks(app):
             return (add_condition(strategy, kind, sentence or prompt, expression), "", None)
 
         if trigger == "confirm-load-rules-modal" and selected_set:
-            return normalize_strategy((saved or {}).get(selected_set)), no_update, None
+            loaded = normalize_strategy((saved or {}).get(selected_set))
+            loaded["rev"] = strategy["rev"]
+            return _bump(loaded), no_update, None
 
-        # First paint: whatever was saved as the default, else the built-in one.
+        # First paint only: whatever was saved as the default, else the
+        # built-in one. Saving or deleting a rule set changes the same store
+        # and must not put the default back into a card the user emptied.
         if trigger == "saved-rules-store":
-            if any(strategy[b]["conds"] for b in BLOCKS):
+            if strategy["seeded"]:
                 raise PreventUpdate
-            return normalize_strategy((saved or {}).get("default_ruleset")
-                                      or DEFAULT_STRATEGY), no_update, None
+            seed = normalize_strategy((saved or {}).get("default_ruleset") or DEFAULT_STRATEGY)
+            return _bump(seed), no_update, None
 
         raise PreventUpdate
 

@@ -78,3 +78,18 @@ def test_default_strategy_is_valid_and_runs():
     buy, sell = rules_for_engine(DEFAULT_STRATEGY)
     assert "power_law_price_4y_window" in buy
     assert sell == ""
+
+
+def test_structural_edits_bump_rev_and_mark_seeded():
+    s = empty_strategy()
+    assert s["rev"] == 0 and s["seeded"] is False
+    s = add_condition(s, "buy", "x", "x > 1")
+    assert s["rev"] == 1 and s["seeded"] is True
+    # Round-tripping through the store keeps both.
+    again = normalize_strategy(dict(s))
+    assert again["rev"] == 1 and again["seeded"] is True
+
+
+def test_old_format_is_not_seeded_until_used():
+    s = normalize_strategy({"buying_rule": ["a > 1"], "selling_rule": []})
+    assert s["seeded"] is False and s["rev"] == 0

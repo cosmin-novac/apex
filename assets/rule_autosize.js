@@ -29,15 +29,16 @@
         if (e.target && e.target.matches && e.target.matches(SELECTOR)) fit(e.target);
     });
 
-    // Enter adds the rule (Shift+Enter still makes a newline). Blurring is the
-    // trigger: the callback listens for the blur, and clicking Add blurs too,
-    // so both paths run the same single round trip.
+    // Enter adds the condition (Shift+Enter still makes a newline). The input
+    // is not debounced, so Dash already holds the typed value and the Add
+    // button can simply be clicked; leaving the field does nothing.
     document.addEventListener("keydown", function (e) {
         if (e.key !== "Enter" || e.shiftKey) return;
         var el = e.target;
         if (!el || !el.matches || !el.matches(".ghost-input")) return;
         e.preventDefault();
-        el.blur();
+        var btn = document.getElementById("apply-modal-button");
+        if (btn) btn.click();
     });
 
     // Clicking anywhere on the ghost row focuses its input.

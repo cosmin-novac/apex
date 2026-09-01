@@ -53,6 +53,7 @@ def test_generate_rule_uses_luna_without_legacy_params(monkeypatch):
             message.content = json.dumps({
                 "rule": "current('price') > historic('price').ewm(span=90, adjust=False).mean().iloc[-1]",
                 "type": "buy",
+                "text": "the price is above the 90 day EMA",
             })
             response.choices = [MagicMock(message=message)]
             return response
@@ -61,10 +62,11 @@ def test_generate_rule_uses_luna_without_legacy_params(monkeypatch):
         return client
 
     monkeypatch.setattr(gf, "OpenAI", fake_openai)
-    rule, rule_type = gf.generate_rule("buy when price is above ema 90", "sk-test")
+    rule, rule_type, text = gf.generate_rule("buy when price is above ema 90", "sk-test")
 
     assert rule_type == "buy"
     assert "ewm(span=90" in rule
+    assert text == "the price is above the 90 day EMA"
     assert captured["model"] == "gpt-5.6-luna"
     assert "max_tokens" not in captured
     assert "temperature" not in captured
