@@ -67,7 +67,7 @@ def layout(lang="en"):
         html.Div([
             html.Div([html.Span(className="lp-frame-dot") for _ in range(3)],
                      className="lp-frame-bar"),
-            html.Img(src="/assets/landing/hero.webp",
+            html.Img(src="/assets/landing/hero.png",
                      alt=t("landing.c1_title", lang), className="lp-hero-shot"),
         ], className="lp-hero-frame"),
         href="/compare", className="lp-hero-shot-link",
@@ -79,30 +79,24 @@ def layout(lang="en"):
         html.Div([
             dbc.Row([
                 dbc.Col([
-                    html.P([
-                        html.I(className="bi bi-stars lp-oss-icon"),
-                        # Text and link share one flex item: a flex container
-                        # strips the trailing space of each text run, which
-                        # would glue the sentence to the link.
-                        html.Span([
-                            t("landing.oss_line", lang),
-                            html.A(t("landing.oss_join", lang), href=GITHUB_URL,
-                                   target="_blank", rel="noopener",
-                                   className="lp-oss-link"),
-                        ]),
-                    ], className="lp-oss"),
-                    html.P(t("landing.eyebrow", lang), className="lp-eyebrow"),
-                    html.H1([t("landing.hero_line1", lang), html.Br(), html.Span(t("landing.hero_line2", lang), className="lp-hero-em")],
+                    html.H1([html.Span("Apex", className="lp-hero-em"),
+                             " • ", t("landing.hero_title", lang)],
                             className="lp-hero-title"),
-                    html.P(t("landing.hero_sub", lang), className="lp-hero-sub"),
+                    html.P([
+                        t("landing.hero_sub", lang), " ",
+                        t("landing.oss_line", lang),
+                        html.A(t("landing.oss_join", lang), href=GITHUB_URL,
+                               target="_blank", rel="noopener",
+                               className="lp-sub-link"),
+                    ], className="lp-hero-sub"),
                     html.Div([
                         dcc.Link(t("landing.cta_primary", lang), href="/compare", className="lp-btn lp-btn-primary"),
                         dcc.Link([t("landing.cta_secondary", lang), html.Span(" →", className="lp-row-arrow")],
                                  href="/backtesting", className="lp-btn lp-btn-quiet"),
                     ], className="lp-cta-row"),
                     html.P(t("landing.hero_note", lang), className="lp-hero-note"),
-                ], lg=6, className="lp-hero-col"),
-                dbc.Col(hero_chart, lg=6, className="lp-hero-chart-col"),
+                ], lg=5, className="lp-hero-col"),
+                dbc.Col(hero_chart, lg=7, className="lp-hero-chart-col"),
             ], className="g-4 align-items-center"),
         ], className="lp-hero"),
 
