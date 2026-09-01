@@ -40,19 +40,15 @@ exactly. Only expressions are allowed, no imports and no statements.
 def generate_rule(rule_instruction, openai_api_key):
     if not rule_instruction:
         _log.warning("Invalid prompt entered")
-        return None, False
-    elif rule_instruction == "sell":
-        return '', 'sell'
-    elif rule_instruction == "buy":
-        return '', 'buy'
-    
+        return None, False, ""
+
     if not openai_api_key:
         _log.warning("OpenAI key is missing")
-        return None, False
+        return None, False, ""
 
     messages = [
         {"role": "system", "content": f"Here is the eval context that you can use, try to guess or interpret what the indicators and variables mean when you use them: {context_description}"},
-        {"role": "user", "content": f"Natural language instruction: {rule_instruction}\n\nGenerate a Python expression for the trading rule and specify whether it is a buying or selling rule. Return your response in a JSON format. Use double quotes for strings. The JSON format should be exactly as follows: {{\"rule\": \"python_expression\", \"type\": \"buy\" or \"sell\"}}. Ensure proper JSON formatting to avoid parsing errors. \nMax date is 2024-03-04. \nIf you aggregate data, make sure to call functions like .all() and .min() on the Series or array of values within the DataFrame, for example historic('price').min(). Avoid syntax like min(historic('price')) since this causes errors. You can use numpy as np, and pandas as pd. Return your response ONLY in a JSON format and nothing else, no comments or descriptions of any kind. "}
+        {"role": "user", "content": f"Natural language instruction: {rule_instruction}\n\nGenerate a Python expression for the trading rule and specify whether it is a buying or selling rule. Return your response in a JSON format. Use double quotes for strings. The JSON format should be exactly as follows: {{\"rule\": \"python_expression\", \"type\": \"buy\" or \"sell\", \"text\": \"the condition in plain words\"}}. The \"text\" field is shown to the user in place of the code: write it as a short condition phrase in the language the instruction was written in, with no leading \"buy\" or \"sell\" and no trailing full stop, for example \"the price is below the 4-year power law\" or \"RSI(14) is above 70\". Ensure proper JSON formatting to avoid parsing errors. \nMax date is 2024-03-04. \nIf you aggregate data, make sure to call functions like .all() and .min() on the Series or array of values within the DataFrame, for example historic('price').min(). Avoid syntax like min(historic('price')) since this causes errors. You can use numpy as np, and pandas as pd. Return your response ONLY in a JSON format and nothing else, no comments or descriptions of any kind. "}
     ]
 
     try:
@@ -73,11 +69,16 @@ def generate_rule(rule_instruction, openai_api_key):
                 rule_data = json.loads(cleaned_result, strict=False)
                 rule_type = rule_data.get('type', '').lower()
                 rule_expression = rule_data.get('rule', '')
-                return rule_expression, rule_type
+                # The sentence is what the card shows; older responses without
+                # one fall back to the expression at the call site.
+                rule_text = (rule_data.get('text') or '').strip()
+                return rule_expression, rule_type, rule_text
             except Exception as e:
                 _log.warning("Error parsing rule data")
-                return e, "Rule Error"
-    
+                return e, "Rule Error", ""
+
+        return None, "GPT Error", ""
+
     except Exception as e:
         _log.error("GPT rule generation failed: %s", e)
-        return e, "GPT Error"
+        return e, "GPT Error", ""

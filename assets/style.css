@@ -1272,322 +1272,261 @@ input.compact-input {
 }
 
 /* Header */
+/* One line: the title truncates before anything wraps. */
 .rules-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 14px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border-color);
+    gap: 8px;
+    margin-bottom: 4px;
 }
 
 .rules-header-left {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
     color: var(--text-primary);
     font-size: 1.05rem;
 }
 
 .rules-title {
-    font-size: 0.95rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.9rem;
     font-weight: 700;
     letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .rules-header-right {
     display: flex;
-    gap: 6px;
+    gap: 2px;
     align-items: center;
+    flex-shrink: 0;
 }
 
-/* Same button language as the rest of the app (sync button, header
-   controls): standard radius, tinted fill + 1px border, solid on hover. */
-.add-rule-btn {
-    padding: 5px 12px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    border-radius: var(--radius-md);
-    transition: var(--transition);
-}
-
-/* Neutral ghost buttons for Save/Load, matching the colored ones in shape. */
-.rules-io-btn {
-    padding: 5px 12px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    border-radius: var(--radius-md);
-    transition: var(--transition);
+/* Bootstrap's .btn-sm padding wins on specificity, so the header icons say
+   what they need explicitly; three of them plus Run has to fit one line. */
+.rules-header-right .info-btn {
     color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid var(--border-color);
+    padding: 2px 5px !important;
+    font-size: 0.85rem;
+    line-height: 1.2;
 }
-.rules-io-btn:hover {
-    color: var(--text-primary);
-    background: #f1f5f9;
-    border-color: #cbd5e1;
-}
-
-.add-buy {
-    background: rgba(16, 185, 129, 0.08);
-    color: var(--success-color);
-    border: 1px solid rgba(16, 185, 129, 0.5);
-}
-.add-buy:hover {
-    background: var(--success-color);
-    color: #fff;
-    border-color: var(--success-color);
-}
-
-.add-sell {
-    background: rgba(239, 68, 68, 0.08);
-    color: var(--danger-color);
-    border: 1px solid rgba(239, 68, 68, 0.5);
-}
-.add-sell:hover {
-    background: var(--danger-color);
-    color: #fff;
-    border-color: var(--danger-color);
-}
-
-.add-ai {
-    background: rgba(99, 102, 241, 0.08);
-    color: var(--primary-color);
-    border: 1px solid rgba(99, 102, 241, 0.5);
-}
-.add-ai:hover {
-    background: var(--primary-color);
-    color: #fff;
-    border-color: var(--primary-color);
-}
-
 .info-btn {
     color: var(--text-secondary);
-    padding: 2px 4px;
-    font-size: 0.9rem;
+    padding: 2px 3px;
+    font-size: 0.85rem;
 }
 .info-btn:hover {
     color: var(--primary-color);
 }
 
-/* Rules container */
+/* Strategy blocks: two headed groups of conditions, written as sentences.
+   Nothing here is a field until you open the code under a condition. */
 .rules-container {
-    min-height: 56px;
-    margin-bottom: 12px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    margin-bottom: 2px;
 }
 
-.rules-empty-hint {
-    text-align: center;
-    padding: 18px 12px;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-    font-style: italic;
-    background: var(--content-bg);
-    border: 1px dashed var(--border-color);
-    border-radius: var(--radius-md);
-}
+.strategy-block { padding: 7px 0 3px; }
+.strategy-block + .strategy-block { border-top: 1px solid var(--border-color); }
 
-/* Rule pill (each row) */
-.rule-pill {
+.block-head {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: var(--radius-md);
-    background: var(--content-bg);
-    border: 1px solid var(--border-color);
-    transition: border-color 0.15s, box-shadow 0.15s;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 2px;
 }
-.rule-pill:hover {
-    border-color: rgba(99, 102, 241, 0.35);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-}
-.rule-pill-buy {
-    border-left: 3px solid var(--success-color);
-}
-.rule-pill-sell {
-    border-left: 3px solid var(--danger-color);
-}
-
-.rule-type-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    padding: 3px 8px;
-    border-radius: 999px;
-    font-size: 0.68rem;
+.block-title {
+    font-size: 0.7rem;
     font-weight: 700;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
+    color: var(--text-secondary);
+}
+/* The join is a decision, so it looks like one: a word you can press. */
+.join-btn {
+    padding: 0 6px !important;
+    font-size: 0.68rem !important;
+    font-weight: 700;
     letter-spacing: 0.04em;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-.badge-buy {
-    background: rgba(16, 185, 129, 0.13);
-    color: var(--success-color);
-}
-.badge-sell {
-    background: rgba(239, 68, 68, 0.13);
-    color: var(--danger-color);
-}
-
-/* Expression input (now a single-line dbc.Input) */
-.rule-expression-input {
-    flex: 1;
-    height: 34px;
-    padding: 6px 10px;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
-    font-size: 0.8rem;
+    text-transform: uppercase;
+    text-decoration: none !important;
+    color: var(--primary-color) !important;
+    background: rgba(99, 102, 241, 0.09);
+    border-radius: 5px;
     line-height: 1.5;
-    color: var(--text-primary);
-    background: var(--input-bg, var(--card-bg));
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    transition: border-color 0.15s, box-shadow 0.15s;
 }
-.rule-expression-input::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.55;
-    font-style: italic;
-}
-.rule-expression-input:focus {
-    border-color: var(--primary-color);
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+.join-btn:hover:not(:disabled) { background: rgba(99, 102, 241, 0.18); }
+.join-btn:disabled {
+    color: var(--text-secondary) !important;
+    background: none;
+    opacity: 0.65;
 }
 
-.rule-remove-btn {
+.block-conds { display: flex; flex-direction: column; }
+.block-empty {
+    padding: 3px 0 5px;
+    font-size: 0.8rem;
     color: var(--text-secondary);
-    padding: 2px 6px;
-    font-size: 0.72rem;
+    opacity: 0.75;
+}
+
+.cond-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+}
+.cond-body { flex: 1; min-width: 0; }
+.cond-text {
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--text-primary);
+}
+/* Condition rows are separated by their own spacing; a second condition in a
+   block gets a hairline so the joiner has something to join across. */
+.cond-row + .cond-row { border-top: 1px solid var(--border-color); }
+
+.cond-code-wrap { margin-top: 1px; }
+.cond-code-toggle {
+    display: inline-block;
+    list-style: none;
+    cursor: pointer;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
     opacity: 0;
     transition: opacity 0.15s, color 0.15s;
 }
-.rule-pill:hover .rule-remove-btn {
-    opacity: 0.6;
+.cond-code-toggle::-webkit-details-marker { display: none; }
+.cond-row:hover .cond-code-toggle,
+.cond-code-wrap[open] .cond-code-toggle { opacity: 0.75; }
+.cond-code-toggle:hover { color: var(--primary-color); }
+.cond-code-wrap[open] .cond-code-toggle { color: var(--primary-color); }
+
+/* The expression, once asked for: still editable, still not a form field. */
+textarea.cond-code {
+    width: 100%;
+    margin-top: 3px;
+    padding: 6px 8px !important;
+    border: none !important;
+    border-left: 2px solid var(--border-color) !important;
+    border-radius: 0 !important;
+    background: var(--content-bg) !important;
+    box-shadow: none !important;
+    resize: none;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+    font-size: 0.74rem !important;
+    line-height: 1.5 !important;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
 }
-.rule-remove-btn:hover {
-    color: var(--danger-color) !important;
-    opacity: 1 !important;
+textarea.cond-code:focus {
+    border-left-color: var(--primary-color) !important;
+    color: var(--text-primary);
+    outline: none;
 }
 
-/* ── Quick Builder (collapsible) ── */
-.qb-details {
-    margin-bottom: 14px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    overflow: visible;
-    background: var(--content-bg);
-    position: relative;
+.cond-remove {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    padding: 0 2px;
+    font-size: 0.66rem;
+    line-height: 1.7;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
 }
-.qb-details[open] {
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    z-index: 1100;
-}
+.cond-row:hover .cond-remove,
+.cond-row:focus-within .cond-remove { opacity: 0.5; }
+.cond-remove:hover { color: var(--danger-color) !important; opacity: 1 !important; }
 
-.qb-summary {
-    padding: 8px 14px;
+.rule-error-slot:empty { display: none; }
+.rule-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 7px 2px 0;
     font-size: 0.78rem;
+    color: var(--danger-color);
+}
+
+/* The ghost row: the last row of the list, and the only way to add a rule. */
+.ghost-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 2px;
+    border-top: 1px solid var(--border-color);
+    cursor: text;
+}
+.ghost-spark {
+    flex-shrink: 0;
+    width: 52px;
+    padding-top: 1px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    transition: color 0.15s, opacity 0.15s;
+}
+.ghost-row:focus-within .ghost-spark {
+    color: var(--primary-color);
+    opacity: 1;
+}
+textarea.ghost-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0 !important;
+    border: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    resize: none;
+    overflow: hidden;
+    font-size: 0.82rem !important;
+    line-height: 1.5 !important;
+    color: var(--text-primary);
+}
+
+textarea.ghost-input:focus {
+    outline: none;
+    border: none !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+textarea.ghost-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.75;
+}
+/* The Add button is a keyboard hint: Enter does the same thing. */
+.ghost-add-btn {
+    flex-shrink: 0;
+    padding: 0 2px;
+    font-size: 0.72rem;
     font-weight: 600;
     color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    cursor: pointer;
-    user-select: none;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
 }
-.qb-summary::before {
-    content: '\25B6';
-    font-size: 0.55rem;
-    transition: transform 0.2s;
-}
-.qb-details[open] > .qb-summary::before {
-    transform: rotate(90deg);
-}
-.qb-summary::-webkit-details-marker {
-    display: none;
-}
-
-.qb-body {
-    padding: 10px 14px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    overflow: visible;
-}
-
-.qb-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    overflow: visible;
-}
-
-.qb-dropdown {
-    flex: 1;
-    min-width: 150px;
-    max-width: 220px;
-    font-size: 0.8rem !important;
-    position: relative;
-    z-index: 1101;
-}
-
-.qb-dropdown-small {
-    width: 80px !important;
-    flex: 0 0 auto;
-    position: relative;
-    z-index: 1101;
-}
-
-.qb-dropdown .Select-menu-outer,
-.qb-dropdown-small .Select-menu-outer {
-    z-index: 1200 !important;
-    min-width: 260px;
-    max-width: min(360px, calc(100vw - 48px));
-    overflow: visible;
-}
-
-.qb-dropdown-small .Select-menu-outer {
-    min-width: 96px;
-}
-
-.qb-custom-input {
-    width: 90px !important;
-    padding: 5px 8px !important;
-    font-size: 0.8rem !important;
-    border-radius: var(--radius-sm) !important;
-}
-
-.qb-actions {
-    display: flex;
-    gap: 8px;
-}
-
-/* ── Action bar ── */
-.rules-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-color);
-}
-
-.rules-action-group {
-    display: flex;
-    gap: 6px;
-}
+.ghost-row:focus-within .ghost-add-btn { opacity: 1; }
+.ghost-add-btn:hover { color: var(--primary-color); }
 
 .run-backtest-btn {
-    padding: 8px 22px;
+    margin-left: 4px;
+    padding: 5px 11px;
     font-weight: 600;
-    font-size: 0.88rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
     border-radius: var(--radius-sm);
     box-shadow: 0 1px 3px rgba(99, 102, 241, 0.25);
     transition: box-shadow 0.15s, transform 0.1s;

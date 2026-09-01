@@ -488,8 +488,8 @@ loading_component = dbc.Spinner(color="primary", children="Running Backtest...")
 
 # Import rule builder components
 from components.rule_builder import (
-    create_rule_builder_card, ai_rule_modal, info_modal, 
-    save_rules_modal, load_rules_modal, get_rules_from_ui
+    create_rule_builder_card, info_modal,
+    save_rules_modal, load_rules_modal, rules_for_engine
 )
 
 def layout(lang="en"):
@@ -641,11 +641,13 @@ def layout(lang="en"):
             create_rule_builder_card(lang),
             
             # Modals
-            ai_rule_modal(lang),
+
             info_modal(lang),
             save_rules_modal(lang),
             load_rules_modal(lang),
             dcc.Store(id="saved-rules-store", storage_type="local"),
+            dcc.Store(id="strategy-store", storage_type="memory"),
+            dcc.Store(id="strategy-drawn", storage_type="memory"),
             
         ], md=4, className="mb-3"),
         
@@ -980,7 +982,7 @@ def register_callbacks(app):
         [State('input-starting-investment', 'value'),
          State('start-invested', 'value'),
         State('input-starting-date', 'date'),
-        State("trading-rules-container", "children"),
+        State("strategy-store", "data"),
         State("saved-rules-store", "data"),
         State('chart-scale-toggle', 'data'),
         State('input-trade-amount', 'value'),
@@ -993,15 +995,15 @@ def register_callbacks(app):
         prevent_initial_call=True,
     )
     def update_backtesting(n_clicks, starting_investment, start_invested, start_date,
-                           children, store_data, scale, trade_amount, transaction_fee,
+                           strategy, store_data, scale, trade_amount, transaction_fee,
                            taxation_method, tax_amount, holding_period, selected_asset, lang_data):
         lang = get_lang(lang_data)
         if not n_clicks:
             raise PreventUpdate
 
-        rules_from_ui = get_rules_from_ui(children)
-        buying_rule = " or ".join(rules_from_ui.get("buying_rule", []))
-        selling_rule = " or ".join(rules_from_ui.get("selling_rule", []))
+        # The join between conditions ("any" or "all") is part of the strategy
+        # now, so the card decides how they combine rather than the engine.
+        buying_rule, selling_rule = rules_for_engine(strategy)
 
         asset_ticker = selected_asset or "BTC-USD"
         
