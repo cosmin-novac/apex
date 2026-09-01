@@ -79,8 +79,8 @@ def layout(lang="en"):
         html.Div([
             dbc.Row([
                 dbc.Col([
-                    html.P(t("landing.eyebrow", lang), className="lp-eyebrow"),
-                    html.H1([t("landing.hero_line1", lang), html.Br(), html.Span(t("landing.hero_line2", lang), className="lp-hero-em")],
+                    html.H1([html.Span("Apex", className="lp-hero-em"),
+                             " • ", t("landing.hero_title", lang)],
                             className="lp-hero-title"),
                     html.P([
                         t("landing.hero_sub", lang), " ",
