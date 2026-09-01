@@ -170,8 +170,6 @@ def create_rule_builder_card(lang="en"):
                         className="qb-custom-input",
                         style={"display": "none"},
                     ),
-                ], className="qb-row"),
-                html.Div([
                     dbc.Button(
                         [html.I(className="bi bi-plus-circle me-1"), t("rl.add_buy", lang)],
                         id="qb-add-buy",
@@ -186,7 +184,7 @@ def create_rule_builder_card(lang="en"):
                         size="sm",
                         n_clicks=0,
                     ),
-                ], className="qb-actions"),
+                ], className="qb-row"),
             ], className="qb-body"),
         ], className="qb-details"),
         
