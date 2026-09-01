@@ -16,16 +16,19 @@ from components.i18n import t, get_lang
 def auth_user_area():
     """Sidebar block: a Login button when logged out; username + Logout when in."""
     return html.Div([
-        html.Div(id="current-user-label", className="sidebar-user-label"),
+        # Logged in: one row, name on the left, logout on the right.
+        html.Div([
+            html.Div(id="current-user-label", className="sidebar-user-label"),
+            dbc.Button(
+                [html.I(className="bi bi-box-arrow-right me-1"), html.Span(id="logout-btn-label")],
+                id="logout-btn", color="link", size="sm",
+                className="sidebar-logout-btn", n_clicks=0,
+            ),
+        ], id="sidebar-user-row", className="sidebar-user-row", style={"display": "none"}),
         dbc.Button(
             [html.I(className="bi bi-person me-1"), html.Span(id="login-btn-label")],
             id="open-login-btn", color="primary", outline=True, size="sm",
             className="w-100", n_clicks=0,
-        ),
-        dbc.Button(
-            [html.I(className="bi bi-box-arrow-right me-1"), html.Span(id="logout-btn-label")],
-            id="logout-btn", color="link", size="sm",
-            className="w-100 sidebar-logout-btn", n_clicks=0, style={"display": "none"},
         ),
     ], className="sidebar-user-area")
 
@@ -181,13 +184,13 @@ def register_auth_modal_callbacks(app):
             var name = (window.apexAuth && window.apexAuth.currentUsername)
                 ? window.apexAuth.currentUsername() : null;
             if (uid) {
-                return [name || "", {"display": "none"}, {"display": ""}];
+                return [name || "", {"display": "none"}, {"display": "flex"}];
             }
             return ["", {"display": ""}, {"display": "none"}];
         }
         """,
         [Output("current-user-label", "children"),
          Output("open-login-btn", "style"),
-         Output("logout-btn", "style")],
+         Output("sidebar-user-row", "style")],
         Input("current-user-store", "data"),
     )

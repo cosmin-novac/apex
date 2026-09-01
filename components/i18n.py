@@ -570,13 +570,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "rl.bollinger_lower":       {"en": "Bollinger Lower",           "de": "Bollinger Unten"},
     "rl.last_highest":          {"en": "Last Highest",              "de": "Letztes Hoch"},
     "rl.last_lowest":           {"en": "Last Lowest",               "de": "Letztes Tief"},
-    "rl.settings":              {"en": "Settings",                  "de": "Einstellungen"},
-    "rl.api_key_missing":       {"en": "OpenAI API key is missing. Set it in ",
-                                 "de": "OpenAI API-Schlüssel fehlt. Setze ihn in den "},
-    "rl.settings_gear":         {"en": ".",
-                                 "de": "."},
-    "rl.invalid_key":           {"en": "Invalid OpenAI API key. Check your key in Settings.",
-                                 "de": "Ungültiger OpenAI API-Schlüssel. Überprüfe ihn in den Einstellungen."},
+    "rl.api_key_missing":       {"en": "AI rule generation is not set up on this server yet.",
+                                 "de": "Die KI-Regelerstellung ist auf diesem Server noch nicht eingerichtet."},
+    "rl.invalid_key":           {"en": "The AI service rejected the request. Please try again later.",
+                                 "de": "Der KI-Dienst hat die Anfrage abgelehnt. Bitte versuche es später erneut."},
     "rl.ai_error":              {"en": "AI Error: ",                "de": "KI-Fehler: "},
 
     # ── Legacy standalone labels ────────────────────────────────────────

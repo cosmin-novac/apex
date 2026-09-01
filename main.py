@@ -33,7 +33,7 @@ from pages.the_real_cost import layout as real_cost_layout, register_callbacks a
 from pages.megacap_lab import layout as megacap_layout, register_callbacks as register_megacap_callbacks
 from pages.landing import layout as landing_layout
 from pages.legal import layout as legal_layout
-from components.settings_modal import settings_button, settings_modal, api_key_store, register_settings_callbacks
+from components.settings_modal import settings_button, theme_store, register_settings_callbacks
 from components.rule_builder import register_rule_builder_callbacks
 from components.auth import user_store, register_auth_callbacks
 from components.auth_modal import auth_modal, auth_user_area, register_auth_modal_callbacks
@@ -121,17 +121,6 @@ sidebar = html.Div([
     html.Div([
         html.Div([
             settings_button,
-            html.Div(
-                dbc.Button(
-                    html.I(className="bi bi-gear"),
-                    id="open-settings-btn",
-                    className="settings-btn",
-                    color="link",
-                    n_clicks=0,
-                    title="Settings",
-                ),
-                className="settings-trigger",
-            ),
             html.Div([
                 dbc.Button(html.Span("EN", id="lang-flag-icon", style={"fontSize": "0.8rem", "fontWeight": "700"}), id="lang-dropdown-toggle", className="settings-btn", color="link", n_clicks=0),
                 html.Div([
@@ -192,10 +181,9 @@ mobile_overlay = html.Div(id="mobile-overlay", className="mobile-overlay", n_cli
 app.layout = dbc.Container([
     dcc.Location(id="url", refresh=False),
     dcc.Store(id="page-title-sync"),
-    api_key_store,
+    theme_store,
     user_store,
     dcc.Store(id="lang-store", storage_type="local"),
-    html.Button(id="open-settings-link", style={"display": "none"}, n_clicks=0),
     dcc.Store(id="portfolio-data-store", storage_type="memory"),
     # Browser-only backup of the last *real* synced portfolio. Held in memory and
     # mirrored to the per-user encrypted vault in localStorage by
@@ -223,7 +211,6 @@ app.layout = dbc.Container([
     dcc.Store(id="demo-mode", data=True, storage_type="local"),
     # Mirrors the local-auth session uid into current-user-store (components/auth.py).
     dcc.Interval(id="auth-uid-poll", interval=1000),
-    settings_modal,
     auth_modal,
     dcc.Store(id="mobile-sidebar-dummy"),
     # Sink for the last-page recorder below; nothing reads it.
