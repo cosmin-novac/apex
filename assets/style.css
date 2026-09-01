@@ -5123,6 +5123,31 @@ body.theme-night {
 /* Logged out the label is empty; without this the chip renders as a bare box. */
 #current-user-label:empty { display: none; }
 
+/* Logged in: name and logout share one row instead of stacking. */
+.sidebar-user-row {
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 240px;
+}
+.sidebar-user-row #current-user-label {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sidebar-logout-btn {
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.8rem;
+    padding: 4px 6px;
+    text-decoration: none;
+}
+.sidebar-logout-btn:hover { color: #fff; }
+
 .clerk-user-button-slot {
     min-height: 34px;
     display: flex;
