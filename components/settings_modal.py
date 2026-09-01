@@ -1,16 +1,13 @@
-"""Apex settings modal component."""
-import logging
-import os
+"""Theme toggle for the sidebar.
+
+This module used to hold a settings modal too. Its only real content was the
+OpenAI API key input, which is obsolete now that the server provides the key
+for everyone, and a theme radio that duplicated the moon button. The modal is
+gone; the moon button and its theme store are what remains.
+"""
 
 import dash_bootstrap_components as dbc
-from dash import dcc, html, Input, Output, State, no_update
-
-log = logging.getLogger(__name__)
-
-
-def _server_has_openai_key() -> bool:
-    return bool(os.environ.get("OPENAI_API_KEY"))
-
+from dash import dcc, html, Input, Output, State
 
 settings_button = html.Div(
     dbc.Button(
@@ -27,71 +24,9 @@ settings_button = html.Div(
     className="settings-trigger",
 )
 
-settings_modal = dbc.Modal(
+theme_store = html.Div(
     [
-        dbc.ModalHeader(
-            dbc.ModalTitle([html.I(className="bi bi-gear me-2"), "Settings"]),
-            close_button=True,
-        ),
-        dbc.ModalBody(
-            [
-                # When the server provides the key there is nothing for the
-                # user to configure, hide the whole section (the input stays
-                # in the DOM because callbacks reference it) instead of showing
-                # a confusing "enabled by the server" note.
-                html.Div(
-                    [
-                        html.Label("OpenAI API Key", className="settings-label"),
-                        html.P(
-                            "Required for AI-powered rule generation",
-                            className="settings-help",
-                        ),
-                        dbc.Input(
-                            id="input-openai-api-key",
-                            type="password",
-                            placeholder="sk-...",
-                            className="settings-input",
-                        ),
-                    ],
-                    className="settings-section",
-                    style={"display": "none"} if _server_has_openai_key() else {},
-                ),
-                html.Hr(className="settings-divider",
-                        style={"display": "none"} if _server_has_openai_key() else {}),
-                html.Div(
-                    [
-                        html.Label("Display Theme", className="settings-label"),
-                        html.P("Choose your preferred color scheme", className="settings-help"),
-                        dbc.RadioItems(
-                            options=[
-                                {"label": "Light", "value": "light"},
-                                {"label": "Dark", "value": "dark"},
-                            ],
-                            value="light",
-                            id="theme-toggle",
-                            className="settings-radio",
-                            inline=True,
-                        ),
-                    ],
-                    className="settings-section",
-                ),
-            ]
-        ),
-        dbc.ModalFooter(
-            dbc.Button("Done", id="close-settings-modal", className="btn-primary", n_clicks=0)
-        ),
-    ],
-    id="settings-modal",
-    is_open=False,
-    centered=True,
-    size="md",
-)
-
-api_key_store = html.Div(
-    [
-        dcc.Store(id="api_key_store", storage_type="memory"),
         dcc.Store(id="theme-store", storage_type="local", data="day"),
-        html.Div(id="apikey-save-trigger", style={"display": "none"}),
         html.Div(id="theme-apply-trigger", style={"display": "none"}),
     ]
 )
@@ -135,45 +70,3 @@ def register_settings_callbacks(app):
         if theme == "night":
             return "bi bi-sun-fill", "Day mode", "Day mode"
         return "bi bi-moon-stars-fill", "Night mode", "Night mode"
-
-    @app.callback(
-        Output("settings-modal", "is_open"),
-        [
-            Input("close-settings-modal", "n_clicks"),
-            Input("open-settings-link", "n_clicks"),
-            Input("open-settings-btn", "n_clicks"),
-        ],
-        State("settings-modal", "is_open"),
-        prevent_initial_call=True,
-    )
-    def toggle_settings_modal(close_clicks, link_clicks, gear_clicks, is_open):
-        # Any of the triggers (gear icon, hidden link, or Done button) toggles
-        # the modal. prevent_initial_call ensures we only react to real clicks.
-        return not is_open
-
-    @app.callback(
-        Output("api_key_store", "data", allow_duplicate=True),
-        Input("input-openai-api-key", "value"),
-        prevent_initial_call=True,
-    )
-    def update_cached_api_key(new_api_key):
-        if new_api_key:
-            return {"api_key": new_api_key}
-        return no_update
-
-    @app.callback(
-        Output("input-openai-api-key", "value"),
-        Input("api_key_store", "data"),
-    )
-    def initialize_api_key_input(data):
-        if data and "api_key" in data:
-            return data["api_key"]
-        return ""
-
-    @app.callback(
-        Output("api_key_store", "data", allow_duplicate=True),
-        Input("current-user-store", "data"),
-        prevent_initial_call=True,
-    )
-    def clear_api_key_on_user_change(_current_user):
-        return None

@@ -497,7 +497,6 @@ def register_rule_builder_callbacks(app):
          Input("saved-rules-store", "data")],
         [State("trading-rules-container", "children"),
          State("input-generate-rule", "value"),
-         State("input-openai-api-key", "value"),
          State("qb-indicator-1", "value"),
          State("qb-operator", "value"),
          State("qb-indicator-2", "value"),
@@ -507,7 +506,7 @@ def register_rule_builder_callbacks(app):
         prevent_initial_call=True
     )
     def manage_rules(add_buy, add_sell, ai_apply, qb_buy, qb_sell, remove_clicks,
-                     load_confirm, store_data, children, ai_prompt, api_key,
+                     load_confirm, store_data, children, ai_prompt,
                      ind1, op, ind2, custom_val, selected_rule, lang_data):
         trigger = ctx.triggered_id
         lang = get_lang(lang_data)
@@ -534,15 +533,13 @@ def register_rule_builder_callbacks(app):
             children.append(create_rule_pill("sell", len(children), "", lang))
             return children
         
-        # AI generated rule
+        # AI generated rule; the key is provided by the server for everyone.
         if trigger == "apply-modal-button" and ai_prompt:
-            api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+            api_key = os.environ.get("OPENAI_API_KEY", "")
             if not api_key:
                 children.append(html.Div(
                     [html.I(className="bi bi-key me-2"),
-                     t("rl.api_key_missing", lang),
-                     html.Strong(t("rl.settings", lang)),
-                     t("rl.settings_gear", lang)],
+                     t("rl.api_key_missing", lang)],
                     className="text-danger small p-2 mb-2",
                     style={"backgroundColor": "#fef2f2", "borderRadius": "6px"},
                 ))
