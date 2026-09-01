@@ -1,61 +1,17 @@
-"""Modern rule builder component with pill-based interface."""
+"""The backtesting rules card.
+
+Rules are shown as a plain list of expressions, one per row, and the row at
+the end of the list is where new ones are written: plain language goes to the
+model (components/gpt_functionality.py), an expression is kept as typed.
+"""
 import os
 import dash_bootstrap_components as dbc
 from dash import dcc, html, ctx, no_update
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
-import json
 
 from components.gpt_functionality import generate_rule
 from components.i18n import t, get_lang
-
-
-# Available indicators/columns for rule building
-AVAILABLE_INDICATORS = [
-    # Price indicators
-    {"label": "Current Price", "value": "current('price')"},
-    {"label": "Power Law (4Y)", "value": "current('power_law_price_4y_window')"},
-    {"label": "Power Law (1Y)", "value": "current('power_law_price_1y_window')"},
-    {"label": "SMA 20", "value": "current('sma_20')"},
-    {"label": "SMA 50", "value": "current('sma_50')"},
-    {"label": "SMA 200", "value": "current('sma_200')"},
-    {"label": "EMA 8", "value": "current('ema_8')"},
-    {"label": "EMA 20", "value": "current('ema_20')"},
-    {"label": "Bollinger Upper", "value": "current('bollinger_upper')"},
-    {"label": "Bollinger Lower", "value": "current('bollinger_lower')"},
-    {"label": "Last Highest", "value": "current('last_highest')"},
-    {"label": "Last Lowest", "value": "current('last_lowest')"},
-]
-
-COMPARISON_OPERATORS = [
-    {"label": "<", "value": "<"},
-    {"label": ">", "value": ">"},
-    {"label": "<=", "value": "<="},
-    {"label": ">=", "value": ">="},
-    {"label": "==", "value": "=="},
-]
-
-LOGICAL_OPERATORS = [
-    {"label": "AND", "value": "and"},
-    {"label": "OR", "value": "or"},
-]
-
-
-# The indicators whose names are words rather than notation. SMA 20 and
-# EMA 8 read the same in every language, so they stay as they are.
-_INDICATOR_KEYS = {
-    "current('price')": "rl.current_price",
-    "current('bollinger_upper')": "rl.bollinger_upper",
-    "current('bollinger_lower')": "rl.bollinger_lower",
-    "current('last_highest')": "rl.last_highest",
-    "current('last_lowest')": "rl.last_lowest",
-}
-
-
-def _indicator_options(lang="en"):
-    return [{"label": t(_INDICATOR_KEYS[o["value"]], lang)
-                      if o["value"] in _INDICATOR_KEYS else o["label"],
-             "value": o["value"]} for o in AVAILABLE_INDICATORS]
 
 
 def _empty_hint(lang="en"):
@@ -65,216 +21,123 @@ def _empty_hint(lang="en"):
                       id="rules-empty-hint")]
 
 
+def _rule_rows(expression):
+    """Rows a rule needs so its whole expression is visible without scrolling.
+
+    A rule is code the user has to be able to read in full; the old single-line
+    input cut every non-trivial rule off mid-expression. assets/rule_autosize.js
+    refines this live while typing, this is the server-rendered starting point.
+    """
+    text = expression or ""
+    return max(1, min(6, -(-len(text) // 58)))
+
+
 def create_rule_pill(rule_type, rule_index, rule_expression, lang="en"):
-    """Create a modern pill-style rule component."""
+    """One rule: a side label, the full expression as editable code, a remove X.
+
+    No tinted fills and no colour stripes; buy and sell are told apart by the
+    word and the caret, so the list reads as a quiet document of rules rather
+    than a stack of form fields.
+    """
     rule_type = str(rule_type or "buy").lower()
     is_buy = rule_type == "buy"
-    icon = "bi-arrow-up-circle-fill" if is_buy else "bi-arrow-down-circle-fill"
-    
+    icon = "bi-caret-up-fill" if is_buy else "bi-caret-down-fill"
+
     return html.Div(
         [
-            # Rule type badge
             html.Div(
-                [html.I(className=f"bi {icon} me-1"),
-                 t("rl.buy" if is_buy else "rl.sell", lang).upper()],
-                className=f"rule-type-badge {'badge-buy' if is_buy else 'badge-sell'}"
+                [html.I(className=f"bi {icon}"),
+                 html.Span(t("rl.buy" if is_buy else "rl.sell", lang))],
+                className=f"rule-side {'side-buy' if is_buy else 'side-sell'}",
             ),
-            # Rule expression (editable), single-line code input
-            dbc.Input(
+            dbc.Textarea(
                 id={"type": f"{rule_type}-rule", "index": rule_index},
                 value=rule_expression,
                 className="rule-expression-input",
-                placeholder=f"e.g. current('price') < current('sma_200')",
-                type="text",
+                placeholder="current('price') < current('sma_200')",
+                rows=_rule_rows(rule_expression),
                 debounce=True,
+                wrap="soft",
             ),
-            # Remove button
             dbc.Button(
                 html.I(className="bi bi-x-lg"),
                 id={"type": "remove-rule", "index": rule_index},
                 className="rule-remove-btn",
                 color="link",
                 n_clicks=0,
+                title=t("rl.remove_rule", lang),
             ),
         ],
-        className=f"rule-pill {'rule-pill-buy' if is_buy else 'rule-pill-sell'}",
+        className="rule-row",
     )
 
 
 def create_rule_builder_card(lang="en"):
-    """Create the rule builder card with modern styling."""
+    """The rules card: a list of rules that ends in a row you type into.
+
+    There is one way to add a rule, and it sits where the rule will appear:
+    describe it in plain language or paste an expression, then press Enter.
+    Save and Load are icons in the header so nothing competes with the list.
+    """
     return html.Div([
-        # ── Header with title and Run Backtest ──
+        # -- Header: title, guide, save/load, Run --
         html.Div([
             html.Div([
-                html.I(className="bi bi-code-square me-2"),
+                html.I(className="bi bi-code-square me-1"),
                 html.Span(t("rl.trading_rules", lang), className="rules-title"),
             ], className="rules-header-left"),
             html.Div([
                 dbc.Button(
                     html.I(className="bi bi-question-circle"),
-                    id="open-info-modal",
-                    className="info-btn",
-                    color="link",
-                    size="sm",
-                    n_clicks=0,
+                    id="open-info-modal", className="info-btn", color="link",
+                    size="sm", n_clicks=0, title=t("bt.rules_title", lang),
+                ),
+                dbc.Button(
+                    html.I(className="bi bi-save"),
+                    id="open-save-rules-modal", className="info-btn", color="link",
+                    size="sm", n_clicks=0, title=t("rl.save", lang),
+                ),
+                dbc.Button(
+                    html.I(className="bi bi-folder2-open"),
+                    id="open-load-rules-modal", className="info-btn", color="link",
+                    size="sm", n_clicks=0, title=t("rl.load", lang),
                 ),
                 dbc.Button(
                     [html.I(className="bi bi-play-fill me-1"), t("rl.run_backtest", lang)],
-                    id="update-backtesting-button",
-                    color="primary",
-                    className="run-backtest-btn",
-                    n_clicks=0,
+                    id="update-backtesting-button", color="primary",
+                    className="run-backtest-btn", n_clicks=0,
                 ),
             ], className="rules-header-right"),
         ], className="rules-header"),
-        
-        # ── Rules container ──
+
+        # -- The rules --
         html.Div(
             id="trading-rules-container",
             className="rules-container",
             children=_empty_hint(lang),
         ),
-        
-        # ── Quick add helper ──
-        html.Details([
-            html.Summary(t("rl.quick_builder", lang), className="qb-summary"),
-            html.Div([
-                html.Div([
-                    dcc.Dropdown(
-                        id="qb-indicator-1",
-                        options=_indicator_options(lang),
-                        placeholder=t("rl.left_indicator", lang),
-                        className="qb-dropdown",
-                        clearable=True,
-                    ),
-                    dcc.Dropdown(
-                        id="qb-operator",
-                        options=COMPARISON_OPERATORS,
-                        placeholder=t("rl.op", lang),
-                        className="qb-dropdown-small",
-                        clearable=True,
-                    ),
-                    dcc.Dropdown(
-                        id="qb-indicator-2",
-                        options=_indicator_options(lang) + [
-                            {"label": t("rl.custom_value", lang), "value": "custom"}],
-                        placeholder=t("rl.right_indicator", lang),
-                        className="qb-dropdown",
-                        clearable=True,
-                    ),
-                    dbc.Input(
-                        id="qb-custom-value",
-                        type="number",
-                        placeholder=t("rl.value", lang),
-                        className="qb-custom-input",
-                        style={"display": "none"},
-                    ),
-                ], className="qb-row"),
-                html.Div([
-                    dbc.Button(
-                        [html.I(className="bi bi-plus-circle me-1"), t("rl.add_buy", lang)],
-                        id="qb-add-buy",
-                        className="add-rule-btn add-buy",
-                        size="sm",
-                        n_clicks=0,
-                    ),
-                    dbc.Button(
-                        [html.I(className="bi bi-plus-circle me-1"), t("rl.add_sell", lang)],
-                        id="qb-add-sell",
-                        className="add-rule-btn add-sell",
-                        size="sm",
-                        n_clicks=0,
-                    ),
-                ], className="qb-actions"),
-            ], className="qb-body"),
-        ], className="qb-details"),
-        
-        # ── Action bar: add rule + save/load ──
+
+        # -- The ghost row: the only way to add a rule --
         html.Div([
-            html.Div([
-                dbc.Button(
-                    [html.I(className="bi bi-plus me-1"), t("rl.buy", lang)],
-                    id="add-buy-rule-btn",
-                    className="add-rule-btn add-buy",
-                    size="sm",
-                    n_clicks=0,
-                ),
-                dbc.Button(
-                    [html.I(className="bi bi-plus me-1"), t("rl.sell", lang)],
-                    id="add-sell-rule-btn",
-                    className="add-rule-btn add-sell",
-                    size="sm",
-                    n_clicks=0,
-                ),
-                dbc.Button(
-                    [html.I(className="bi bi-stars me-1"), t("rl.ai", lang)],
-                    id="open-ai-rule-modal",
-                    className="add-rule-btn add-ai",
-                    size="sm",
-                    n_clicks=0,
-                ),
-            ], className="rules-action-group"),
-            html.Div([
-                dbc.Button(
-                    [html.I(className="bi bi-save me-1"), t("rl.save", lang)],
-                    id="open-save-rules-modal",
-                    className="rules-io-btn",
-                    size="sm",
-                    n_clicks=0,
-                ),
-                dbc.Button(
-                    [html.I(className="bi bi-folder2-open me-1"), t("rl.load", lang)],
-                    id="open-load-rules-modal",
-                    className="rules-io-btn",
-                    size="sm",
-                    n_clicks=0,
-                ),
-            ], className="rules-action-group"),
-        ], className="rules-actions"),
-    ], className="rule-builder-card")
-
-
-# AI Rule Generation Modal
-def ai_rule_modal(lang="en"):
-  return dbc.Modal(
-    [
-        dbc.ModalHeader(
-            dbc.ModalTitle([
-                html.I(className="bi bi-magic me-2"),
-                t("rl.ai_title", lang)
-            ]),
-            close_button=True
-        ),
-        dbc.ModalBody([
-            html.P(
-                t("rl.ai_desc", lang),
-                className="modal-help-text"
-            ),
+            html.I(className="bi bi-stars ghost-spark"),
             dbc.Textarea(
                 id="input-generate-rule",
-                placeholder=t("rl.ai_placeholder", lang),
-                className="ai-prompt-input",
-                rows=3,
+                className="ghost-input",
+                placeholder=t("rl.ghost_placeholder", lang),
+                rows=1,
+                # Not debounced: the value has to reach Dash as it is typed, or
+                # pressing Add sends the prompt that was there before.
+                debounce=False,
+                wrap="soft",
             ),
-            html.Div([
-                html.I(className="bi bi-lightbulb me-2 text-warning"),
-                html.Span(t("rl.ai_tip", lang), className="text-muted small"),
-            ], className="mt-2"),
-        ]),
-        dbc.ModalFooter([
-            dbc.Button(t("rl.cancel", lang), id="close-ai-modal", color="secondary", outline=True),
             dbc.Button(
-                [html.I(className="bi bi-magic me-1"), t("rl.generate_rule", lang)],
-                id="apply-modal-button",
-                color="primary",
+                [html.I(className="bi bi-arrow-return-left me-1"), t("rl.add", lang)],
+                id="apply-modal-button", className="ghost-add-btn",
+                color="link", size="sm", n_clicks=0,
             ),
-        ]),
-    ],
-    id="rule-generation-modal",
-    is_open=False,
-    centered=True,
-)
+        ], className="ghost-row"),
+    ], className="rule-builder-card")
+
 
 # Info Modal (existing)
 from components.gpt_functionality import context_description
@@ -446,21 +309,6 @@ def load_rules_from_store(rule_name, store_data):
 def register_rule_builder_callbacks(app):
     """Register all rule builder related callbacks."""
     
-    # Toggle AI rule modal
-    @app.callback(
-        Output("rule-generation-modal", "is_open"),
-        [Input("open-ai-rule-modal", "n_clicks"),
-         Input("close-ai-modal", "n_clicks"),
-         Input("apply-modal-button", "n_clicks")],
-        [State("rule-generation-modal", "is_open")],
-        prevent_initial_call=True
-    )
-    def toggle_ai_modal(open_clicks, close_clicks, apply_clicks, is_open):
-        trigger = ctx.triggered_id
-        if trigger in ["open-ai-rule-modal"]:
-            return True
-        return False
-    
     # Toggle info modal
     @app.callback(
         Output("info-modal", "is_open"),
@@ -473,130 +321,88 @@ def register_rule_builder_callbacks(app):
             return not is_open
         return is_open
     
-    # Show/hide custom value input
+    # The one way rules are added: the ghost row. Plain language goes to the
+    # model; an expression the user typed themselves is kept verbatim.
     @app.callback(
-        Output("qb-custom-value", "style"),
-        Input("qb-indicator-2", "value"),
-        prevent_initial_call=True
-    )
-    def toggle_custom_value(value):
-        if value == "custom":
-            return {"display": "block"}
-        return {"display": "none"}
-    
-    # Main rule management callback
-    @app.callback(
-        Output("trading-rules-container", "children"),
-        [Input("add-buy-rule-btn", "n_clicks"),
-         Input("add-sell-rule-btn", "n_clicks"),
-         Input("apply-modal-button", "n_clicks"),
-         Input("qb-add-buy", "n_clicks"),
-         Input("qb-add-sell", "n_clicks"),
+        [Output("trading-rules-container", "children"),
+         Output("input-generate-rule", "value")],
+        [Input("apply-modal-button", "n_clicks"),
+         Input("input-generate-rule", "n_blur"),
          Input({"type": "remove-rule", "index": ALL}, "n_clicks"),
          Input("confirm-load-rules-modal", "n_clicks"),
          Input("saved-rules-store", "data")],
         [State("trading-rules-container", "children"),
          State("input-generate-rule", "value"),
-         State("qb-indicator-1", "value"),
-         State("qb-operator", "value"),
-         State("qb-indicator-2", "value"),
-         State("qb-custom-value", "value"),
          State("load-rules-dropdown", "value"),
          State("lang-store", "data")],
         prevent_initial_call=True
     )
-    def manage_rules(add_buy, add_sell, ai_apply, qb_buy, qb_sell, remove_clicks,
-                     load_confirm, store_data, children, ai_prompt,
-                     ind1, op, ind2, custom_val, selected_rule, lang_data):
+    def manage_rules(add_clicks, prompt_blur, remove_clicks, load_confirm,
+                     store_data, children, prompt, selected_rule, lang_data):
         trigger = ctx.triggered_id
         lang = get_lang(lang_data)
         children = children or []
-        # Filter out the empty-hint placeholder
         children = [c for c in children
                     if not (isinstance(c, dict) and
                             c.get("props", {}).get("id") == "rules-empty-hint")]
-        
-        # Handle removal
+
+        def error_row(message):
+            return html.Div(
+                [html.I(className="bi bi-exclamation-triangle me-2"), message],
+                className="rule-error",
+            )
+
+        # Remove a rule
         if isinstance(trigger, dict) and trigger.get("type") == "remove-rule":
             if remove_clicks and any(c and c > 0 for c in remove_clicks):
                 idx = next(i for i, c in enumerate(remove_clicks) if c and c > 0)
                 result = [c for i, c in enumerate(children) if i != idx]
-                return result or _empty_hint(lang)
-        
-        # Add empty buy rule
-        if trigger == "add-buy-rule-btn":
-            children.append(create_rule_pill("buy", len(children), "", lang))
-            return children
-        
-        # Add empty sell rule
-        if trigger == "add-sell-rule-btn":
-            children.append(create_rule_pill("sell", len(children), "", lang))
-            return children
-        
-        # AI generated rule; the key is provided by the server for everyone.
-        if trigger == "apply-modal-button" and ai_prompt:
+                return (result or _empty_hint(lang)), no_update
+            return children, no_update
+
+        # Add a rule from the ghost row
+        if trigger in ("apply-modal-button", "input-generate-rule"):
+            prompt = (prompt or "").strip()
+            if not prompt:
+                return (children or _empty_hint(lang)), no_update
+            children = [c for c in children
+                        if not (isinstance(c, dict) and
+                                "rule-error" in (c.get("props", {}).get("className") or ""))]
             api_key = os.environ.get("OPENAI_API_KEY", "")
             if not api_key:
-                children.append(html.Div(
-                    [html.I(className="bi bi-key me-2"),
-                     t("rl.api_key_missing", lang)],
-                    className="text-danger small p-2 mb-2",
-                    style={"backgroundColor": "#fef2f2", "borderRadius": "6px"},
-                ))
-                return children
+                children.append(error_row(t("rl.api_key_missing", lang)))
+                return children, no_update
             try:
-                rule_expression, rule_type = generate_rule(ai_prompt, api_key)
+                rule_expression, rule_type = generate_rule(prompt, api_key)
                 if rule_type in (False, None, "Rule Error", "GPT Error"):
-                    error_msg = str(rule_expression) if rule_expression else "Unknown error"
-                    # Extract user-friendly message from OpenAI errors
-                    if "invalid_api_key" in error_msg or "401" in error_msg:
-                        error_msg = t("rl.invalid_key", lang)
-                    children.append(html.Div(
-                        [html.I(className="bi bi-exclamation-triangle me-2"),
-                         html.Strong(t("rl.ai_error", lang)), error_msg],
-                        className="text-danger small p-2 mb-2",
-                        style={"backgroundColor": "#fef2f2", "borderRadius": "6px"},
-                    ))
-                    return children
-                children.append(create_rule_pill(rule_type, len(children), rule_expression, lang))
+                    detail = str(rule_expression) if rule_expression else ""
+                    message = (t("rl.invalid_key", lang)
+                               if ("invalid_api_key" in detail or "401" in detail)
+                               else t("rl.ai_error", lang) + detail)
+                    children.append(error_row(message))
+                    return children, no_update
+                children.append(
+                    create_rule_pill(rule_type, len(children), rule_expression, lang))
+                return children, ""
             except Exception as e:
-                error_msg = str(e)
-                if "invalid_api_key" in error_msg or "401" in error_msg:
-                    error_msg = t("rl.invalid_key", lang)
-                children.append(html.Div(
-                    [html.I(className="bi bi-exclamation-triangle me-2"),
-                     html.Strong(t("rl.ai_error", lang)), error_msg],
-                    className="text-danger small p-2 mb-2",
-                    style={"backgroundColor": "#fef2f2", "borderRadius": "6px"},
-                ))
-            return children
-        
-        # Quick builder - Buy
-        if trigger == "qb-add-buy" and ind1 and op:
-            right_side = custom_val if ind2 == "custom" else ind2
-            if right_side:
-                rule = f"{ind1} {op} {right_side}"
-                children.append(create_rule_pill("buy", len(children), rule, lang))
-            return children
-        
-        # Quick builder - Sell
-        if trigger == "qb-add-sell" and ind1 and op:
-            right_side = custom_val if ind2 == "custom" else ind2
-            if right_side:
-                rule = f"{ind1} {op} {right_side}"
-                children.append(create_rule_pill("sell", len(children), rule, lang))
-            return children
-        
-        # Load rules
+                detail = str(e)
+                message = (t("rl.invalid_key", lang)
+                           if ("invalid_api_key" in detail or "401" in detail)
+                           else t("rl.ai_error", lang) + detail)
+                children.append(error_row(message))
+                return children, no_update
+
+        # Load a saved rule set
         if trigger == "confirm-load-rules-modal" and selected_rule:
-            return load_rules_from_store(selected_rule, store_data)
-        
-        # Initialize with default
+            return load_rules_from_store(selected_rule, store_data), no_update
+
+        # First paint: the default rule set
         if trigger == "saved-rules-store" and store_data and not children:
-            return load_rules_from_store("default_ruleset", store_data)
-        
-        return children
-    
+            return load_rules_from_store("default_ruleset", store_data), no_update
+
+        return (children or _empty_hint(lang)), no_update
+
+
     # Save rules modal toggle
     @app.callback(
         [Output("save-rules-modal", "is_open"),

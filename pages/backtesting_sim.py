@@ -488,7 +488,7 @@ loading_component = dbc.Spinner(color="primary", children="Running Backtest...")
 
 # Import rule builder components
 from components.rule_builder import (
-    create_rule_builder_card, ai_rule_modal, info_modal, 
+    create_rule_builder_card, info_modal,
     save_rules_modal, load_rules_modal, get_rules_from_ui
 )
 
@@ -641,7 +641,7 @@ def layout(lang="en"):
             create_rule_builder_card(lang),
             
             # Modals
-            ai_rule_modal(lang),
+
             info_modal(lang),
             save_rules_modal(lang),
             load_rules_modal(lang),
