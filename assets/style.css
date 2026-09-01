@@ -1326,105 +1326,138 @@ input.compact-input {
     color: var(--primary-color);
 }
 
-/* Rules list: a quiet document of expressions, not a stack of form fields.
-   No tinted fills, no colour stripes; hairlines separate the rows. */
+/* Strategy blocks: two headed groups of conditions, written as sentences.
+   Nothing here is a field until you open the code under a condition. */
 .rules-container {
     display: flex;
     flex-direction: column;
     margin-bottom: 2px;
 }
 
-.rules-empty-hint {
-    padding: 14px 2px;
-    color: var(--text-secondary);
-    font-size: 0.82rem;
-}
+.strategy-block { padding: 7px 0 3px; }
+.strategy-block + .strategy-block { border-top: 1px solid var(--border-color); }
 
-.rule-row {
+.block-head {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 9px 2px;
-    border-top: 1px solid var(--border-color);
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 2px;
 }
-.rules-container > .rule-row:first-child { border-top: none; }
-
-/* Buy and sell are told apart by the word and the caret, not by a fill. */
-.rule-side {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-    width: 52px;
-    padding-top: 2px;
-    font-size: 0.68rem;
+.block-title {
+    font-size: 0.7rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--text-secondary);
 }
-.rule-side .bi { font-size: 0.62rem; }
-.side-buy .bi  { color: var(--success-color); }
-.side-sell .bi { color: var(--danger-color); }
+/* The join is a decision, so it looks like one: a word you can press. */
+.join-btn {
+    padding: 0 6px !important;
+    font-size: 0.68rem !important;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: none !important;
+    color: var(--primary-color) !important;
+    background: rgba(99, 102, 241, 0.09);
+    border-radius: 5px;
+    line-height: 1.5;
+}
+.join-btn:hover:not(:disabled) { background: rgba(99, 102, 241, 0.18); }
+.join-btn:disabled {
+    color: var(--text-secondary) !important;
+    background: none;
+    opacity: 0.65;
+}
 
-/* The expression: the whole rule, wrapped, editable in place. It only looks
-   like a field once you are in it. */
-textarea.rule-expression-input {
-    flex: 1;
-    min-width: 0;
-    /* The app's global .form-control rule is !important, so the reset that
-       turns this textarea back into plain code has to be too. */
-    padding: 0 !important;
+.block-conds { display: flex; flex-direction: column; }
+.block-empty {
+    padding: 3px 0 5px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.75;
+}
+
+.cond-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+}
+.cond-body { flex: 1; min-width: 0; }
+.cond-text {
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--text-primary);
+}
+/* Condition rows are separated by their own spacing; a second condition in a
+   block gets a hairline so the joiner has something to join across. */
+.cond-row + .cond-row { border-top: 1px solid var(--border-color); }
+
+.cond-code-wrap { margin-top: 1px; }
+.cond-code-toggle {
+    display: inline-block;
+    list-style: none;
+    cursor: pointer;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+}
+.cond-code-toggle::-webkit-details-marker { display: none; }
+.cond-row:hover .cond-code-toggle,
+.cond-code-wrap[open] .cond-code-toggle { opacity: 0.75; }
+.cond-code-toggle:hover { color: var(--primary-color); }
+.cond-code-wrap[open] .cond-code-toggle { color: var(--primary-color); }
+
+/* The expression, once asked for: still editable, still not a form field. */
+textarea.cond-code {
+    width: 100%;
+    margin-top: 3px;
+    padding: 6px 8px !important;
     border: none !important;
-    background: none !important;
+    border-left: 2px solid var(--border-color) !important;
+    border-radius: 0 !important;
+    background: var(--content-bg) !important;
     box-shadow: none !important;
     resize: none;
     overflow: hidden;
     font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
-    font-size: 0.78rem !important;
-    line-height: 1.55 !important;
-    color: var(--text-primary);
+    font-size: 0.74rem !important;
+    line-height: 1.5 !important;
+    color: var(--text-secondary);
     white-space: pre-wrap;
     word-break: break-word;
 }
-
-textarea.rule-expression-input:focus {
-    outline: none;
-    border: none !important;
-    background: none !important;
-    box-shadow: none !important;
+textarea.cond-code:focus {
+    border-left-color: var(--primary-color) !important;
     color: var(--text-primary);
+    outline: none;
 }
 
-textarea.rule-expression-input::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.5;
-}
-
-.rule-remove-btn {
+.cond-remove {
     flex-shrink: 0;
     color: var(--text-secondary);
     padding: 0 2px;
-    font-size: 0.68rem;
-    line-height: 1.6;
+    font-size: 0.66rem;
+    line-height: 1.7;
     opacity: 0;
     transition: opacity 0.15s, color 0.15s;
 }
-.rule-row:hover .rule-remove-btn,
-.rule-row:focus-within .rule-remove-btn { opacity: 0.55; }
-.rule-remove-btn:hover {
-    color: var(--danger-color) !important;
-    opacity: 1 !important;
-}
+.cond-row:hover .cond-remove,
+.cond-row:focus-within .cond-remove { opacity: 0.5; }
+.cond-remove:hover { color: var(--danger-color) !important; opacity: 1 !important; }
 
+.rule-error-slot:empty { display: none; }
 .rule-error {
     display: flex;
     align-items: flex-start;
     gap: 2px;
-    padding: 8px 2px;
+    padding: 7px 2px 0;
     font-size: 0.78rem;
     color: var(--danger-color);
-    border-top: 1px solid var(--border-color);
 }
 
 /* The ghost row: the last row of the list, and the only way to add a rule. */

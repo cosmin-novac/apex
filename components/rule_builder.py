@@ -1,10 +1,16 @@
-"""The backtesting rules card.
+"""The backtesting strategy card.
 
-Rules are shown as a plain list of expressions, one per row, and the row at
-the end of the list is where new ones are written: plain language goes to the
-model (components/gpt_functionality.py), an expression is kept as typed.
+A strategy is two blocks of conditions: what has to be true to buy, and what
+has to be true to sell. Each condition is stored as the sentence the user
+asked for plus the expression the model wrote; the sentence is what the card
+shows, the expression is one click away and stays editable.
+
+The join between conditions in a block is part of the strategy and shown as a
+control: "any" evaluates them with `or`, "all" with `and`. It used to be a
+silent `or`, which quietly turned two conditions into either-one.
 """
 import os
+
 import dash_bootstrap_components as dbc
 from dash import dcc, html, ctx, no_update
 from dash.dependencies import Input, Output, State, ALL
@@ -13,111 +19,150 @@ from dash.exceptions import PreventUpdate
 from components.gpt_functionality import generate_rule
 from components.i18n import t, get_lang
 
-
-def _empty_hint(lang="en"):
-    """Return the placeholder shown when there are no rules."""
-    return [html.Div(t("rl.no_rules", lang),
-                      className="rules-empty-hint",
-                      id="rules-empty-hint")]
+BLOCKS = ("buy", "sell")
+_JOINERS = {"any": " or ", "all": " and "}
 
 
-def _rule_rows(expression):
-    """Rows a rule needs so its whole expression is visible without scrolling.
+def empty_strategy():
+    return {b: {"join": "any", "conds": []} for b in BLOCKS}
 
-    A rule is code the user has to be able to read in full; the old single-line
-    input cut every non-trivial rule off mid-expression. assets/rule_autosize.js
-    refines this live while typing, this is the server-rendered starting point.
+
+def normalize_strategy(data):
+    """Return a strategy dict, accepting the old saved shape.
+
+    Rule sets saved before this card existed are ``{"buying_rule": [expr, …],
+    "selling_rule": [...]}``: plain expressions with no sentence and no join,
+    which the engine ran with ``or``. They load as "any" blocks whose sentence
+    is the expression itself.
     """
-    text = expression or ""
-    return max(1, min(6, -(-len(text) // 58)))
+    if not isinstance(data, dict):
+        return empty_strategy()
+
+    if "buying_rule" in data or "selling_rule" in data:
+        old = {"buy": data.get("buying_rule") or [], "sell": data.get("selling_rule") or []}
+        strategy = empty_strategy()
+        for block, exprs in old.items():
+            strategy[block]["conds"] = [{"text": e, "expr": e} for e in exprs if e]
+        return strategy
+
+    strategy = empty_strategy()
+    for block in BLOCKS:
+        raw = data.get(block) or {}
+        join = raw.get("join")
+        strategy[block]["join"] = join if join in _JOINERS else "any"
+        for cond in raw.get("conds") or []:
+            expr = (cond or {}).get("expr", "").strip()
+            if expr:
+                strategy[block]["conds"].append(
+                    {"text": (cond.get("text") or expr).strip(), "expr": expr})
+    return strategy
 
 
-def create_rule_pill(rule_type, rule_index, rule_expression, lang="en"):
-    """One rule: a side label, the full expression as editable code, a remove X.
+def rules_for_engine(strategy):
+    """(buy_expression, sell_expression) as the backtest engine wants them."""
+    strategy = normalize_strategy(strategy)
+    out = []
+    for block in BLOCKS:
+        conds = [c["expr"] for c in strategy[block]["conds"] if c.get("expr")]
+        glue = _JOINERS.get(strategy[block]["join"], _JOINERS["any"])
+        # Parenthesised so "all" of two conditions cannot be split by a lower
+        # precedence operator inside one of them.
+        out.append(glue.join(f"({e})" for e in conds) if len(conds) > 1
+                   else (conds[0] if conds else ""))
+    return out[0], out[1]
 
-    No tinted fills and no colour stripes; buy and sell are told apart by the
-    word and the caret, so the list reads as a quiet document of rules rather
-    than a stack of form fields.
-    """
-    rule_type = str(rule_type or "buy").lower()
-    is_buy = rule_type == "buy"
-    icon = "bi-caret-up-fill" if is_buy else "bi-caret-down-fill"
 
-    return html.Div(
-        [
-            html.Div(
-                [html.I(className=f"bi {icon}"),
-                 html.Span(t("rl.buy" if is_buy else "rl.sell", lang))],
-                className=f"rule-side {'side-buy' if is_buy else 'side-sell'}",
-            ),
-            dbc.Textarea(
-                id={"type": f"{rule_type}-rule", "index": rule_index},
-                value=rule_expression,
-                className="rule-expression-input",
-                placeholder="current('price') < current('sma_200')",
-                rows=_rule_rows(rule_expression),
-                debounce=True,
-                wrap="soft",
-            ),
+def add_condition(strategy, block, text, expr):
+    strategy = normalize_strategy(strategy)
+    block = block if block in BLOCKS else "buy"
+    strategy[block]["conds"].append({"text": (text or expr).strip(), "expr": expr.strip()})
+    return strategy
+
+
+def _code_rows(expression):
+    """Rows the expression needs so none of it is hidden behind a scrollbar."""
+    return max(1, min(6, -(-len(expression or "") // 46)))
+
+
+def _condition_row(block, index, cond, lang):
+    return html.Div([
+        html.Div([
+            html.Div(cond.get("text") or cond.get("expr", ""), className="cond-text"),
+            html.Details([
+                html.Summary(t("rl.show_code", lang), className="cond-code-toggle"),
+                dbc.Textarea(
+                    id={"type": "cond-expr", "block": block, "index": index},
+                    value=cond.get("expr", ""),
+                    className="cond-code",
+                    rows=_code_rows(cond.get("expr", "")),
+                    debounce=True,
+                    wrap="soft",
+                ),
+            ], className="cond-code-wrap"),
+        ], className="cond-body"),
+        dbc.Button(
+            html.I(className="bi bi-x-lg"),
+            id={"type": "cond-remove", "block": block, "index": index},
+            className="cond-remove", color="link", n_clicks=0,
+            title=t("rl.remove_rule", lang),
+        ),
+    ], className="cond-row")
+
+
+def _block(block, data, lang):
+    conds = data.get("conds") or []
+    join = data.get("join", "any")
+    return html.Div([
+        html.Div([
+            html.Span(t(f"rl.{block}_when", lang), className="block-title"),
             dbc.Button(
-                html.I(className="bi bi-x-lg"),
-                id={"type": "remove-rule", "index": rule_index},
-                className="rule-remove-btn",
-                color="link",
-                n_clicks=0,
-                title=t("rl.remove_rule", lang),
+                t(f"rl.join_{join}", lang),
+                id={"type": "cond-join", "block": block},
+                className="join-btn", color="link", n_clicks=0,
+                title=t("rl.join_hint", lang),
+                disabled=len(conds) < 2,
             ),
-        ],
-        className="rule-row",
-    )
+        ], className="block-head"),
+        html.Div(
+            [_condition_row(block, i, c, lang) for i, c in enumerate(conds)]
+            or [html.Div(t(f"rl.{block}_empty", lang), className="block-empty")],
+            className="block-conds",
+        ),
+    ], className=f"strategy-block block-{block}")
+
+
+def render_strategy(strategy, lang="en"):
+    strategy = normalize_strategy(strategy)
+    return [_block(b, strategy[b], lang) for b in BLOCKS]
 
 
 def create_rule_builder_card(lang="en"):
-    """The rules card: a list of rules that ends in a row you type into.
-
-    There is one way to add a rule, and it sits where the rule will appear:
-    describe it in plain language or paste an expression, then press Enter.
-    Save and Load are icons in the header so nothing competes with the list.
-    """
+    """Header, the two blocks, and the row you write new conditions in."""
     return html.Div([
-        # -- Header: title, guide, save/load, Run --
         html.Div([
             html.Div([
                 html.I(className="bi bi-code-square me-1"),
                 html.Span(t("rl.trading_rules", lang), className="rules-title"),
             ], className="rules-header-left"),
             html.Div([
-                dbc.Button(
-                    html.I(className="bi bi-question-circle"),
-                    id="open-info-modal", className="info-btn", color="link",
-                    size="sm", n_clicks=0, title=t("bt.rules_title", lang),
-                ),
-                dbc.Button(
-                    html.I(className="bi bi-save"),
-                    id="open-save-rules-modal", className="info-btn", color="link",
-                    size="sm", n_clicks=0, title=t("rl.save", lang),
-                ),
-                dbc.Button(
-                    html.I(className="bi bi-folder2-open"),
-                    id="open-load-rules-modal", className="info-btn", color="link",
-                    size="sm", n_clicks=0, title=t("rl.load", lang),
-                ),
-                dbc.Button(
-                    [html.I(className="bi bi-play-fill me-1"), t("rl.run_backtest", lang)],
-                    id="update-backtesting-button", color="primary",
-                    className="run-backtest-btn", n_clicks=0,
-                ),
+                dbc.Button(html.I(className="bi bi-question-circle"),
+                           id="open-info-modal", className="info-btn", color="link",
+                           size="sm", n_clicks=0, title=t("bt.rules_title", lang)),
+                dbc.Button(html.I(className="bi bi-save"),
+                           id="open-save-rules-modal", className="info-btn", color="link",
+                           size="sm", n_clicks=0, title=t("rl.save", lang)),
+                dbc.Button(html.I(className="bi bi-folder2-open"),
+                           id="open-load-rules-modal", className="info-btn", color="link",
+                           size="sm", n_clicks=0, title=t("rl.load", lang)),
+                dbc.Button([html.I(className="bi bi-play-fill me-1"), t("rl.run_backtest", lang)],
+                           id="update-backtesting-button", color="primary",
+                           className="run-backtest-btn", n_clicks=0),
             ], className="rules-header-right"),
         ], className="rules-header"),
 
-        # -- The rules --
-        html.Div(
-            id="trading-rules-container",
-            className="rules-container",
-            children=_empty_hint(lang),
-        ),
+        html.Div(id="trading-rules-container", className="rules-container",
+                 children=render_strategy(empty_strategy(), lang)),
 
-        # -- The ghost row: the only way to add a rule --
         html.Div([
             html.I(className="bi bi-stars ghost-spark"),
             dbc.Textarea(
@@ -130,16 +175,15 @@ def create_rule_builder_card(lang="en"):
                 debounce=False,
                 wrap="soft",
             ),
-            dbc.Button(
-                [html.I(className="bi bi-arrow-return-left me-1"), t("rl.add", lang)],
-                id="apply-modal-button", className="ghost-add-btn",
-                color="link", size="sm", n_clicks=0,
-            ),
+            dbc.Button([html.I(className="bi bi-arrow-return-left me-1"), t("rl.add", lang)],
+                       id="apply-modal-button", className="ghost-add-btn",
+                       color="link", size="sm", n_clicks=0),
         ], className="ghost-row"),
+        html.Div(id="rule-error", className="rule-error-slot"),
     ], className="rule-builder-card")
 
 
-# Info Modal (existing)
+# Info Modal
 from components.gpt_functionality import context_description
 
 _RULE_EXAMPLES = [
@@ -174,8 +218,8 @@ def info_modal(lang="en"):
             html.H6(t("bt.rules_h_write", lang), className="rule-guide-h"),
             html.P(t("bt.rules_p4", lang)),
             html.Ul([
-                html.Li([html.Code(expr), html.Br(), html.Span(t(key, lang),
-                                                               className="text-muted")])
+                html.Li([html.Code(expr), html.Br(),
+                         html.Span(t(key, lang), className="text-muted")])
                 for expr, key in _RULE_EXAMPLES
             ]),
             html.Hr(),
@@ -189,300 +233,232 @@ def info_modal(lang="en"):
         ),
     ], id="info-modal", is_open=False, size="xl", scrollable=True)
 
-# Save Rules Modal
+
 def save_rules_modal(lang="en"):
-  return dbc.Modal([
-    dbc.ModalHeader(dbc.ModalTitle([
-        html.I(className="bi bi-save me-2"),
-        t("rl.save_rules", lang)
-    ])),
-    dbc.ModalBody([
-        dbc.Label(t("rl.rule_set_name", lang), className="mb-2"),
-        dbc.Input(
-            id="save-rules-input",
-            type="text",
-            placeholder=t("rl.my_strategy", lang),
-        ),
-    ]),
-    dbc.ModalFooter([
-        dbc.Button(t("rl.cancel", lang), id="cancel-save-rules-modal", color="secondary", outline=True),
-        dbc.Button(
-            [html.I(className="bi bi-check-lg me-1"), t("rl.save", lang)],
-            id="confirm-save-rules-modal",
-            color="primary",
-        ),
-    ]),
-], id="save-rules-modal", is_open=False, centered=True)
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle([
+            html.I(className="bi bi-save me-2"), t("rl.save_rules", lang)])),
+        dbc.ModalBody([
+            dbc.Label(t("rl.rule_set_name", lang), className="mb-2"),
+            dbc.Input(id="save-rules-input", type="text",
+                      placeholder=t("rl.my_strategy", lang)),
+        ]),
+        dbc.ModalFooter([
+            dbc.Button(t("rl.cancel", lang), id="cancel-save-rules-modal",
+                       color="secondary", outline=True),
+            dbc.Button([html.I(className="bi bi-check-lg me-1"), t("rl.save", lang)],
+                       id="confirm-save-rules-modal", color="primary"),
+        ]),
+    ], id="save-rules-modal", is_open=False, centered=True)
 
-# Load Rules Modal
+
 def load_rules_modal(lang="en"):
-  return dbc.Modal([
-    dbc.ModalHeader(dbc.ModalTitle([
-        html.I(className="bi bi-folder2-open me-2"),
-        t("rl.load_rules", lang)
-    ])),
-    dbc.ModalBody([
-        dbc.Label(t("rl.select_rule_set", lang), className="mb-2"),
-        dcc.Dropdown(id="load-rules-dropdown", className="mb-3"),
-        html.Div(id="load-preview", className="load-preview"),
-    ]),
-    dbc.ModalFooter([
-        dbc.Button(
-            [html.I(className="bi bi-trash me-1"), t("rl.delete", lang)],
-            id="delete-rule-set-button",
-            color="danger",
-            outline=True,
-            n_clicks=0,
-        ),
-        dbc.Button(t("rl.cancel", lang), id="cancel-load-rules-modal", color="secondary", outline=True),
-        dbc.Button(
-            [html.I(className="bi bi-folder2-open me-1"), t("rl.load", lang)],
-            id="confirm-load-rules-modal",
-            color="primary",
-        ),
-    ]),
-], id="load-rules-modal", is_open=False, centered=True)
-
-
-def get_rules_from_ui(children):
-    """Extract rules from UI components."""
-    rules = {
-        "buying_rule": [],
-        "selling_rule": []
-    }
-
-    if not children:
-        return rules
-
-    for child in children:
-        try:
-            # Skip non-rule children (e.g. the empty-hint placeholder)
-            child_id = child.get('props', {}).get('id')
-            if child_id == 'rules-empty-hint':
-                continue
-            # Navigate to the input (index 1: badge=0, input=1, remove=2)
-            input_el = child['props']['children'][1]
-            input_props = input_el['props']
-            rule_type = input_props['id']['type']
-            rule_value = input_props.get('value', '').strip()
-
-            if rule_type == "buy-rule" and rule_value:
-                rules["buying_rule"].append(rule_value)
-            elif rule_type == "sell-rule" and rule_value:
-                rules["selling_rule"].append(rule_value)
-        except (KeyError, TypeError, IndexError):
-            continue
-
-    return rules
+    return dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle([
+            html.I(className="bi bi-folder2-open me-2"), t("rl.load_rules", lang)])),
+        dbc.ModalBody([
+            dbc.Label(t("rl.select_rule_set", lang), className="mb-2"),
+            dcc.Dropdown(id="load-rules-dropdown", className="mb-3"),
+            html.Div(id="load-preview", className="load-preview"),
+        ]),
+        dbc.ModalFooter([
+            dbc.Button([html.I(className="bi bi-trash me-1"), t("rl.delete", lang)],
+                       id="delete-rule-set-button", color="danger", outline=True, n_clicks=0),
+            dbc.Button(t("rl.cancel", lang), id="cancel-load-rules-modal",
+                       color="secondary", outline=True),
+            dbc.Button([html.I(className="bi bi-folder2-open me-1"), t("rl.load", lang)],
+                       id="confirm-load-rules-modal", color="primary"),
+        ]),
+    ], id="load-rules-modal", is_open=False, centered=True)
 
 
 def get_saved_rules_names(store_data):
-    """Get list of saved rule names."""
-    if store_data is not None:
-        return list(store_data.keys())
-    return []
+    return list(store_data.keys()) if store_data else []
 
 
-def load_rules_from_store(rule_name, store_data):
-    """Load rules from store and create UI components."""
-    if not store_data:
-        return []
-        
-    if rule_name == "default_ruleset":
-        buying_rules = store_data.get("default_ruleset", {}).get("buying_rule", [])
-        selling_rules = store_data.get("default_ruleset", {}).get("selling_rule", [])
-    else:
-        rules = store_data.get(rule_name, {"buying_rule": [], "selling_rule": []})
-        buying_rules = rules.get("buying_rule", [])
-        selling_rules = rules.get("selling_rule", [])
-
-    children = []
-    for i, rule in enumerate(buying_rules):
-        children.append(create_rule_pill("buy", i, rule))
-
-    for i, rule in enumerate(selling_rules):
-        children.append(create_rule_pill("sell", i + len(buying_rules), rule))
-
-    return children
+DEFAULT_STRATEGY = {
+    "buy": {"join": "any", "conds": [{
+        "text": "the price is below the 4-year power law",
+        "expr": "current('price') < current('power_law_price_4y_window')",
+    }]},
+    "sell": {"join": "any", "conds": []},
+}
 
 
 def register_rule_builder_callbacks(app):
-    """Register all rule builder related callbacks."""
-    
-    # Toggle info modal
+    """Every callback the strategy card needs."""
+
     @app.callback(
         Output("info-modal", "is_open"),
         [Input("open-info-modal", "n_clicks"), Input("close-info-modal", "n_clicks")],
         [State("info-modal", "is_open")],
-        prevent_initial_call=True
+        prevent_initial_call=True,
     )
     def toggle_info_modal(n1, n2, is_open):
-        if n1 or n2:
-            return not is_open
-        return is_open
-    
-    # The one way rules are added: the ghost row. Plain language goes to the
-    # model; an expression the user typed themselves is kept verbatim.
+        return not is_open if (n1 or n2) else is_open
+
+    # The card is drawn from the strategy, never edited in place.
     @app.callback(
-        [Output("trading-rules-container", "children"),
-         Output("input-generate-rule", "value")],
+        Output("trading-rules-container", "children"),
+        [Input("strategy-store", "data"), Input("lang-store", "data")],
+    )
+    def draw_strategy(strategy, lang_data):
+        return render_strategy(strategy, get_lang(lang_data))
+
+    # Everything that changes the strategy.
+    @app.callback(
+        [Output("strategy-store", "data"),
+         Output("input-generate-rule", "value"),
+         Output("rule-error", "children")],
         [Input("apply-modal-button", "n_clicks"),
          Input("input-generate-rule", "n_blur"),
-         Input({"type": "remove-rule", "index": ALL}, "n_clicks"),
+         Input({"type": "cond-remove", "block": ALL, "index": ALL}, "n_clicks"),
+         Input({"type": "cond-join", "block": ALL}, "n_clicks"),
          Input("confirm-load-rules-modal", "n_clicks"),
          Input("saved-rules-store", "data")],
-        [State("trading-rules-container", "children"),
+        [State("strategy-store", "data"),
          State("input-generate-rule", "value"),
          State("load-rules-dropdown", "value"),
          State("lang-store", "data")],
-        prevent_initial_call=True
+        prevent_initial_call=True,
     )
-    def manage_rules(add_clicks, prompt_blur, remove_clicks, load_confirm,
-                     store_data, children, prompt, selected_rule, lang_data):
+    def edit_strategy(add_clicks, prompt_blur, remove_clicks, join_clicks, load_clicks,
+                      saved, strategy, prompt, selected_set, lang_data):
         trigger = ctx.triggered_id
         lang = get_lang(lang_data)
-        children = children or []
-        children = [c for c in children
-                    if not (isinstance(c, dict) and
-                            c.get("props", {}).get("id") == "rules-empty-hint")]
+        strategy = normalize_strategy(strategy)
 
-        def error_row(message):
-            return html.Div(
-                [html.I(className="bi bi-exclamation-triangle me-2"), message],
-                className="rule-error",
-            )
+        if isinstance(trigger, dict) and trigger.get("type") == "cond-remove":
+            if not any(c for c in (remove_clicks or []) if c):
+                raise PreventUpdate
+            block, index = trigger["block"], trigger["index"]
+            conds = strategy[block]["conds"]
+            if 0 <= index < len(conds):
+                conds.pop(index)
+            return strategy, no_update, None
 
-        # Remove a rule
-        if isinstance(trigger, dict) and trigger.get("type") == "remove-rule":
-            if remove_clicks and any(c and c > 0 for c in remove_clicks):
-                idx = next(i for i, c in enumerate(remove_clicks) if c and c > 0)
-                result = [c for i, c in enumerate(children) if i != idx]
-                return (result or _empty_hint(lang)), no_update
-            return children, no_update
+        if isinstance(trigger, dict) and trigger.get("type") == "cond-join":
+            if not any(c for c in (join_clicks or []) if c):
+                raise PreventUpdate
+            block = trigger["block"]
+            strategy[block]["join"] = "all" if strategy[block]["join"] == "any" else "any"
+            return strategy, no_update, None
 
-        # Add a rule from the ghost row
         if trigger in ("apply-modal-button", "input-generate-rule"):
             prompt = (prompt or "").strip()
             if not prompt:
-                return (children or _empty_hint(lang)), no_update
-            children = [c for c in children
-                        if not (isinstance(c, dict) and
-                                "rule-error" in (c.get("props", {}).get("className") or ""))]
+                raise PreventUpdate
             api_key = os.environ.get("OPENAI_API_KEY", "")
             if not api_key:
-                children.append(error_row(t("rl.api_key_missing", lang)))
-                return children, no_update
+                return no_update, no_update, _error(t("rl.api_key_missing", lang))
             try:
-                rule_expression, rule_type = generate_rule(prompt, api_key)
-                if rule_type in (False, None, "Rule Error", "GPT Error"):
-                    detail = str(rule_expression) if rule_expression else ""
-                    message = (t("rl.invalid_key", lang)
-                               if ("invalid_api_key" in detail or "401" in detail)
-                               else t("rl.ai_error", lang) + detail)
-                    children.append(error_row(message))
-                    return children, no_update
-                children.append(
-                    create_rule_pill(rule_type, len(children), rule_expression, lang))
-                return children, ""
-            except Exception as e:
-                detail = str(e)
-                message = (t("rl.invalid_key", lang)
-                           if ("invalid_api_key" in detail or "401" in detail)
-                           else t("rl.ai_error", lang) + detail)
-                children.append(error_row(message))
-                return children, no_update
+                expression, kind, sentence = generate_rule(prompt, api_key)
+            except Exception as exc:  # network, auth, anything the SDK raises
+                return no_update, no_update, _error(_message(exc, lang))
+            if kind not in BLOCKS or not expression:
+                return no_update, no_update, _error(_message(expression, lang))
+            return (add_condition(strategy, kind, sentence or prompt, expression), "", None)
 
-        # Load a saved rule set
-        if trigger == "confirm-load-rules-modal" and selected_rule:
-            return load_rules_from_store(selected_rule, store_data), no_update
+        if trigger == "confirm-load-rules-modal" and selected_set:
+            return normalize_strategy((saved or {}).get(selected_set)), no_update, None
 
-        # First paint: the default rule set
-        if trigger == "saved-rules-store" and store_data and not children:
-            return load_rules_from_store("default_ruleset", store_data), no_update
+        # First paint: whatever was saved as the default, else the built-in one.
+        if trigger == "saved-rules-store":
+            if any(strategy[b]["conds"] for b in BLOCKS):
+                raise PreventUpdate
+            return normalize_strategy((saved or {}).get("default_ruleset")
+                                      or DEFAULT_STRATEGY), no_update, None
 
-        return (children or _empty_hint(lang)), no_update
+        raise PreventUpdate
 
+    def _error(message):
+        return html.Div([html.I(className="bi bi-exclamation-triangle me-2"), message],
+                        className="rule-error")
 
-    # Save rules modal toggle
+    def _message(detail, lang):
+        detail = str(detail or "")
+        if "invalid_api_key" in detail or "401" in detail:
+            return t("rl.invalid_key", lang)
+        return t("rl.ai_error", lang) + detail
+
+    # Editing the expression by hand keeps the sentence, which is what the
+    # user asked for; only the code changes.
+    @app.callback(
+        Output("strategy-store", "data", allow_duplicate=True),
+        Input({"type": "cond-expr", "block": ALL, "index": ALL}, "value"),
+        State("strategy-store", "data"),
+        prevent_initial_call=True,
+    )
+    def edit_expression(values, strategy):
+        strategy = normalize_strategy(strategy)
+        changed = False
+        for spec, value in zip(ctx.inputs_list[0], values or []):
+            block = spec["id"]["block"]
+            index = spec["id"]["index"]
+            conds = strategy.get(block, {}).get("conds", [])
+            if 0 <= index < len(conds) and value is not None:
+                value = value.strip()
+                if value and value != conds[index]["expr"]:
+                    conds[index]["expr"] = value
+                    changed = True
+        if not changed:
+            raise PreventUpdate
+        return strategy
+
     @app.callback(
         [Output("save-rules-modal", "is_open"),
          Output("saved-rules-store", "data", allow_duplicate=True)],
         [Input("open-save-rules-modal", "n_clicks"),
          Input("confirm-save-rules-modal", "n_clicks"),
          Input("cancel-save-rules-modal", "n_clicks")],
-        [State("save-rules-modal", "is_open"),
-         State("save-rules-input", "value"),
-         State("trading-rules-container", "children"),
+        [State("save-rules-input", "value"),
+         State("strategy-store", "data"),
          State("saved-rules-store", "data")],
-        prevent_initial_call=True
+        prevent_initial_call=True,
     )
-    def handle_save_rules(open_clicks, save_clicks, cancel_clicks, is_open, name, children, store_data):
+    def handle_save_rules(open_clicks, save_clicks, cancel_clicks, name, strategy, saved):
         trigger = ctx.triggered_id
-        
         if trigger == "open-save-rules-modal":
             return True, no_update
-        
         if trigger == "cancel-save-rules-modal":
             return False, no_update
-        
         if trigger == "confirm-save-rules-modal" and name:
-            rules = get_rules_from_ui(children)
-            store_data = store_data or {}
-            store_data[name] = rules
-            return False, store_data
-        
-        return is_open, no_update
-    
-    # Load rules modal toggle
+            saved = dict(saved or {})
+            saved[name] = normalize_strategy(strategy)
+            return False, saved
+        return no_update, no_update
+
     @app.callback(
         [Output("load-rules-modal", "is_open"),
          Output("load-rules-dropdown", "options")],
         [Input("open-load-rules-modal", "n_clicks"),
          Input("confirm-load-rules-modal", "n_clicks"),
          Input("cancel-load-rules-modal", "n_clicks")],
-        [State("load-rules-modal", "is_open"),
-         State("saved-rules-store", "data")],
-        prevent_initial_call=True
+        [State("saved-rules-store", "data")],
+        prevent_initial_call=True,
     )
-    def handle_load_rules(open_clicks, load_clicks, cancel_clicks, is_open, store_data):
-        trigger = ctx.triggered_id
-        
-        if trigger == "open-load-rules-modal":
-            options = [{"label": n, "value": n} for n in get_saved_rules_names(store_data)]
-            return True, options
-        
-        if trigger in ["confirm-load-rules-modal", "cancel-load-rules-modal"]:
-            return False, []
-        
-        return is_open, []
-    
-    # Delete rule set
+    def handle_load_rules(open_clicks, load_clicks, cancel_clicks, saved):
+        if ctx.triggered_id == "open-load-rules-modal":
+            return True, [{"label": n, "value": n} for n in get_saved_rules_names(saved)]
+        return False, []
+
     @app.callback(
         [Output("load-rules-dropdown", "options", allow_duplicate=True),
          Output("saved-rules-store", "data", allow_duplicate=True)],
         [Input("delete-rule-set-button", "n_clicks")],
-        [State("load-rules-dropdown", "value"),
-         State("saved-rules-store", "data")],
-        prevent_initial_call=True
+        [State("load-rules-dropdown", "value"), State("saved-rules-store", "data")],
+        prevent_initial_call=True,
     )
-    def delete_rule_set(n_clicks, selected, store_data):
-        if n_clicks and selected and store_data and selected in store_data:
-            del store_data[selected]
-            options = [{"label": n, "value": n} for n in store_data.keys()]
-            return options, store_data
+    def delete_rule_set(n_clicks, selected, saved):
+        if n_clicks and selected and saved and selected in saved:
+            saved = dict(saved)
+            del saved[selected]
+            return [{"label": n, "value": n} for n in saved], saved
         raise PreventUpdate
-    
-    # Initialize rule store
+
     @app.callback(
         Output("saved-rules-store", "data"),
-        Input("saved-rules-store", "data")
+        Input("saved-rules-store", "data"),
     )
     def init_rule_store(data):
-        if data is None:
-            return {
-                "default_ruleset": {
-                    "buying_rule": ["current('price') < current('power_law_price_4y_window')"],
-                    "selling_rule": []
-                }
-            }
-        return data
+        return {"default_ruleset": DEFAULT_STRATEGY} if data is None else data

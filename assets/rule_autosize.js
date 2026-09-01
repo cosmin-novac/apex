@@ -1,15 +1,15 @@
 /**
- * Grow the backtesting rule rows to fit their text.
+ * Size the strategy card's textareas to their content.
  *
- * A rule is code the user has to be able to read in full, so the row is a
- * textarea with no scrollbar: this sets its height to its content on every
- * change, and after Dash re-renders the list. Enter in the ghost row adds the
- * rule instead of inserting a newline.
+ * The expression a user opens under a condition has to be readable in full,
+ * so it is a textarea with no scrollbar: this sets its height to its content
+ * on every change and after Dash re-renders. Enter in the ask row adds the
+ * condition instead of inserting a newline.
  */
 (function () {
     "use strict";
 
-    var SELECTOR = ".rule-expression-input, .ghost-input";
+    var SELECTOR = ".cond-code, .ghost-input";
 
     function fit(el) {
         // A hidden page (pages stay mounted, display toggles) reports a zero
