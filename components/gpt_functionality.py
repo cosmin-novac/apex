@@ -23,6 +23,18 @@ It also includes these variables:
 - portfolio_value_over_time: A vector of the portfolio value up to today
 - current_date: the current date as 'YYYY-MM-DD'
 - current_index: the index of the current date in the historic data
+
+If the user asks for an indicator that is not in the column list, do not
+substitute a similar column: compute it on the fly from a base column with
+pandas method chains on historic(...), which returns a pandas Series.
+Examples:
+- EMA over n days: historic('price').ewm(span=n, adjust=False).mean().iloc[-1]
+- SMA over n days: historic('price').rolling(n).mean().iloc[-1]
+- rolling std over n days: historic('price').rolling(n).std().iloc[-1]
+- highest close of the last n days: historic('price').tail(n).max()
+For yesterday's value of such a computed series (crossover conditions), use
+.iloc[-2] on the same chain. Prefer a precomputed column when one matches
+exactly. Only expressions are allowed, no imports and no statements.
 """
 
 def generate_rule(rule_instruction, openai_api_key):
@@ -41,13 +53,13 @@ def generate_rule(rule_instruction, openai_api_key):
 
     try:
         client = OpenAI(api_key=openai_api_key)
+        # gpt-5.6 models reject the legacy max_tokens/temperature/stop
+        # parameters; the completion budget also covers reasoning tokens,
+        # so it is far above the size of the returned JSON.
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-5.6-luna",
             messages=messages,
-            max_tokens=400,
-            n=1,
-            stop=None,
-            temperature=0.7,
+            max_completion_tokens=2000,
         )
 
         if response.choices:

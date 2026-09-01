@@ -4338,7 +4338,7 @@ button.btn::-moz-focus-inner {
     --lp-rule: #e4e1da;
     --lp-paper: #fbfaf8;
     --lp-accent: #1d4ed8;
-    max-width: 1120px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 0 8px 80px;
     color: var(--lp-body);
@@ -4499,7 +4499,7 @@ button.btn::-moz-focus-inner {
     /* Two wide cards per row: at three across the screenshots were too
        small to read, which defeats showing them at all. auto-fill keeps
        the odd fifth card at the same width instead of stretching it. */
-    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
     gap: 16px;
     margin-top: 22px;
 }
