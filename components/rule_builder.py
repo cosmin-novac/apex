@@ -9,15 +9,20 @@ The join between conditions in a block is part of the strategy and shown as a
 control: "any" evaluates them with `or`, "all" with `and`. It used to be a
 silent `or`, which quietly turned two conditions into either-one.
 """
+import logging
 import os
+import time
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html, ctx, no_update
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 
-from components.gpt_functionality import generate_rule
+from components.gpt_functionality import generate_rule, available_columns
 from components.i18n import t, get_lang
+from core.rule_sandbox import check_expression
+
+_log = logging.getLogger(__name__)
 
 BLOCKS = ("buy", "sell")
 _JOINERS = {"any": " or ", "all": " and "}
@@ -110,9 +115,21 @@ def _condition_row(block, index, cond, lang):
                     value=cond.get("expr", ""),
                     className="cond-code",
                     rows=_code_rows(cond.get("expr", "")),
-                    debounce=True,
+                    # Not debounced (dbc's debounce never commits on blur here);
+                    # the check runs on blur and reads the current value.
+                    debounce=False,
                     wrap="soft",
                 ),
+                # Hand edits are checked as you go and used only once saved.
+                html.Div([
+                    dbc.Button(
+                        t("rl.code_save", lang),
+                        id={"type": "cond-save", "block": block, "index": index},
+                        className="cond-save", color="link", size="sm", n_clicks=0,
+                    ),
+                    html.Span(id={"type": "cond-status", "block": block, "index": index},
+                              className="cond-status"),
+                ], className="cond-code-actions"),
             ], className="cond-code-wrap"),
         ], className="cond-body"),
         dbc.Button(
@@ -374,10 +391,14 @@ def register_rule_builder_callbacks(app):
             api_key = os.environ.get("OPENAI_API_KEY", "")
             if not api_key:
                 return no_update, no_update, _error(t("rl.api_key_missing", lang))
+            started = time.monotonic()
             try:
                 expression, kind, sentence = generate_rule(prompt, api_key)
             except Exception as exc:  # network, auth, anything the SDK raises
+                _log.warning("rule generation failed after %.1fs: %s",
+                             time.monotonic() - started, exc)
                 return no_update, no_update, _error(_message(exc, lang))
+            _log.info("rule generated in %.1fs (%s)", time.monotonic() - started, kind)
             if kind not in BLOCKS or not expression:
                 return no_update, no_update, _error(_message(expression, lang))
             return (add_condition(strategy, kind, sentence or prompt, expression), "", None)
@@ -408,29 +429,60 @@ def register_rule_builder_callbacks(app):
             return t("rl.invalid_key", lang)
         return t("rl.ai_error", lang) + detail
 
-    # Editing the expression by hand keeps the sentence, which is what the
-    # user asked for; only the code changes.
+    # Editing the expression by hand: every edit is checked against the
+    # sandbox on sample data and reported next to the Save button; nothing
+    # reaches the strategy (and the backtest) until Save is pressed. The
+    # sentence is left alone, it is still what the user asked for.
     @app.callback(
-        Output("strategy-store", "data", allow_duplicate=True),
-        Input({"type": "cond-expr", "block": ALL, "index": ALL}, "value"),
-        State("strategy-store", "data"),
+        [Output("strategy-store", "data", allow_duplicate=True),
+         Output({"type": "cond-status", "block": ALL, "index": ALL}, "children")],
+        [Input({"type": "cond-save", "block": ALL, "index": ALL}, "n_clicks"),
+         Input({"type": "cond-expr", "block": ALL, "index": ALL}, "n_blur")],
+        [State({"type": "cond-expr", "block": ALL, "index": ALL}, "value"),
+         State("strategy-store", "data"),
+         State("lang-store", "data")],
         prevent_initial_call=True,
     )
-    def edit_expression(values, strategy):
-        strategy = normalize_strategy(strategy)
-        changed = False
-        for spec, value in zip(ctx.inputs_list[0], values or []):
-            block = spec["id"]["block"]
-            index = spec["id"]["index"]
-            conds = strategy.get(block, {}).get("conds", [])
-            if 0 <= index < len(conds) and value is not None:
-                value = value.strip()
-                if value and value != conds[index]["expr"]:
-                    conds[index]["expr"] = value
-                    changed = True
-        if not changed:
+    def edit_expression(save_clicks, blurs, values, strategy, lang_data):
+        trigger = ctx.triggered_id
+        if not isinstance(trigger, dict):
             raise PreventUpdate
-        return strategy
+        if trigger["type"] == "cond-expr" and not any(c for c in (blurs or []) if c):
+            raise PreventUpdate  # rows re-created, nobody left a field
+        lang = get_lang(lang_data)
+        strategy = normalize_strategy(strategy)
+        specs = [spec["id"] for spec in ctx.states_list[0]]
+        statuses = [no_update] * len(specs)
+
+        try:
+            pos = next(i for i, spec in enumerate(specs)
+                       if spec["block"] == trigger["block"] and spec["index"] == trigger["index"])
+        except StopIteration:
+            raise PreventUpdate
+        value = ((values or [None] * len(specs))[pos] or "").strip()
+        conds = strategy[trigger["block"]]["conds"]
+        if not (0 <= trigger["index"] < len(conds)):
+            raise PreventUpdate
+        saved_expr = conds[trigger["index"]]["expr"]
+
+        problem = check_expression(value, available_columns)
+        if problem:
+            statuses[pos] = html.Span(t("rl.code_problem", lang) + problem, className="is-bad")
+            return no_update, statuses
+
+        if trigger["type"] == "cond-save":
+            if save_clicks and any(c for c in save_clicks if c):
+                conds[trigger["index"]]["expr"] = value
+                statuses[pos] = html.Span(t("rl.code_saved", lang), className="is-good")
+                return strategy, statuses
+            raise PreventUpdate
+
+        # Left the field: valid, but not part of the strategy yet.
+        if value == saved_expr:
+            statuses[pos] = ""
+        else:
+            statuses[pos] = html.Span(t("rl.code_valid", lang), className="is-pending")
+        return no_update, statuses
 
     @app.callback(
         [Output("save-rules-modal", "is_open"),
