@@ -1437,6 +1437,35 @@ textarea.cond-code:focus {
     outline: none;
 }
 
+/* Under the opened code: Save, and what the check says. */
+.cond-code-actions {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 4px;
+    min-height: 18px;
+}
+.cond-save {
+    padding: 0 !important;
+    font-size: 0.7rem !important;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: none !important;
+    color: var(--primary-color) !important;
+    line-height: 1.5;
+}
+.cond-save:hover { text-decoration: underline !important; }
+.cond-status { font-size: 0.72rem; line-height: 1.5; }
+.cond-status .is-good { color: var(--success-color); }
+.cond-status .is-pending { color: var(--text-secondary); }
+.cond-status .is-bad {
+    color: var(--danger-color);
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 0.68rem;
+    word-break: break-word;
+}
+
 .cond-remove {
     flex-shrink: 0;
     color: var(--text-secondary);
@@ -1520,6 +1549,43 @@ textarea.ghost-input::placeholder {
 }
 .ghost-row:focus-within .ghost-add-btn { opacity: 1; }
 .ghost-add-btn:hover { color: var(--primary-color); }
+
+/* While the model writes the rule. Dash marks the outputs of a running
+   callback with data-dash-is-loading; the ask row is one of them. */
+.ghost-row:has(.ghost-input[data-dash-is-loading="true"]) {
+    pointer-events: none;
+}
+.ghost-row:has(.ghost-input[data-dash-is-loading="true"]) .ghost-spark {
+    color: var(--primary-color);
+    opacity: 1;
+    animation: ghost-pulse 0.9s ease-in-out infinite;
+}
+.ghost-row:has(.ghost-input[data-dash-is-loading="true"]) .ghost-input {
+    opacity: 0.55;
+}
+.ghost-row:has(.ghost-input[data-dash-is-loading="true"]) .ghost-add-btn {
+    opacity: 1;
+    color: var(--primary-color);
+    font-size: 0;
+}
+.ghost-row:has(.ghost-input[data-dash-is-loading="true"]) .ghost-add-btn::after {
+    content: "";
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(99, 102, 241, 0.25);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: ghost-spin 0.7s linear infinite;
+}
+@keyframes ghost-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.35); }
+}
+@keyframes ghost-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .ghost-row:has(.ghost-input[data-dash-is-loading="true"]) .ghost-spark { animation: none; }
+}
 
 .run-backtest-btn {
     margin-left: 4px;

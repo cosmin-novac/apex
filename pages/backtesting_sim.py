@@ -17,45 +17,14 @@ from core.conf import *
 from components.i18n import t, get_lang
 
 from components.gpt_functionality import context_description
-from simpleeval import EvalWithCompoundTypes, DEFAULT_OPERATORS
+from core.rule_sandbox import safe_eval
 
 _log = logging.getLogger(__name__)
 
 
-def _safe_eval(expr: str, context: dict):
-    """Evaluate a trading rule expression in a restricted sandbox.
-
-    Uses simpleeval to block access to __builtins__, __import__, and
-    dangerous attribute traversal while still allowing the mathematical
-    / data-access functions that trading rules need.
-    """
-    s = EvalWithCompoundTypes(
-        operators=DEFAULT_OPERATORS,
-        functions={
-            "min": min, "max": max, "abs": abs, "round": round, "len": len,
-            "all": all, "any": any, "int": int, "float": float, "bool": bool,
-            "sum": sum, "sorted": sorted, "range": range,
-            # Expose context lambdas as callable functions
-            "historic": context.get("historic", lambda col: []),
-            "current": context.get("current", lambda col: 0),
-            "n_days_ago": context.get("n_days_ago", lambda col, n: 0),
-        },
-        names={
-            "historic": context.get("historic", lambda col: []),
-            "current": context.get("current", lambda col: 0),
-            "n_days_ago": context.get("n_days_ago", lambda col, n: 0),
-            "current_portfolio_value": context.get("current_portfolio_value", 0),
-            "portfolio_value_over_time": context.get("portfolio_value_over_time"),
-            "available_cash": context.get("available_cash", 0),
-            "btc_owned": context.get("btc_owned", 0),
-            "current_date": context.get("current_date", ""),
-            "current_index": context.get("current_index", 0),
-            "np": np,
-            "pd": pd,
-            "True": True, "False": False, "None": None,
-        },
-    )
-    return s.eval(expr)
+# The sandbox lives in core/rule_sandbox.py so the rules card can check a
+# hand-edited expression with exactly what the engine will run.
+_safe_eval = safe_eval
 
 # Popular assets for autocomplete
 _POPULAR_ASSETS = [
