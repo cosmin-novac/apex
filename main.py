@@ -30,6 +30,7 @@ from pages.portfolio_sim import layout as portfolio_sim_layout, register_callbac
 from pages.riskbands import layout as riskbands_layout, register_callbacks as register_riskbands_callbacks
 from pages.portfolio_analysis import layout as portfolio_analysis_layout, register_callbacks as register_portfolio_analysis_callbacks
 from pages.the_real_cost import layout as real_cost_layout, register_callbacks as register_real_cost_callbacks
+from pages.buy_vs_rent import layout as buy_rent_layout, register_callbacks as register_buy_rent_callbacks
 from pages.megacap_lab import layout as megacap_layout, register_callbacks as register_megacap_callbacks
 from pages.landing import layout as landing_layout
 from pages.legal import layout as legal_layout
@@ -116,6 +117,7 @@ sidebar = html.Div([
         # Riskbands stays routed, but is hidden from the menu until the feature is ready.
         # dbc.NavLink([html.I(className="bi bi-shield-check me-2"), html.Span("Exit Strategy Riskbands", id="nav-text-riskbands")], href="/riskbands", id="riskbands-link", className="nav-link-modern"),
         dbc.NavLink([html.I(className="bi bi-currency-dollar me-2"), html.Span("The Real Cost", id="nav-text-realcost")], href="/realcost", id="realcost-link", className="nav-link-modern"),
+        dbc.NavLink([html.I(className="bi bi-house-door me-2"), html.Span("Buy or Rent", id="nav-text-buyrent")], href="/buyrent", id="buyrent-link", className="nav-link-modern"),
         dbc.NavLink([html.I(className="bi bi-trophy me-2"), html.Span("Rank Lab", id="nav-text-megacap")], href="/ranks", id="megacap-link", className="nav-link-modern"),
     ], vertical=True, pills=True, className="sidebar-nav"),
     html.Div([
@@ -150,6 +152,7 @@ _PAGES = [
     ("psim",        portfolio_sim_layout,                    ("/portfolio",)),
     ("riskbands",   riskbands_layout,                        ("/riskbands",)),
     ("realcost",    real_cost_layout,                        ("/realcost",)),
+    ("buyrent",     buy_rent_layout,                         ("/buyrent",)),
     ("ranks",       megacap_layout,                          ("/ranks", "/megacap")),
     ("impressum",   lambda lang: legal_layout("impressum", lang), ("/impressum",)),
     ("privacy",     lambda lang: legal_layout("privacy", lang),   ("/privacy",)),
@@ -236,6 +239,7 @@ app.validation_layout = html.Div([
     portfolio_sim_layout("en"),
     riskbands_layout("en"),
     real_cost_layout("en"),
+    buy_rent_layout("en"),
     megacap_layout("en"),
     legal_layout("impressum", "en"),
     legal_layout("privacy", "en"),
@@ -247,7 +251,7 @@ app.validation_layout = html.Div([
 # not on the landing page. The path is remembered per account in this
 # browser's localStorage (a route name, nothing else), and only a deliberate
 # stop on the landing page overwrites it, so parking on "/" is respected.
-_REMEMBERED_PAGES = '["/compare", "/portfolio", "/backtesting", "/ranks", "/realcost"]'
+_REMEMBERED_PAGES = '["/compare", "/portfolio", "/backtesting", "/ranks", "/realcost", "/buyrent"]'
 
 app.clientside_callback(
     """
@@ -295,7 +299,7 @@ app.clientside_callback(
 
 @app.callback(Output("url", "pathname"), Input("url", "pathname"))
 def redirect_to_default(pathname):
-    routes = {"/", "/compare", "/backtesting", "/portfolio", "/riskbands", "/realcost", "/ranks", "/impressum", "/privacy"}
+    routes = {"/", "/compare", "/backtesting", "/portfolio", "/riskbands", "/realcost", "/buyrent", "/ranks", "/impressum", "/privacy"}
     if pathname in (None, ""):
         return "/"
     if pathname == "/megacap":  # the page was called Mega-cap Lab before
@@ -378,11 +382,11 @@ app.clientside_callback(
 
 
 @app.callback(
-    [Output("backtesting-link", "active"), Output("portfolio-link", "active"), Output("compare-link", "active"), Output("realcost-link", "active"), Output("megacap-link", "active")],
+    [Output("backtesting-link", "active"), Output("portfolio-link", "active"), Output("compare-link", "active"), Output("realcost-link", "active"), Output("buyrent-link", "active"), Output("megacap-link", "active")],
     Input("url", "pathname"),
 )
 def set_active_link(pathname):
-    return pathname == "/backtesting", pathname == "/portfolio", pathname == "/compare", pathname == "/realcost", pathname in ("/ranks", "/megacap")
+    return pathname == "/backtesting", pathname == "/portfolio", pathname == "/compare", pathname == "/realcost", pathname == "/buyrent", pathname in ("/ranks", "/megacap")
 
 
 app.clientside_callback(
@@ -438,12 +442,12 @@ def update_lang_flag(lang_data):
 
 
 @app.callback(
-    [Output("nav-text-compare", "children"), Output("nav-text-backtesting", "children"), Output("nav-text-portfolio", "children"), Output("nav-text-realcost", "children"), Output("nav-text-megacap", "children"), Output("sidebar-tagline", "children"), Output("sidebar-link-impressum", "children"), Output("sidebar-link-privacy", "children")],
+    [Output("nav-text-compare", "children"), Output("nav-text-backtesting", "children"), Output("nav-text-portfolio", "children"), Output("nav-text-realcost", "children"), Output("nav-text-buyrent", "children"), Output("nav-text-megacap", "children"), Output("sidebar-tagline", "children"), Output("sidebar-link-impressum", "children"), Output("sidebar-link-privacy", "children")],
     Input("lang-store", "data"),
 )
 def update_sidebar_lang(lang_data):
     lang = get_lang(lang_data)
-    return t("nav.portfolio_analysis", lang), t("nav.backtesting", lang), t("nav.investment_simulator", lang), t("nav.real_cost", lang), t("nav.megacap", lang), t("nav.tagline", lang), t("legal.impressum", lang), t("legal.privacy", lang)
+    return t("nav.portfolio_analysis", lang), t("nav.backtesting", lang), t("nav.investment_simulator", lang), t("nav.real_cost", lang), t("nav.buy_rent", lang), t("nav.megacap", lang), t("nav.tagline", lang), t("legal.impressum", lang), t("legal.privacy", lang)
 
 
 app.clientside_callback(
@@ -510,6 +514,7 @@ register_riskbands_callbacks(app)
 register_portfolio_sim_callbacks(app)
 register_backtesting_callbacks(app)
 register_real_cost_callbacks(app)
+register_buy_rent_callbacks(app)
 register_megacap_callbacks(app)
 
 server = app.server

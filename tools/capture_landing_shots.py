@@ -21,11 +21,11 @@ OUT = ROOT / "assets" / "landing"
 
 PAGES = [("compare", "/compare", 14000), ("simulator", "/portfolio", 9000),
          ("backtesting", "/backtesting", 12000), ("ranks", "/ranks", 10000),
-         ("realcost", "/realcost", 9000)]
+         ("realcost", "/realcost", 9000), ("buyrent", "/buyrent", 6000)]
 
 # Where the card crop starts, in device pixels at scale factor 2.
 OFFSETS = {"compare": 0, "simulator": 0, "backtesting": 0,
-           "ranks": 120, "realcost": 400}
+           "ranks": 120, "realcost": 400, "buyrent": 0}
 
 
 async def prepare(page, name):

@@ -24,6 +24,7 @@ _CAPABILITIES = [
     ("bi-wallet2", "green", "landing.c3_title", "landing.c3_desc", "/portfolio", "simulator"),
     ("bi-bar-chart-line", "violet", "landing.c1_title", "landing.c1_desc", "/compare", "compare"),
     ("bi-currency-dollar", "cyan", "landing.c5_title", "landing.c5_desc", "/realcost", "realcost"),
+    ("bi-house-door", "rose", "landing.c6_title", "landing.c6_desc", "/buyrent", "buyrent"),
 ]
 
 # (icon, title-key, desc-key)
