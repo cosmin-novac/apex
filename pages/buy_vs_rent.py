@@ -4,6 +4,7 @@ Put the same money into a home or into the market, and watch both for years.
 """
 
 from dash import html, dcc, Input, Output, State
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
@@ -34,13 +35,17 @@ _FIELD_IDS = [f[0] for f in _BUY_FIELDS + _RENT_FIELDS] + ["br-years"]
 
 
 def _field(fid, key, unit, default, step, lo, hi, lang):
+    # step="any": with a step and a min, the browser treats most typed values
+    # as invalid (450000 with min 1 and step 10000, or 1.39 with step 0.1),
+    # and dbc.Input then sends null instead of the number. The step in the
+    # table is kept for documentation of a sensible granularity only.
     kwargs = {"min": lo}
     if hi is not None:
         kwargs["max"] = hi
     return html.Div([
         html.Label(t(key, lang), className="input-label", htmlFor=fid),
         dbc.InputGroup([
-            dbc.Input(id=fid, type="number", value=default, step=step,
+            dbc.Input(id=fid, type="number", value=default, step="any",
                       debounce=True, **kwargs),
             dbc.InputGroupText(unit),
         ], size="sm"),
@@ -140,7 +145,8 @@ def _figure(r, lang):
         plot_bgcolor="white", paper_bgcolor="white",
         font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font_size=10),
-        xaxis=dict(title=t("ps.year", lang), showgrid=False, dtick=5, zeroline=False),
+        xaxis=dict(title=t("ps.year", lang), showgrid=False, dtick=5, zeroline=False,
+                   range=[0, years[-1]]),
         yaxis=dict(title=t("br.net_worth", lang), showgrid=True, gridcolor="#f1f5f9",
                    zeroline=True, zerolinecolor="#e2e8f0",
                    tickprefix=("€" if lang != "de" else ""),
@@ -213,6 +219,17 @@ def compute_view(price, equity, costs, interest, repayment, upkeep, appreciation
     return r, kpis, _figure(r, lang), _breakdown(r, lang)
 
 
+def complete(values):
+    """True when every field holds a number.
+
+    A field that is empty, or that the browser considers invalid, arrives as
+    None. Computing with 0 in its place silently turns a 450,000 purchase
+    into a free home, so the page keeps its last result until the field
+    holds a number again.
+    """
+    return all(isinstance(v, (int, float)) and v == v for v in values)
+
+
 def register_callbacks(app):
     @app.callback(
         [Output("br-kpis", "children"),
@@ -223,5 +240,7 @@ def register_callbacks(app):
     )
     def update(*values):
         *inputs, lang_data = values
+        if not complete(inputs):
+            raise PreventUpdate
         _r, kpis, fig, table = compute_view(*inputs, lang=get_lang(lang_data))
         return kpis, fig, table

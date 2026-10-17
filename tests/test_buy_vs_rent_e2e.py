@@ -8,7 +8,8 @@ import pytest
 
 from core import utils as cu
 from components.i18n import t
-from pages.buy_vs_rent import compute_view
+from pages.buy_vs_rent import compute_view, complete, layout
+import dash_bootstrap_components as dbc
 
 
 def _texts(node, out=None):
@@ -125,3 +126,35 @@ def test_the_explainer_says_what_the_model_does():
     for lang, word in (("en", "equity"), ("de", "Eigenkapital")):
         assert word in t("br.how_1", lang)
         assert "purchase costs invested" not in t("br.how_1", lang)
+
+
+def _inputs(tree):
+    return [c for c in tree._traverse() if isinstance(c, dbc.Input)]
+
+
+def test_number_fields_accept_any_value():
+    # 450000 with min 1 and step 10000, or 1.39 with step 0.1, were invalid
+    # to the browser, and the component then sent null instead of the number.
+    fields = _inputs(layout("en"))
+    assert len(fields) == 11
+    assert all(f.step == "any" for f in fields)
+
+
+def test_an_empty_field_keeps_the_last_result():
+    good = [450_000, 80_000, 10, 1.39, 1, 1.5, 2, 1_400, 2, 6, 26.375, 30]
+    assert complete(good)
+    for i in range(len(good)):
+        broken = list(good)
+        broken[i] = None
+        assert not complete(broken)
+    assert not complete(good[:-1] + [float("nan")])
+
+
+def test_the_phone_case_from_the_report():
+    # The values typed on the phone: a 450k home at 1.39% with 1% repayment.
+    r, kpis, *_ = _run(price=450_000, equity=80_000, interest=1.39, repayment=1)
+    assert r["upfront"] == 80_000 and r["loan"] == 415_000
+    assert r["renter_net"][0] == 80_000
+    assert r["totals"]["interest"] > 0
+    assert "started with €80,000 invested" in _texts(kpis[1])
+    assert "no loan needed" not in _texts(kpis[3])
