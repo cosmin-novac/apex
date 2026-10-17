@@ -4,6 +4,7 @@ Put the same money into a home or into the market, and watch both for years.
 """
 
 from dash import html, dcc, Input, Output, State
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
@@ -34,13 +35,17 @@ _FIELD_IDS = [f[0] for f in _BUY_FIELDS + _RENT_FIELDS] + ["br-years"]
 
 
 def _field(fid, key, unit, default, step, lo, hi, lang):
+    # step="any": with a step and a min, the browser treats most typed values
+    # as invalid (450000 with min 1 and step 10000, or 1.39 with step 0.1),
+    # and dbc.Input then sends null instead of the number. The step in the
+    # table is kept for documentation of a sensible granularity only.
     kwargs = {"min": lo}
     if hi is not None:
         kwargs["max"] = hi
     return html.Div([
         html.Label(t(key, lang), className="input-label", htmlFor=fid),
         dbc.InputGroup([
-            dbc.Input(id=fid, type="number", value=default, step=step,
+            dbc.Input(id=fid, type="number", value=default, step="any",
                       debounce=True, **kwargs),
             dbc.InputGroupText(unit),
         ], size="sm"),
@@ -140,7 +145,8 @@ def _figure(r, lang):
         plot_bgcolor="white", paper_bgcolor="white",
         font=dict(family="Inter, sans-serif", size=11, color="#1e293b"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font_size=10),
-        xaxis=dict(title=t("ps.year", lang), showgrid=False, dtick=5, zeroline=False),
+        xaxis=dict(title=t("ps.year", lang), showgrid=False, dtick=5, zeroline=False,
+                   range=[0, years[-1]]),
         yaxis=dict(title=t("br.net_worth", lang), showgrid=True, gridcolor="#f1f5f9",
                    zeroline=True, zerolinecolor="#e2e8f0",
                    tickprefix=("€" if lang != "de" else ""),
@@ -173,6 +179,57 @@ def _breakdown(r, lang):
     ])
 
 
+def compute_view(price, equity, costs, interest, repayment, upkeep, appreciation,
+                 rent, rent_growth, ret, tax, years, lang="en"):
+    """Everything the page shows, from the raw input values.
+
+    Kept outside the callback so the whole chain, inputs to tiles, chart and
+    table, can be run and checked in a test without a browser.
+    """
+    r = simulate(Inputs(
+        price=price, equity=equity, purchase_costs_pct=costs, interest_pct=interest,
+        repayment_pct=repayment, upkeep_pct=upkeep, appreciation_pct=appreciation,
+        rent=rent, rent_growth_pct=rent_growth, return_pct=ret, gains_tax_pct=tax,
+        years=years,
+    ))
+    n = r["inputs"].years
+    buy_end, rent_end = r["owner_net"][-1], r["renter_net"][-1]
+    gap = buy_end - rent_end
+    if r["breakeven_year"] is None:
+        be_value = t("br.never", lang)
+        be_sub = t("br.never_sub", lang).format(years=n)
+    else:
+        be_value = t("br.year_n", lang).format(year=r["breakeven_year"])
+        be_sub = t("br.breakeven_sub", lang)
+    if r["loan"] <= 0:
+        pay_sub = t("br.no_loan", lang)
+    elif r["payoff_year"]:
+        pay_sub = t("br.paid_off", lang).format(year=r["payoff_year"])
+    else:
+        pay_sub = t("br.not_paid_off", lang).format(years=n)
+    kpis = [
+        _tile(t("br.k_buy", lang).format(years=n), _eur(buy_end, lang),
+              t("br.k_gap", lang).format(amount=cu.fmt_eur(gap, lang, decimals=0, signed=True)),
+              "buy"),
+        _tile(t("br.k_rent", lang).format(years=n), _eur(rent_end, lang),
+              t("br.k_rent_sub", lang).format(amount=_eur(r["upfront"], lang)), "rent"),
+        _tile(t("br.k_breakeven", lang), be_value, be_sub),
+        _tile(t("br.k_monthly", lang), _eur(r["owner_monthly"][0], lang), pay_sub),
+    ]
+    return r, kpis, _figure(r, lang), _breakdown(r, lang)
+
+
+def complete(values):
+    """True when every field holds a number.
+
+    A field that is empty, or that the browser considers invalid, arrives as
+    None. Computing with 0 in its place silently turns a 450,000 purchase
+    into a free home, so the page keeps its last result until the field
+    holds a number again.
+    """
+    return all(isinstance(v, (int, float)) and v == v for v in values)
+
+
 def register_callbacks(app):
     @app.callback(
         [Output("br-kpis", "children"),
@@ -181,37 +238,9 @@ def register_callbacks(app):
         [Input(fid, "value") for fid in _FIELD_IDS],
         State("lang-store", "data"),
     )
-    def update(price, equity, costs, interest, repayment, upkeep, appreciation,
-               rent, rent_growth, ret, tax, years, lang_data):
-        lang = get_lang(lang_data)
-        r = simulate(Inputs(
-            price=price, equity=equity, purchase_costs_pct=costs, interest_pct=interest,
-            repayment_pct=repayment, upkeep_pct=upkeep, appreciation_pct=appreciation,
-            rent=rent, rent_growth_pct=rent_growth, return_pct=ret, gains_tax_pct=tax,
-            years=years,
-        ))
-        n = r["inputs"].years
-        buy_end, rent_end = r["owner_net"][-1], r["renter_net"][-1]
-        gap = buy_end - rent_end
-        if r["breakeven_year"] is None:
-            be_value = t("br.never", lang)
-            be_sub = t("br.never_sub", lang).format(years=n)
-        else:
-            be_value = t("br.year_n", lang).format(year=r["breakeven_year"])
-            be_sub = t("br.breakeven_sub", lang)
-        if r["loan"] <= 0:
-            pay_sub = t("br.no_loan", lang)
-        elif r["payoff_year"]:
-            pay_sub = t("br.paid_off", lang).format(year=r["payoff_year"])
-        else:
-            pay_sub = t("br.not_paid_off", lang).format(years=n)
-        kpis = [
-            _tile(t("br.k_buy", lang).format(years=n), _eur(buy_end, lang),
-                  t("br.k_gap", lang).format(amount=cu.fmt_eur(gap, lang, decimals=0, signed=True)),
-                  "buy"),
-            _tile(t("br.k_rent", lang).format(years=n), _eur(rent_end, lang),
-                  t("br.k_rent_sub", lang).format(amount=_eur(r["upfront"], lang)), "rent"),
-            _tile(t("br.k_breakeven", lang), be_value, be_sub),
-            _tile(t("br.k_monthly", lang), _eur(r["owner_monthly"][0], lang), pay_sub),
-        ]
-        return kpis, _figure(r, lang), _breakdown(r, lang)
+    def update(*values):
+        *inputs, lang_data = values
+        if not complete(inputs):
+            raise PreventUpdate
+        _r, kpis, fig, table = compute_view(*inputs, lang=get_lang(lang_data))
+        return kpis, fig, table
