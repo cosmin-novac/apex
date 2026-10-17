@@ -76,3 +76,19 @@ def test_bad_inputs_are_cleaned_not_crashed():
     r = simulate(Inputs(price=-5, equity=None, years=0, rent=-100, gains_tax_pct=500))
     assert r["years"] == [0, 1]
     assert r["inputs"].gains_tax_pct == 100
+
+
+def test_monthly_payment_replaces_the_repayment_rate():
+    by_rate = simulate(Inputs(interest_pct=3.8, repayment_pct=2.0))
+    by_payment = simulate(Inputs(interest_pct=3.8, repayment_pct=99, monthly_payment=1_740))
+    assert by_rate["monthly_payment"] == pytest.approx(1_740)
+    assert by_payment["owner_net"] == pytest.approx(by_rate["owner_net"])
+    assert by_payment["initial_repayment_pct"] == pytest.approx(2.0)
+    assert by_payment["covers_interest"] is True
+
+
+def test_no_loan_means_no_payment_whatever_was_typed():
+    r = simulate(Inputs(price=200_000, equity=500_000, monthly_payment=1_500))
+    assert r["monthly_payment"] == 0
+    assert r["initial_repayment_pct"] is None
+    assert r["covers_interest"] is True

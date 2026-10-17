@@ -21,7 +21,7 @@ _BUY_FIELDS = [
     ("br-equity",       "br.equity",       "€", 80_000,  5_000,  0, None),
     ("br-costs",        "br.costs",        "%", 10.0,    0.5,    0, 30),
     ("br-interest",     "br.interest",     "%", 3.8,     0.1,    0, 20),
-    ("br-repayment",    "br.repayment",    "%", 2.0,     0.5,    0, 20),
+    ("br-payment",      "br.payment",      "€", 1_740,   10,     0, None),
     ("br-upkeep",       "br.upkeep",       "%", 1.5,     0.1,    0, 10),
     ("br-appreciation", "br.appreciation", "%", 2.0,     0.5,    -20, 20),
 ]
@@ -179,7 +179,7 @@ def _breakdown(r, lang):
     ])
 
 
-def compute_view(price, equity, costs, interest, repayment, upkeep, appreciation,
+def compute_view(price, equity, costs, interest, payment, upkeep, appreciation,
                  rent, rent_growth, ret, tax, years, lang="en"):
     """Everything the page shows, from the raw input values.
 
@@ -188,7 +188,7 @@ def compute_view(price, equity, costs, interest, repayment, upkeep, appreciation
     """
     r = simulate(Inputs(
         price=price, equity=equity, purchase_costs_pct=costs, interest_pct=interest,
-        repayment_pct=repayment, upkeep_pct=upkeep, appreciation_pct=appreciation,
+        monthly_payment=payment, upkeep_pct=upkeep, appreciation_pct=appreciation,
         rent=rent, rent_growth_pct=rent_growth, return_pct=ret, gains_tax_pct=tax,
         years=years,
     ))
@@ -203,10 +203,14 @@ def compute_view(price, equity, costs, interest, repayment, upkeep, appreciation
         be_sub = t("br.breakeven_sub", lang)
     if r["loan"] <= 0:
         pay_sub = t("br.no_loan", lang)
-    elif r["payoff_year"]:
-        pay_sub = t("br.paid_off", lang).format(year=r["payoff_year"])
+    elif not r["covers_interest"]:
+        pay_sub = t("br.rate_below_interest", lang)
     else:
-        pay_sub = t("br.not_paid_off", lang).format(years=n)
+        pct = cu.fmt_pct(r["initial_repayment_pct"], lang, decimals=1)
+        if r["payoff_year"]:
+            pay_sub = t("br.paid_off", lang).format(pct=pct, year=r["payoff_year"])
+        else:
+            pay_sub = t("br.not_paid_off", lang).format(pct=pct, years=n)
     kpis = [
         _tile(t("br.k_buy", lang).format(years=n), _eur(buy_end, lang),
               t("br.k_gap", lang).format(amount=cu.fmt_eur(gap, lang, decimals=0, signed=True)),
