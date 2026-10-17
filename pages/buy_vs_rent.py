@@ -173,6 +173,46 @@ def _breakdown(r, lang):
     ])
 
 
+def compute_view(price, equity, costs, interest, repayment, upkeep, appreciation,
+                 rent, rent_growth, ret, tax, years, lang="en"):
+    """Everything the page shows, from the raw input values.
+
+    Kept outside the callback so the whole chain, inputs to tiles, chart and
+    table, can be run and checked in a test without a browser.
+    """
+    r = simulate(Inputs(
+        price=price, equity=equity, purchase_costs_pct=costs, interest_pct=interest,
+        repayment_pct=repayment, upkeep_pct=upkeep, appreciation_pct=appreciation,
+        rent=rent, rent_growth_pct=rent_growth, return_pct=ret, gains_tax_pct=tax,
+        years=years,
+    ))
+    n = r["inputs"].years
+    buy_end, rent_end = r["owner_net"][-1], r["renter_net"][-1]
+    gap = buy_end - rent_end
+    if r["breakeven_year"] is None:
+        be_value = t("br.never", lang)
+        be_sub = t("br.never_sub", lang).format(years=n)
+    else:
+        be_value = t("br.year_n", lang).format(year=r["breakeven_year"])
+        be_sub = t("br.breakeven_sub", lang)
+    if r["loan"] <= 0:
+        pay_sub = t("br.no_loan", lang)
+    elif r["payoff_year"]:
+        pay_sub = t("br.paid_off", lang).format(year=r["payoff_year"])
+    else:
+        pay_sub = t("br.not_paid_off", lang).format(years=n)
+    kpis = [
+        _tile(t("br.k_buy", lang).format(years=n), _eur(buy_end, lang),
+              t("br.k_gap", lang).format(amount=cu.fmt_eur(gap, lang, decimals=0, signed=True)),
+              "buy"),
+        _tile(t("br.k_rent", lang).format(years=n), _eur(rent_end, lang),
+              t("br.k_rent_sub", lang).format(amount=_eur(r["upfront"], lang)), "rent"),
+        _tile(t("br.k_breakeven", lang), be_value, be_sub),
+        _tile(t("br.k_monthly", lang), _eur(r["owner_monthly"][0], lang), pay_sub),
+    ]
+    return r, kpis, _figure(r, lang), _breakdown(r, lang)
+
+
 def register_callbacks(app):
     @app.callback(
         [Output("br-kpis", "children"),
@@ -181,37 +221,7 @@ def register_callbacks(app):
         [Input(fid, "value") for fid in _FIELD_IDS],
         State("lang-store", "data"),
     )
-    def update(price, equity, costs, interest, repayment, upkeep, appreciation,
-               rent, rent_growth, ret, tax, years, lang_data):
-        lang = get_lang(lang_data)
-        r = simulate(Inputs(
-            price=price, equity=equity, purchase_costs_pct=costs, interest_pct=interest,
-            repayment_pct=repayment, upkeep_pct=upkeep, appreciation_pct=appreciation,
-            rent=rent, rent_growth_pct=rent_growth, return_pct=ret, gains_tax_pct=tax,
-            years=years,
-        ))
-        n = r["inputs"].years
-        buy_end, rent_end = r["owner_net"][-1], r["renter_net"][-1]
-        gap = buy_end - rent_end
-        if r["breakeven_year"] is None:
-            be_value = t("br.never", lang)
-            be_sub = t("br.never_sub", lang).format(years=n)
-        else:
-            be_value = t("br.year_n", lang).format(year=r["breakeven_year"])
-            be_sub = t("br.breakeven_sub", lang)
-        if r["loan"] <= 0:
-            pay_sub = t("br.no_loan", lang)
-        elif r["payoff_year"]:
-            pay_sub = t("br.paid_off", lang).format(year=r["payoff_year"])
-        else:
-            pay_sub = t("br.not_paid_off", lang).format(years=n)
-        kpis = [
-            _tile(t("br.k_buy", lang).format(years=n), _eur(buy_end, lang),
-                  t("br.k_gap", lang).format(amount=cu.fmt_eur(gap, lang, decimals=0, signed=True)),
-                  "buy"),
-            _tile(t("br.k_rent", lang).format(years=n), _eur(rent_end, lang),
-                  t("br.k_rent_sub", lang).format(amount=_eur(r["upfront"], lang)), "rent"),
-            _tile(t("br.k_breakeven", lang), be_value, be_sub),
-            _tile(t("br.k_monthly", lang), _eur(r["owner_monthly"][0], lang), pay_sub),
-        ]
-        return kpis, _figure(r, lang), _breakdown(r, lang)
+    def update(*values):
+        *inputs, lang_data = values
+        _r, kpis, fig, table = compute_view(*inputs, lang=get_lang(lang_data))
+        return kpis, fig, table

@@ -3,8 +3,9 @@
 A monthly simulation under one rule, equal cash flow: whichever side pays
 less for housing in a month invests the difference. The buyer's net worth is
 the home minus the loan plus anything saved on the side; the renter's net
-worth is the portfolio that started with the buyer's equity and purchase
-costs. Both are what each side would hold after cashing out, which for the
+worth is a portfolio that started with the buyer's equity (on the buy side
+the purchase costs come out of that equity and are gone). Both are what each
+side would hold after cashing out, which for the
 renter means paying tax on the gains and for an owner-occupied home in
 Germany means paying none.
 
@@ -64,7 +65,7 @@ def simulate(inp: Inputs) -> dict:
     balance = loan
     owner_side = 0.0            # what the buyer invests when renting costs more
     owner_side_in = 0.0
-    renter_port = upfront       # the renter keeps the equity and the purchase costs
+    renter_port = upfront       # the renter keeps the cash the buyer puts in
     renter_in = upfront
     interest_paid = upkeep_paid = rent_paid = principal_paid = 0.0
     payoff_month = None
