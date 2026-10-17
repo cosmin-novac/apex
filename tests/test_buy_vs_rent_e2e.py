@@ -34,7 +34,7 @@ def _fv_monthly(payment, annual_pct, months):
 
 
 def _run(lang="en", **over):
-    base = dict(price=400_000, equity=80_000, costs=10, interest=3.8, repayment=2,
+    base = dict(price=400_000, equity=80_000, costs=10, interest=3.8, payment=1_740,
                 upkeep=1.5, appreciation=2, rent=1_400, rent_growth=2, ret=6,
                 tax=26.375, years=30)
     base.update(over)
@@ -52,7 +52,7 @@ def test_default_case_the_renter_starts_with_the_buyers_equity():
     assert "started with €80,000 invested" in _texts(kpis[1])
     # The first-month outlay is the annuity plus upkeep: 360k x 5.8% / 12 + 400k x 1.5% / 12.
     assert cu.fmt_eur(360_000 * 0.058 / 12 + 400_000 * 0.015 / 12, "en", 0) in _texts(kpis[3])
-    assert "loan paid off in year 29" in _texts(kpis[3])
+    assert "2.0% initial repayment, loan paid off in year 29" in _texts(kpis[3])
 
 
 def test_german_formatting_runs_through_the_same_chain():
@@ -64,7 +64,7 @@ def test_german_formatting_runs_through_the_same_chain():
 def test_no_loan_matches_the_closed_forms_all_the_way_to_the_tiles():
     # Equity covers price and costs, so the buyer pays nothing monthly and
     # invests the rent; the renter only compounds the upfront money.
-    r, kpis, fig, table = _run(price=300_000, equity=330_000, costs=10, interest=0, repayment=0,
+    r, kpis, fig, table = _run(price=300_000, equity=330_000, costs=10, interest=0, payment=0,
                                upkeep=0, appreciation=3, rent=1_000, rent_growth=0, ret=5,
                                tax=0, years=10)
     owner_closed = 300_000 * 1.03 ** 10 + _fv_monthly(1_000, 5, 120)
@@ -82,10 +82,11 @@ def test_no_loan_matches_the_closed_forms_all_the_way_to_the_tiles():
 
 
 def test_zero_interest_loan_is_hand_checkable():
-    # 200k at 10% repayment and 0% interest: 1,666.67 a month, gone after
+    # 200k at 0% interest and a 1,666.67 payment (10% a year): gone after
     # exactly 120 months. Renter invests the 666.67 difference for 10 years
     # (80k), then the buyer invests the full 1,000 rent for 5 more (60k).
-    r, kpis, fig, table = _run(price=300_000, equity=100_000, costs=0, interest=0, repayment=10,
+    r, kpis, fig, table = _run(price=300_000, equity=100_000, costs=0, interest=0,
+                               payment=200_000 * 0.10 / 12,
                                upkeep=0, appreciation=0, rent=1_000, rent_growth=0, ret=0,
                                tax=0, years=15)
     assert r["payoff_year"] == 10
@@ -97,7 +98,7 @@ def test_zero_interest_loan_is_hand_checkable():
     assert r["breakeven_year"] == 1
     assert "€360,000" in _texts(kpis[0]) and "€180,000" in _texts(kpis[1])
     assert "Year 1" in _texts(kpis[2])
-    assert "€1,667" in _texts(kpis[3]) and "loan paid off in year 10" in _texts(kpis[3])
+    assert "€1,667" in _texts(kpis[3]) and "10.0% initial repayment, loan paid off in year 10" in _texts(kpis[3])
     assert fig.layout.shapes[0].x0 == 1          # the break-even marker
 
 
@@ -113,7 +114,7 @@ def test_loan_balance_follows_the_annuity_formula():
 def test_tax_comes_off_the_gains_only_in_the_rent_tile():
     # Upkeep equals the rent, so neither side invests anything monthly and the
     # renter's only movement is the upfront money compounding, taxed at 25%.
-    r, kpis, *_ = _run(price=300_000, equity=330_000, costs=10, interest=0, repayment=0,
+    r, kpis, *_ = _run(price=300_000, equity=330_000, costs=10, interest=0, payment=0,
                        upkeep=0.4, appreciation=0, rent=100, rent_growth=0, ret=5,
                        tax=25, years=10)
     port = 330_000 * 1.05 ** 10
@@ -151,10 +152,21 @@ def test_an_empty_field_keeps_the_last_result():
 
 
 def test_the_phone_case_from_the_report():
-    # The values typed on the phone: a 450k home at 1.39% with 1% repayment.
-    r, kpis, *_ = _run(price=450_000, equity=80_000, interest=1.39, repayment=1)
+    # The values typed on the phone: a 450k home at 1.39%, and the bank's
+    # payment of 826.54 a month, which is 1% initial repayment.
+    r, kpis, *_ = _run(price=450_000, equity=80_000, interest=1.39,
+                       payment=415_000 * (1.39 + 1.0) / 100 / 12)
     assert r["upfront"] == 80_000 and r["loan"] == 415_000
+    assert r["initial_repayment_pct"] == pytest.approx(1.0)
+    assert "1.0% initial repayment" in " ".join(_texts(kpis[3]))
     assert r["renter_net"][0] == 80_000
     assert r["totals"]["interest"] > 0
     assert "started with €80,000 invested" in _texts(kpis[1])
     assert "no loan needed" not in _texts(kpis[3])
+
+
+def test_a_payment_below_the_interest_is_called_out():
+    r, kpis, *_ = _run(payment=500)          # interest alone is 1,140 a month
+    assert not r["covers_interest"]
+    assert r["loan_balance"][-1] > r["loan"]
+    assert "does not even cover the interest" in " ".join(_texts(kpis[3]))

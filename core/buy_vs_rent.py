@@ -21,6 +21,7 @@ class Inputs:
     purchase_costs_pct: float = 10.0    # of price: tax, notary, land register, agent
     interest_pct: float = 3.8           # loan interest per year
     repayment_pct: float = 2.0          # initial repayment per year (German annuity)
+    monthly_payment: float | None = None  # the bank's figure; replaces repayment_pct when given
     upkeep_pct: float = 1.5             # of the home's value per year
     appreciation_pct: float = 2.0       # home value per year
     rent: float = 1_400.0               # cold rent per month
@@ -37,6 +38,7 @@ def _clean(inp: Inputs) -> Inputs:
         price=f(inp.price), equity=f(inp.equity),
         purchase_costs_pct=f(inp.purchase_costs_pct),
         interest_pct=f(inp.interest_pct), repayment_pct=f(inp.repayment_pct),
+        monthly_payment=None if inp.monthly_payment is None else f(inp.monthly_payment),
         upkeep_pct=f(inp.upkeep_pct), appreciation_pct=max(-50.0, float(inp.appreciation_pct or 0)),
         rent=f(inp.rent), rent_growth_pct=max(-50.0, float(inp.rent_growth_pct or 0)),
         return_pct=max(-50.0, float(inp.return_pct or 0)),
@@ -55,7 +57,17 @@ def simulate(inp: Inputs) -> dict:
     costs = p.price * p.purchase_costs_pct / 100.0
     upfront = min(p.equity, p.price + costs)          # what the buyer actually puts in
     loan = p.price + costs - upfront                   # the rest is borrowed
-    annuity = loan * (p.interest_pct + p.repayment_pct) / 100.0 / 12.0
+    # People know the payment the bank quoted, rarely the initial repayment
+    # rate, so the payment wins when given and the rate is derived from it.
+    if loan <= 0.0:
+        annuity = 0.0
+    elif p.monthly_payment is not None:
+        annuity = p.monthly_payment
+    else:
+        annuity = loan * (p.interest_pct + p.repayment_pct) / 100.0 / 12.0
+    first_interest = loan * p.interest_pct / 100.0
+    initial_repayment_pct = ((annuity * 12.0 - first_interest) / loan * 100.0
+                             if loan > 0.0 else None)
     m_int = p.interest_pct / 100.0 / 12.0
     g_home = (1.0 + p.appreciation_pct / 100.0) ** (1.0 / 12.0) - 1.0
     g_inv = (1.0 + p.return_pct / 100.0) ** (1.0 / 12.0) - 1.0
@@ -129,6 +141,9 @@ def simulate(inp: Inputs) -> dict:
         "upfront": upfront,
         "purchase_costs": costs,
         "monthly_payment": annuity,
+        "initial_repayment_pct": initial_repayment_pct,
+        # A payment below the first month's interest never shrinks the loan.
+        "covers_interest": loan <= 0.0 or annuity * 12.0 >= first_interest,
         "payoff_year": (payoff_month + 11) // 12 if payoff_month else None,
         "breakeven_year": breakeven,
         "years": years,
